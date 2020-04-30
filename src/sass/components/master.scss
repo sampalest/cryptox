@@ -1,0 +1,101 @@
+@font-face {
+    font-family: 'Material Icons';
+    font-style: normal;
+    font-weight: 400;
+    src: url('../assets/fonts/MaterialIcons-Regular.eot');
+    src: url('../assets/fonts/MaterialIcons-Regular.woff2') format('woff2'),
+         url('../assets/fonts/MaterialIcons-Regular.woff') format('woff'),
+         url('../assets/fonts/MaterialIcons-Regular.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Montserrat-Black';
+    src: url('../assets/fonts/Montserrat-Black.ttf');
+}
+
+@font-face {
+    font-family: 'Montserrat-Bold';
+    src: url('../assets/fonts/Montserrat-Bold.ttf');
+}
+
+@font-face {
+    font-family: 'Montserrat-Regular';
+    src: url('../assets/fonts/Montserrat-Regular.ttf');
+}
+
+@font-face {
+    font-family: 'Montserrat-Light';
+    src: url('../assets/fonts/Montserrat-Light.ttf');
+}
+
+.material-icons {
+    font-family: 'Material Icons';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;
+    display: inline-block;
+    line-height: 1;
+    text-transform: none;
+    letter-spacing: normal;
+    word-wrap: normal;
+    white-space: nowrap;
+    direction: ltr;    
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'liga';
+}
+
+.vertical-align {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.vertical-align-nc {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+}
+
+body {
+    min-height: 100vh;
+    background: linear-gradient(to bottom, #ffffff 0%, #f9f9f9 60%, #efefef 100%);
+}
+
+#app {
+    font-family: Avenir, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-align: center;
+    color: #2c3e50;
+    user-select: none;
+}
+
+.page-block {
+    min-height: 85vh;
+    @extend .vertical-align;
+}
+
+.light {
+    & .hide-navbar {
+        -webkit-app-region: drag;
+        display: block;
+        height: 36px;
+        font-size: 11px;
+        letter-spacing: 2px;
+        font-weight: 600;
+        padding: 1em 0;
+        color: $light_navbar;
+    }
+    
+    & .bg-navbar {
+        position: absolute;
+        background: $light_bg;        
+        width: 100%;
+        height: 36px;
+        top:0;
+        left:0;
+    }
+}

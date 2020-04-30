@@ -3,7 +3,6 @@ var fs = require("fs");
 var archiver = require("archiver");
 
 export default class Utils {
-    
     static splitFromPath(el) {
         let splitPath = el.path.split(".");
         let extension = splitPath[splitPath.length - 1];
@@ -61,22 +60,42 @@ export default class Utils {
     static fileFusion(args) {
         /* 
         Function args:
-            - Level: zlib level.
+            - Level: zlib level. Numeric
             - Output: Path and name to create zipfile.
-            - List: File list you want to append. This list only needs filename.
-            - Path: Pathg where you read files.
+            - List: File list you want to append. This list needs all path.
+            - Filename: Filename in all parts.
         */
-        var output = fs.createWriteStream(args.output);
-        var archive = archiver("zip", {
-            gzip: true,
-            zlib: { level: args.level }
-        });
+        try {
+            var ok = true;
+            var output = fs.createWriteStream(args.output);
+            var archive = archiver("zip", {
+                gzip: true,
+                zlib: { level: args.level }
+            });
 
-        archive.pipe(output);
-        args.list.forEach(el => {
-            let file = args.path.concat("/" + el);
-            archive.file(file, {name: el});
-        });
-        archive.finalize();
+            archive.pipe(output);
+            args.list.forEach((el, index) => {
+                let filename = args.filename.concat(`_${index}.ctx`);
+                let file = fs.createReadStream(el);
+                archive.append(file, {name: `${filename}.ctx`});
+                // fs.unlinkSync(el);
+            });
+
+            archive.finalize();
+        } catch (error) {
+            console.error(error);
+            ok = false;
+        }
+
+        return ok;
+
+    }
+
+    static isDirectory(path) {
+        return fs.lstatSync(path).isDirectory();
+    }
+
+    static rmDir(path, callback) {
+        fs.rmdir(path, callback);
     }
 }

@@ -1,0 +1,127 @@
+%filter-transition {
+    transition: .3s filter linear;
+    -webkit-transition: .3s -webkit-filter linear;
+    -moz-transition: .3s -moz-filter linear;
+    -ms-transition: .3s -ms-filter linear;
+    -o-transition: .3s -o-filter linear;
+}
+
+%all-transition {
+    -webkit-transition: all 0.1s ease-in-out;
+    -moz-transition: all 0.1s ease-in-out;
+    -o-transition: all 0.1s ease-in-out;
+    transition: all 0.1s ease-in-out;
+}
+
+%all-transition-02 {
+    -webkit-transition: all 0.2s ease-in-out;
+    -moz-transition: all 0.2s ease-in-out;
+    -o-transition: all 0.2s ease-in-out;
+    transition: all 0.2s ease-in-out;
+}
+
+%msg-shadow {
+    box-shadow: 0 2px 2px 0 rgba(0, 0, 0, 0.14), 0 3px 1px -2px rgba(0, 0, 0, 0), 0 1px 5px 0 rgba(0, 0, 0, 0);
+}
+
+%z-depth-lighten {
+    box-shadow: 0 16px 24px 2px rgba(241, 241, 241, 0.1), 0 6px 30px 5px rgba(162, 162, 162, 0.12), 0 8px 10px -7px rgba(84, 84, 84, 0.2);
+}
+
+%z-depth-lighten-2 {
+    box-shadow: 0 16px 24px 2px rgba(245, 245, 245, 0.1), 0 6px 30px 5px rgba(196, 196, 196, 0.12), 0 8px 10px -7px rgba(148, 148, 148, 0.2);
+}
+
+@mixin boxShadowFunction($color, $px) {
+    -webkit-box-shadow: 1px 5px $px 0px $color;
+    -moz-box-shadow: 1px 5px $px 0px $color;
+    box-shadow: 1px 5px $px 0px $color;
+}
+
+@mixin dropShadow($hor, $ver, $blur, $color) {
+    filter: drop-shadow($hor $ver $blur $color);
+    -webkit-filter: drop-shadow($hor $ver $blur $color);
+}
+
+@mixin footerShadow() {
+    -webkit-box-shadow: 0px 0px 15px 0px rgba(168,168,168,1);
+    -moz-box-shadow: 0px 0px 15px 0px rgba(168,168,168,1);
+    box-shadow: 0px 0px 15px 0px rgba(168,168,168,1);
+}
+
+@mixin colorShadow($color) {
+    -webkit-box-shadow: 0px 0px 15px 0px $color;
+    -moz-box-shadow: 0px 0px 15px 0px $color;
+    box-shadow: 0px 0px 15px 0px $color;
+}
+
+@mixin shadow-button($px, $opacity) {
+    -webkit-box-shadow: 1px 2px $px 0px rgba(50,50,50,$opacity);
+    -moz-box-shadow: 1px 2px $px 0px rgba(50,50,50,$opacity);
+    box-shadow: 1px 2px $px 0px rgba(50,50,50,$opacity);
+}
+
+@mixin transition($time) {
+    -webkit-transition: all $time ease-in-out;
+    -moz-transition: all $time ease-in-out;
+    -o-transition: all $time ease-in-out;
+    transition: all $time ease-in-out;
+}
+
+%slider-shadow {
+    -webkit-box-shadow: 0px 2px 6px 0px rgba(0, 0, 0, 0.2);
+    -moz-box-shadow: 0px 2px 6px 0px rgba(0, 0, 0, 0.2);
+    box-shadow: 0px 2px 6px 0px rgba(0, 0, 0, 0.2);
+}
+
+
+@keyframes shadow-pulse {
+    0% {
+        box-shadow: 0 0 0 0px rgba(0, 0, 0, 0.3);      
+    }
+    100% {      
+        box-shadow: 0 0 0 35px rgba(0, 0, 0, 0);
+    }
+
+}
+
+@-webkit-keyframes beat {
+    0% { transform: scale(1); }
+    30% { transform: scale(1); }
+    40% { transform: scale(1.10); }
+    50% { transform: scale(1); }
+    60% { transform: scale(1); }
+    70% { transform: scale(1.05); }
+    80% { transform: scale(1); }
+    100% { transform: scale(1); }
+}
+
+@-webkit-keyframes pulsate {
+    0% {-webkit-transform: scale(0.1, 0.1); opacity: 0.0;}
+    50% {opacity: 0.8;}
+    100% {-webkit-transform: scale(1, 1); opacity: 0.0;}
+}
+
+@-webkit-keyframes alertPulse {
+    0% {background-color: #1466cc; opacity: 1;}
+    50% {opacity: #0f3761; opacity: 0.75; }
+    100% {opacity: #1466cc; opacity: 1;}
+}
+
+.spinner {
+    margin: 100px auto;
+    width: 80px;
+    height: 80px;
+    position: relative;
+    text-align: center;
+    
+    -webkit-animation: sk-rotate 2.0s infinite linear;
+    animation: sk-rotate 2.0s infinite linear;
+}
+
+.fade-enter-active, .fade-leave-active {
+    transition: opacity .5s;
+}
+.fade-enter, .fade-leave-to /* .fade-leave-active below version 2.1.8 */ {
+    opacity: 0;
+}

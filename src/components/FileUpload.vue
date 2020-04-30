@@ -52,10 +52,12 @@ export default {
         },
         encFileMp: function (e) {
             var files = e.target.files;
+            var filelist = [];
+            var df = null;
 
             files.forEach(file => {
                 var dir = Utils.createTempFiles();
-                let df = Utils.splitFromPath(file);
+                df = Utils.splitFromPath(file);
 
                 var fisl = new FileSlicer(file);
                 var bytes = fisl.getSlices();
@@ -65,12 +67,25 @@ export default {
                         .concat("/" + df.filename)
                         .concat("_" + index)
                         .concat(".ctx");
+                    
+                    filelist.push(filewrite);
 
                     FileSlicer.blobToBase64(el)
                         .then(result => {
                             let base64 = index==0 ? Utils.extensionMetadata(result, df.ext) : result;
                             var encrypted = this.crypto.encryptFile(base64);
                             fs.writeFileSync(filewrite, encrypted, "utf-8");
+
+                            if (index == bytes.length - 1) {
+                                let args = {
+                                    "level": 9,
+                                    "output": df.path_woext.concat(".ctx"),
+                                    "list": filelist,
+                                    "path": Constants.LNXTMP,
+                                    "filename": df.filename
+                                };
+                                Utils.fileFusion(args);
+                            }
                         });
                 });
             });
