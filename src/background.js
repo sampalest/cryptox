@@ -21,7 +21,7 @@ function createWindow () {
         height: 600,
         titleBarStyle: "hiddenInset",
         webPreferences: {
-            nodeIntegration: true
+            nodeIntegration: true            
         }
     });
 
@@ -41,6 +41,11 @@ function createWindow () {
 }
 
 app.name = "CryptoX";
+
+if (process.platform === "darwin") {
+    // To fix chrome-bug on MacOS
+    app.commandLine.appendArgument("--enable-features=Metal");
+}
 
 // Quit when all windows are closed.
 app.on("window-all-closed", () => {

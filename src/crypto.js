@@ -6,10 +6,16 @@ export default class Crypto {
     }
 
     encryptFile(base64) {
-        return CryptoJS.AES.encrypt(base64, this.password).toString();
+        return new Promise(resolve => {
+            setTimeout(() => {
+                resolve(CryptoJS.AES.encrypt(base64, this.password).toString());
+            }, 500);
+        });
     }
 
     decryptFile(enc) {
-        return CryptoJS.AES.decrypt(enc, this.password).toString(CryptoJS.enc.Utf8);
+        return new Promise(resolve => {
+            resolve(CryptoJS.AES.decrypt(enc, this.password).toString(CryptoJS.enc.Utf8));
+        });
     }
 }

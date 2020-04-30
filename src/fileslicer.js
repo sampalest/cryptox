@@ -1,7 +1,7 @@
 import { Promise } from "core-js";
 
 export default class FileSlicer {
-    constructor(file, size=512) {
+    constructor(file, size=128) {
         this.file = file;
         this.sliceSize = size * size;
         this.currentSlice = 0;

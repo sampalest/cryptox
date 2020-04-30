@@ -1,0 +1,63 @@
+.light {
+    & .title-block {
+        margin: 1.4em 0;
+        & .app-title {
+            font-size: 2.5em;
+            text-transform: uppercase;
+            font-weight: 500;
+            color: #6f6f6f;
+            letter-spacing: .2em;
+            line-height: .9em;
+        }
+
+        & .app-subtitle {
+            color: grey;
+            font-weight: 500;
+            letter-spacing: .1em;
+        }
+    }
+
+    & .logo-block {
+        width: 100%;
+        & img {
+            max-width: 300px;            
+        }
+    }
+
+    & .description-page {
+        color: #7b7b7b;
+        font-size: 1.3em;
+        margin: 1.1em 0;
+    }
+
+    & .file-button {
+        background: linear-gradient(to bottom, #1976d2 0%, #00a6f5 100%);
+        box-shadow: 0px 10px 27px rgba(160, 160, 160, 0.45);
+        font-family: 'Montserrat-Regular';
+        padding: 1em 2em;
+        border-radius: 5em;
+        color: white;
+        user-select: none;
+        font-weight: 600;
+        cursor: pointer;
+        @extend %all-transition-02;
+
+        &:hover {
+            box-shadow: 0px 10px 27px rgba(160, 160, 160, 0.90);
+        }        
+    }
+
+    & .button-block {
+        margin-top: 2em;
+    }
+
+    & .template-container {
+        width: 90vh;
+    }
+
+    & .logo-block-encrypted {
+        & img {
+            max-width: 250px;
+        }
+    }
+}
