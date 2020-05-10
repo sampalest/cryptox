@@ -1,6 +1,8 @@
 import Constants from "./constants.js";
-var fs = require("fs");
-var archiver = require("archiver");
+
+const fs = require("fs");
+const archiver = require("archiver");
+const filetype = require("file-type");
 
 export default class Utils {
     static splitFromPath(el) {
@@ -97,5 +99,10 @@ export default class Utils {
 
     static rmDir(path, callback) {
         fs.rmdir(path, callback);
+    }
+
+    static async getExtension(path) {
+        let fileObj = await filetype.fromFile(path);
+        return fileObj;
     }
 }

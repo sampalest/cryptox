@@ -1,7 +1,7 @@
 <template>
   <div class="home">
     <fileupload></fileupload>
-    <router-link to='design'>Design</router-link>
+    <router-link to='/'>Design</router-link>
     <br>
     <router-link to='config'>Config</router-link>
   </div>
