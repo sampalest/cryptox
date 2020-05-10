@@ -5,11 +5,16 @@
         <p>Encrypt File</p>
         <input id="input-file" type="file" class="hide" @change="encFile">
 
+        <p>Encrypt File New</p>
+        <input id="input-file" type="file" @change="test1">
+
         <p>Encrypt File Multipart</p>
         <input id="input-file" type="file" class="hide" @change="encFileMp">
 
         <p>Decrypt File</p>
         <input id="dec-file" type="file" class="hide" @change="decFile">
+        <p>Decrypt File New</p>
+        <input id="dec-file" type="file" @change="test2">
         <br>
         <button @click="rebuildFile">Rebuild</button>
     </div>
@@ -31,6 +36,22 @@ export default {
         };
     },
     methods: {
+        test1(e) {
+            let files = e.target.files;
+            files.forEach(el => {
+                this.crypto.encrypt(el.path).then(() => {
+                    alert("Done");
+                });
+            });
+        },
+        test2(e) {
+            let files = e.target.files;
+            files.forEach(el => {
+                this.crypto.decrypt(el.path).then(() => {
+                    alert("Done");
+                });
+            });
+        },
         encFile: function (e) {
             let files = e.target.files;
             files.forEach(el => {

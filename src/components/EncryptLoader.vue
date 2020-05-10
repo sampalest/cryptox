@@ -1,40 +1,61 @@
 <template>
     <div class="template-container">
         <div class="title-block">
-            <div class="app-title">Encrypting...</div>
+            <div class="app-title">
+                <span v-text="isEncrypt ? 'Encrypting...' : 'Decrypting...'"></span>
+            </div>
         </div>
         <div class="logo-block-encrypted zoomIn animated">
             <img src="@/assets/enc_file.svg" alt="Enc file">
         </div>
         <div class="progress block-progress">
-            <div class="determinate" :style="{'width': percent + '%'}"></div>
+            <div class="determinate" :style="{'width': percent.value + '%'}"></div>
         </div>
-        <p class="progress-perc">{{percent}}%</p>
+        <p class="progress-perc">{{percent.value}}%</p>
     </div>
 </template>
 <script>
 import animation from "@/components/mixins/animation.js";
-import fileop from "@/components/mixins/fileop.js";
+import fileCrypto from "@/components/mixins/filecryto.js";
 
 export default {
     name: "encrypt-loader",
     data: () => {
         return {
-            percent: 0
+            percent: {
+                value: 0
+            }
         };
     },
-    mixins: [animation, fileop],
-    props: ["files", "password"],
+    mixins: [animation, fileCrypto],
+    props: {
+        files: {
+            type: FileList,
+            default: []
+        },
+        password: {
+            type: String,
+            default: ""
+        },
+        isEncrypt: {
+            type: Boolean,
+            default: true
+        }
+    },
     watch: {
         finish() {
             setTimeout(()=> {
                 this.$emit("finish", this.finish);
-            }, 1500);
+            }, 1000);
         }
     },
     mounted() {
         this.$nextTick(function () {
-            this.encryptFiles();
+            if (this.isEncrypt) {
+                this.encryptFile();
+            } else {
+                this.decryptFile();
+            }
         });
     }
 };

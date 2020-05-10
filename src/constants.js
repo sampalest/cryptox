@@ -1,7 +1,14 @@
-class Constants {
-    // To add temporal path
-    static LNXTMP = "/tmp/cryptox";
-    static WINTMP = "/tmp/cryptox";
-}
+// To add temporal path
+const LNXTMP = "/tmp/cryptox";
+const WINTMP = "/tmp/cryptox";
 
-export default Constants;
+// Extension
+const POINT_EXT = ".ctx";
+const EXT =  "ctx";
+
+export default {
+    EXT: EXT,
+    POINT_EXT: POINT_EXT,
+    LNXTMP: LNXTMP,
+    WINTMP: WINTMP
+};

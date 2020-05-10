@@ -42,9 +42,28 @@
         cursor: pointer;
         @extend %all-transition-02;
 
+        & .text-button {
+            letter-spacing: 1px;
+        }
+
         &:hover {
             box-shadow: 0px 10px 27px rgba(160, 160, 160, 0.90);
         }        
+    }
+
+    & .cancel-button {
+        & a {
+            letter-spacing: 1px;
+            font-weight: 400;
+            color: $cancel-button;            
+            @extend %all-transition-02;
+
+            &:hover {
+                color: darken($cancel-button, 20%);
+            }
+        }
+        margin-top: 1em;
+        cursor: pointer;        
     }
 
     & .button-block {

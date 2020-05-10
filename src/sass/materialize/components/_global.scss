@@ -655,7 +655,7 @@ td, th{
     left: 0;
     bottom: 0;
     background-color: $progress-bar-color;
-    transition: width .3s linear;
+    // transition: width .1s linear;
   }
   .indeterminate {
     background-color: $progress-bar-color;
