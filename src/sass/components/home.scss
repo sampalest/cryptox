@@ -8,6 +8,11 @@
             color: #6f6f6f;
             letter-spacing: .2em;
             line-height: .9em;
+
+            &-2 {
+                font-size: 2em !important;
+                letter-spacing: .1em;
+            }
         }
 
         & .app-subtitle {
@@ -20,7 +25,7 @@
     & .logo-block {
         width: 100%;
         & img {
-            max-width: 300px;            
+            max-width: 300px;
         }
     }
 

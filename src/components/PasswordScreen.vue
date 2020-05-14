@@ -12,7 +12,7 @@
                         <label for="password">Password</label>
                     </div>
                 </div>
-                <div v-if="isEncrypt" class="row" :key="2" :data-index="2">
+                <div v-if="!isEncrypt" class="row" :key="2" :data-index="2">
                     <div class="input-field col s10 offset-s1">
                         <i class="material-icons prefix">lock</i>
                         <input type="password" name="newpassword" id="newpassword" v-model="newPassword">
@@ -23,7 +23,7 @@
                     <button type="submit" class="waves-effect waves-light file-button">
                         <div class="vertical-align text-button">
                             <i class="material-icons left" v-text="isEncrypt ? 'lock_outline' : 'lock_open'"></i>
-                            <span v-html="isEncrypt ? 'Encrypt' : 'Decrypt'"></span>
+                            <span v-html="!isEncrypt ? 'Encrypt' : 'Decrypt'"></span>
                         </div>
                     </button>
                 </div>
@@ -58,17 +58,18 @@ export default {
                 if (!this.password) {
                     throw new e.NoValidPassword("This password is empty O_o");
                 }
-                else if (!this.isEncrypt) {
-                    this.goToDecrypt();
-                }
                 else if (this.password.length <= 4) {
                     throw new e.NoValidPassword("This password is too short. Please, choose another one.");
+                }
+                else if (this.isEncrypt) {
+                    this.emitObject();
+                    return;
                 }
                 else if (this.password !== this.newPassword) {
                     throw new e.NoValidPassword("Passwords don't match.");
                 }
 
-                this.$emit("password", this.password);
+                this.emitObject();
 
             } catch (error) {
                 this.password = "";
@@ -76,8 +77,8 @@ export default {
                 alert(error.message);
             }
         },
-        goToDecrypt() {
-            this.$emit("isEncrypt", this.encrypt);
+        emitObject() {
+            this.$emit("setEncrypt", this.isEncrypt);
             this.$emit("password", this.password);
         }
     }

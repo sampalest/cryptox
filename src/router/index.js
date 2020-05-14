@@ -1,26 +1,20 @@
 import Vue from "vue";
 import VueRouter from "vue-router";
-import Home from "../views/Home.vue";
 import Config from  "../views/Config.vue";
-import Design from  "../views/Design.vue";
+import Home from  "../views/Home.vue";
 
 Vue.use(VueRouter);
 
 const routes = [
     {
         path: "/",
-        name: "Design",
-        component: Design
+        name: "home",
+        component: Home
     },
     {
         path: "/config",
-        name: "Config",
+        name: "config",
         component: Config
-    },
-    {
-        path: "/home",
-        name: "Home",
-        component: Home
     }
 ];
 

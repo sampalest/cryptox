@@ -2,16 +2,18 @@
     <div class="template-container">
         <div class="title-block">
             <div class="app-title">
-                <span v-text="isEncrypt ? 'Encrypting...' : 'Decrypting...'"></span>
+                <span v-text="!isEncrypt ? 'Encrypting' : 'Decrypting'"></span>
             </div>
+            <p>{{fileEvent.msg}} {{fileEvent.filename}}</p>
         </div>
         <div class="logo-block-encrypted zoomIn animated">
             <img src="@/assets/enc_file.svg" alt="Enc file">
         </div>
         <div class="progress block-progress">
-            <div class="determinate" :style="{'width': percent.value + '%'}"></div>
+            <div v-if="!fileEvent.loader" class="determinate" :style="{'width': percent.value + '%'}"></div>
+            <div v-else class="indeterminate"></div>
         </div>
-        <p class="progress-perc">{{percent.value}}%</p>
+        <p v-show="!fileEvent.loader" class="progress-perc">{{percent.value}}%</p>
     </div>
 </template>
 <script>
@@ -24,7 +26,15 @@ export default {
         return {
             percent: {
                 value: 0
-            }
+            },
+            fileEvent: {
+                error: false,
+                loader: false,
+                length: 1,
+                counter: 0,
+                msg: "",
+                filename: ""
+            },
         };
     },
     mixins: [animation, fileCrypto],
@@ -46,17 +56,43 @@ export default {
         finish() {
             setTimeout(()=> {
                 this.$emit("finish", this.finish);
-            }, 1000);
+            }, 500);
+        },
+        fileEvent: {
+            deep: true,
+            handler() {
+                if (this.fileEvent.error) {
+                    alert("Cannot decrypt file...");
+                    this.cancel();
+                }
+            }
         }
+    },
+    methods: {
+        cancel() {
+            this.$emit("cancel", true);
+        }
+    },
+    beforeMount() {
+        this.fileEvent.error = false;
     },
     mounted() {
         this.$nextTick(function () {
-            if (this.isEncrypt) {
-                this.encryptFile();
-            } else {
-                this.decryptFile();
-            }
+            if (!this.files.length) this.destroy();
+            this.files.forEach(file => {
+                if (this.isEncrypt) {
+                    this.decryptFile(file);
+                } else {
+                    this.encryptFile(file);
+                }
+            });
         });
+
+        setTimeout(() => {
+            if (this.percent.value === 0 && !this.fileEvent.loader) {
+                this.cancel();
+            }
+        }, 5000);
     }
 };
 </script>

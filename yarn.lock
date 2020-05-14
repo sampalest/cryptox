@@ -3606,11 +3606,6 @@ crypto-browserify@^3.11.0:
     randombytes "^2.0.0"
     randomfill "^1.0.3"
 
-crypto-js@^3.1.9-1:
-  version "3.3.0"
-  resolved "https://registry.yarnpkg.com/crypto-js/-/crypto-js-3.3.0.tgz#846dd1cce2f68aacfa156c8578f926a609b7976b"
-  integrity sha512-DIT51nX0dCfKltpRiXV+/TVZq+Qq2NgF4644+K7Ttnla7zEzqc+kjJyiB96BHNyUTBxyjzRcZYpUdZa+QAqi6Q==
-
 crypto-random-string@^1.0.0:
   version "1.0.0"
   resolved "https://registry.yarnpkg.com/crypto-random-string/-/crypto-random-string-1.0.0.tgz#a230f64f568310e1498009940790ec99545bca7e"
@@ -12839,8 +12834,3 @@ zip-stream@^3.0.1:
     archiver-utils "^2.1.0"
     compress-commons "^3.0.0"
     readable-stream "^3.6.0"
-
-zlib@^1.0.5:
-  version "1.0.5"
-  resolved "https://registry.yarnpkg.com/zlib/-/zlib-1.0.5.tgz#6e7c972fc371c645a6afb03ab14769def114fcc0"
-  integrity sha1-bnyXL8NxxkWmr7A6sUdp3vEU/MA=
