@@ -3,31 +3,9 @@ import Constants from "./constants.js";
 const fs = require("fs");
 const archiver = require("archiver");
 const filetype = require("file-type");
+const Path = require("path");
 
 export default class Utils {
-    static splitFromPath(el) {
-        let splitPath = el.path.split(".");
-        let extension = splitPath[splitPath.length - 1];
-        let filename = el.name.substring(0, el.name.lastIndexOf("."));
-        let lastIndex = el.path.lastIndexOf("/");
-        let path = el.path.substring(0, lastIndex);
-
-        return {
-            "ext": extension,
-            "filename": filename,
-            "path": path,
-            "path_woext": path + "/" + filename
-        };
-    }
-
-    static extensionMetadata(base64, ext) {
-        var b64ext = "::"
-            .concat(ext + "::")
-            .concat(base64);
-
-        return b64ext;
-    }
-
     static createTempFiles() {
         var dir = "";
         switch (process.platform) {
@@ -59,37 +37,22 @@ export default class Utils {
         });
     }
 
-    static fileFusion(args) {
-        /* 
-        Function args:
-            - Level: zlib level. Numeric
-            - Output: Path and name to create zipfile.
-            - List: File list you want to append. This list needs all path.
-            - Filename: Filename in all parts.
-        */
-        try {
-            var ok = true;
-            var output = fs.createWriteStream(args.output);
-            var archive = archiver("zip", {
-                gzip: true,
-                zlib: { level: args.level }
-            });
-
+    static zipDirectory(args) {
+        const archive = archiver("zip", { zlib: { level: args.level }});
+        const output = fs.createWriteStream(args.output);
+    
+        return new Promise((resolve, reject) => {
+            output.on("close", () => resolve());
+            archive.on("error", err => { reject(err); });
+            
             archive.pipe(output);
-            args.list.forEach((el, index) => {
-                let filename = args.filename.concat(`_${index}.ctx`);
-                let file = fs.createReadStream(el);
-                archive.append(file, {name: `${filename}.ctx`});
-                // fs.unlinkSync(el);
+            let files = fs.readdirSync(args.path);
+            files.forEach(el => {
+                let file = fs.createReadStream(`${args.path}/${el}`);
+                archive.append(file, { name: el });
             });
-
             archive.finalize();
-        } catch (error) {
-            console.error(error);
-            ok = false;
-        }
-
-        return ok;
+        });
 
     }
 
@@ -99,6 +62,21 @@ export default class Utils {
 
     static rmDir(path, callback) {
         fs.rmdir(path, callback);
+    }
+
+    static rmRf(path) {
+        if (fs.existsSync(path)) {
+            fs.readdirSync(path).forEach(file => {
+                const currentPath = Path.join(path, file);
+                if (fs.lstatSync(currentPath).isDirectory()) {
+                    this.rmRf(currentPath);
+                }
+                else {
+                    fs.unlinkSync(currentPath);
+                }
+            });
+            fs.rmdirSync(path);
+        }
     }
 
     static async getExtension(path) {
