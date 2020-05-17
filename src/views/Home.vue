@@ -8,14 +8,14 @@
                 <div class="app-subtitle">Secure Everything</div>
             </div>
             <div class="logo-block" :key="3" :data-index="3">
-                <img class="criptox-logo" src="@/assets/cryptox.svg" alt="Cryptox icon">
+                <img class="cryptox-logo" src="@/assets/cryptox.svg" alt="Cryptox icon">
                 <fileloader @imageFile="selectFile"></fileloader>
             </div>
             <div class="description-page row" :key="2" :data-index="2">
                 <div class="col s12">Please, drag your files here or click in the button.</div>
             </div>
             <div class="button-block" :key="1" :data-index="1">
-                <a @click="$refs.fileInput.click()" class="file-button">Select Files</a>
+                <a ref="select" @click="$refs.fileInput.click()" class="file-button">Select Files</a>
             </div>
         </transition-group>
         <input ref="fileInput" type="file" class="hide" @change="inputFile" multiple>
@@ -24,6 +24,7 @@
 <script>
 import Constants from "@/constants.js";
 import animation from "@/components/mixins/animation.js";
+import sysevents from "@/components/mixins/sysevents.js";
 import FileLoader from "@/components/FileLoader.vue";
 import PasswordScreen from "@/components/PasswordScreen.vue";
 import EncryptLoader from "@/components/EncryptLoader.vue";
@@ -40,7 +41,7 @@ export default {
 			error: false
         };
     },
-    mixins: [animation],
+    mixins: [animation, sysevents],
     components: {
         "fileloader": FileLoader,
         "password-screen": PasswordScreen,
@@ -101,8 +102,3 @@ export default {
     }
 };
 </script>
-<style>
-	.cryptox-logo {
-		padding: 2em;
-	}
-</style>

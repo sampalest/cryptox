@@ -13,7 +13,9 @@
             <div v-if="!fileEvent.loader" class="determinate" :style="{'width': percent.value + '%'}"></div>
             <div v-else class="indeterminate"></div>
         </div>
-        <p v-show="!fileEvent.loader" class="progress-perc">{{percent.value}}%</p>
+        <p v-if="!fileEvent.loader" class="progress-perc">{{percent.value}}%</p>
+        <p v-else-if="fileEvent.progress > 0" class="progress-perc">{{fileEvent.progress}} / {{fileEvent.total}}</p>
+
     </div>
 </template>
 <script>
@@ -32,6 +34,8 @@ export default {
                 loader: false,
                 length: 1,
                 counter: 0,
+                progress: 0,
+                total: 0,
                 msg: "",
                 filename: ""
             },

@@ -14,7 +14,6 @@ export default {
             const crypto = new Crypto(this.password);
             crypto.encrypt(file, this.percent, this.fileEvent).then(() => {
                 this.fileEvent.counter++;
-                this.fileEvent.loader = true;
                 
                 if (this.fileEvent.counter == this.files.length) {
                     if (Utils.isDirectory(file.path)) Utils.rmRf(Constants.LNXTMP + "/"); // TODO: OS
@@ -32,6 +31,7 @@ export default {
                     if (err.message == Constants.PASSWORD_ERROR) {
                         alert("Decrypt error, please try again.");
                     }
+                    this.finish = true;
                 });
         }
     }
