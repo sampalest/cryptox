@@ -52,15 +52,15 @@ export default class Crypto {
      */
     async _compressFolder(file, fileEvent) {
         fileEvent.loader = true;
-        fileEvent.msg = "Reading folder...";
+        fileEvent.msg = "Reading files...";
         
         Utils.createTempFiles();
         var args = {
             "output": `${Constants.LNXTMP}/${file.name}.zip`,
             "path": file.path,
-            "level": 9
+            "level": 1
         };
-        await Utils.zipDirectory(args);
+        await Utils.zipDirectory(args, fileEvent);
         fileEvent.loader = false;
 
         return {
@@ -75,6 +75,7 @@ export default class Crypto {
      * @function encrypt
      * @param {String} file File path
      * @param {Object} completeFile Necessary to save percent of encryption (pointer of Vue var).
+     * @param {Object} fileEvent Vue var: necessary for UI.
      * @return {Promise}
      */
     async encrypt(file, completeFile, fileEvent) {
@@ -104,7 +105,7 @@ export default class Crypto {
                 fs.appendFileSync(endfile, authTag);
                 resolve();
             });
-
+            
             readStream
                 .pipe(cipher)
                 .pipe(appendInitVect)
@@ -141,8 +142,14 @@ export default class Crypto {
             try {
                 if (typeof fileTypeStream.fileType === "undefined") throw new e.DecryptError(Constants.PASSWORD_ERROR);
                 let ext = fileTypeStream.fileType.ext;
-                let writeStream = fs.createWriteStream(file.path.split(".")[0].concat(".".concat(ext)));
+                // If not a folder save in file directory else in temporal directory
+                if (ext === "zip") Utils.createTempFiles();
+                let unencFile = ext !== "zip" ? file.path.split(".")[0].concat(`.${ext}`) : `${Constants.LNXTMP}/${file.name.split(".")[0]}.zip`;
+                let writeStream = fs.createWriteStream(unencFile);
                 writeStream.on("finish", () => {
+                    if (ext === "zip") {
+                        Utils.unzipDirectory(unencFile, file.path.split(".")[0]);
+                    }
                     resolve();
                 });
             

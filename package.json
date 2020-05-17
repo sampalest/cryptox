@@ -1,6 +1,15 @@
 {
   "name": "cryptox",
-  "version": "0.1.0",
+  "productName": "Cryptox",
+  "executableName": "Cryptox",
+  "version": "0.1.0-alpha",
+  "author": {
+    "name": "Samuel Palomo Esteban",
+    "email": "samuelpe@outlook.com"
+  },
+  "copyright": "Copyright © 2020 Samuel Palomo Esteban",
+  "description": "App to encrypt files easier",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "serve": "vue-cli-service serve",
@@ -12,6 +21,7 @@
     "lintfix:vue": "eslint 'src/**/*.vue' --fix",
     "electron:build": "vue-cli-service electron:build",
     "electron:serve": "vue-cli-service electron:serve",
+    "electron:generate-icons": "electron-icon-builder --input=./public/icon.png --output=build --flatten",
     "postinstall": "electron-builder install-app-deps",
     "postuninstall": "electron-builder install-app-deps"
   },
@@ -20,9 +30,12 @@
     "animate.css": "^3.7.2",
     "archiver": "^4.0.1",
     "core-js": "^3.6.4",
+    "electron-notarize": "^0.3.0",
     "file-system": "^2.2.2",
     "file-type": "^14.3.0",
+    "jquery": "^3.5.1",
     "materialize-css": "^1.0.0",
+    "unzipper": "^0.10.11",
     "vue": "^2.6.11",
     "vue-router": "^3.1.6",
     "vuex": "^3.1.3"

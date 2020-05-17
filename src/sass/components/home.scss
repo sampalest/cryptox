@@ -25,7 +25,11 @@
     & .logo-block {
         width: 100%;
         & img {
-            max-width: 300px;
+            max-width: 300px;            
+        }
+
+        & .cryptox-logo {
+            width: $cryptox_logo;            
         }
     }
 
@@ -72,7 +76,7 @@
     }
 
     & .button-block {
-        margin-top: 2em;
+        margin-top: $encrypt_button;
     }
 
     & .template-container {

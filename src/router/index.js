@@ -1,6 +1,5 @@
 import Vue from "vue";
 import VueRouter from "vue-router";
-import Config from  "../views/Config.vue";
 import Home from  "../views/Home.vue";
 
 Vue.use(VueRouter);
@@ -10,11 +9,6 @@ const routes = [
         path: "/",
         name: "home",
         component: Home
-    },
-    {
-        path: "/config",
-        name: "config",
-        component: Config
     }
 ];
 

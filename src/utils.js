@@ -4,6 +4,7 @@ const fs = require("fs");
 const archiver = require("archiver");
 const filetype = require("file-type");
 const Path = require("path");
+const unzip = require("unzipper");
 
 export default class Utils {
     static createTempFiles() {
@@ -37,14 +38,19 @@ export default class Utils {
         });
     }
 
-    static zipDirectory(args) {
+    static zipDirectory(args, pObj=null) {
         const archive = archiver("zip", { zlib: { level: args.level }});
         const output = fs.createWriteStream(args.output);
     
         return new Promise((resolve, reject) => {
             output.on("close", () => resolve());
             archive.on("error", err => { reject(err); });
-            
+            archive.on("progress", (progress) => {
+                if (pObj) {
+                    pObj.progress = progress.entries.processed;
+                    pObj.total = progress.entries.total;
+                }
+            });
             archive.pipe(output);
             let files = fs.readdirSync(args.path);
             files.forEach(el => {
@@ -54,6 +60,11 @@ export default class Utils {
             archive.finalize();
         });
 
+    }
+
+    static unzipDirectory(input, output) {
+        fs.createReadStream(input)
+            .pipe(unzip.Extract({ path: output }));
     }
 
     static isDirectory(path) {
