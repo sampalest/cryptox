@@ -18,7 +18,7 @@ Developed with ❤️ by Samuel
 - Download latest release from https://github.com/Samuelpe/cryptox/releases
 
 ## Use this app
-Just drag file or folder you want to encrypt, set a passwrod and that's it. Easy!
+Just drag file or folder you want to encrypt, set a password and that's it. Easy!
 Support all files.
 
 <div align="center">
@@ -36,7 +36,7 @@ Support all files.
 - ...
 
 ## Author
-Samuel Palomo Esteban [samuelpe@outlook.com]
+Samuel Palomo Esteban
 
 ## License
 **Cryptox** is under the MIT license.
