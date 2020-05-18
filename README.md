@@ -15,7 +15,7 @@ Developed with ❤️ by Samuel
 * Windows and Linux coming soon...
 
 ## Install
-- Download latest release from https://github.com/Samuelpe/cryptox/releases
+- Download latest release from https://github.com/sampalest/cryptox/releases
 
 ## Use this app
 Just drag file or folder you want to encrypt, set a password and that's it. Easy!
