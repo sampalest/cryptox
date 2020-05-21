@@ -1,13 +1,11 @@
 <br>
 <div align="center">
 <img src="screenshots/logo.png" width="400"/>
+<p><> with ❤️ by Samuel</p>
 </div>
+<hr>
 
-# Cryptox
-Developed with ❤️ by Samuel
-
-## Version
-0.1.0-pre
+## Version 0.2.0-pre
 
 ## Description
 * Simple app for encrypt files

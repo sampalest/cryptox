@@ -1,13 +1,12 @@
 import Constants from "./constants.js";
 import Utils from "./utils.js";
-import * as e from "./exceptions.js";
+// import * as e from "./exceptions.js";
 
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const FileType = require("file-type");
-const stream = require("stream");
 const IVector = require("./vector.js");
+// const zlib = require("zlib");
 const AES256 = "aes-256-gcm";
 
 export default class Crypto {
@@ -56,11 +55,11 @@ export default class Crypto {
         
         Utils.createTempFiles();
         var args = {
-            "output": `${Constants.LNXTMP}/${file.name}.zip`,
+            "output": `${Constants.LNXTMP}/${file.name}.tar`,
             "path": file.path,
             "level": 1
         };
-        await Utils.zipDirectory(args, fileEvent);
+        await Utils.zipDirectory(args);
         fileEvent.loader = false;
 
         return {
@@ -93,16 +92,20 @@ export default class Crypto {
         }
 
         return new Promise(resolve => {
-            let initVect = crypto.randomBytes(16);
-            let CIPHER_KEY = this._getCipherKey();
-            let readStream = fs.createReadStream(filepath);
-            let cipher = crypto.createCipheriv(AES256, CIPHER_KEY, initVect);
-            let appendInitVect = new IVector(initVect);
-            let writeStream = fs.createWriteStream(path.join(endfile));
+            const initVect = crypto.randomBytes(16);
+            const CIPHER_KEY = this._getCipherKey();
+            const readStream = fs.createReadStream(filepath);
+            const cipher = crypto.createCipheriv(AES256, CIPHER_KEY, initVect);
+            const appendInitVect = new IVector(initVect);
+            const writeStream = fs.createWriteStream(path.join(endfile));
 
             writeStream.on("finish", () => {
                 let authTag = cipher.getAuthTag();
-                fs.appendFileSync(endfile, authTag);
+                let splitfile = file.name.split(".");
+                let extension = splitfile[splitfile.length - 1];
+                let fillExt = isDirectory ? Utils.fillExtension("tar") : Utils.fillExtension(extension);
+                let extBuffer = Buffer.from(fillExt, "utf-8");
+                fs.appendFileSync(endfile, Buffer.concat([extBuffer, authTag]));
                 resolve();
             });
             
@@ -127,33 +130,34 @@ export default class Crypto {
      * @return {Promise}
      */
     async decrypt(file, completeFile) {
+        const authTagPosition = 16;
+        const extPosition = authTagPosition + 8;
+
         let completedSize = 0;
         let size = fs.statSync(file.path).size;
         // Read first 16 bytes to get iv and next 16 bytes to get the authTag necessary for GCM
-        let iv = await this._getPositionalBytes(file.path, { end: 15 });
-        let authTag = await this._getPositionalBytes(file.path, { start: size-16, end: size });
-        let readStream = fs.createReadStream(file.path, { start: 16, end: size-17 });
-        let cipherKey = this._getCipherKey();
-        let decipher = crypto.createDecipheriv(AES256, cipherKey, iv).setAuthTag(authTag);
-        let fileTypeStream = await FileType.stream(stream.pipeline(readStream, decipher, err => {
-            if (err) console.log(err);
-        }));
+        const iv = await this._getPositionalBytes(file.path, { end: 15 });
+        const bufferExt = await this._getPositionalBytes(file.path, { start: size - 24, end: size - (authTagPosition + 1) });
+        const authTag = await this._getPositionalBytes(file.path, { start: size - authTagPosition, end: size });
+        var ext = bufferExt.filter(byte => byte != 42);
+        const readStream = fs.createReadStream(file.path, { start: 16, end: size - (extPosition + 1) });
+        const cipherKey = this._getCipherKey();
+        const decipher = crypto.createDecipheriv(AES256, cipherKey, iv).setAuthTag(authTag);
         return new Promise((resolve, reject) => {
             try {
-                if (typeof fileTypeStream.fileType === "undefined") throw new e.DecryptError(Constants.PASSWORD_ERROR);
-                let ext = fileTypeStream.fileType.ext;
                 // If not a folder save in file directory else in temporal directory
-                if (ext === "zip") Utils.createTempFiles();
-                let unencFile = ext !== "zip" ? file.path.split(".")[0].concat(`.${ext}`) : `${Constants.LNXTMP}/${file.name.split(".")[0]}.zip`;
-                let writeStream = fs.createWriteStream(unencFile);
+                if (ext.toString("utf-8") === "tar") Utils.createTempFiles();
+                const unencFile = ext.toString("utf-8") !== "tar" ? file.path.split(".")[0].concat(`.${ext}`) : `${Constants.LNXTMP}/${file.name.split(".")[0]}.tar`;
+                const writeStream = fs.createWriteStream(unencFile);
                 writeStream.on("finish", () => {
-                    if (ext === "zip") {
+                    if (ext.toString("utf-8") === "tar") {
                         Utils.unzipDirectory(unencFile, file.path.split(".")[0]);
                     }
                     resolve();
                 });
             
-                fileTypeStream
+                readStream
+                    .pipe(decipher)
                     .on("data", buffer => {
                         completedSize += buffer.length;
                         let complete = parseInt((completedSize / size * 100));
