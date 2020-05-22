@@ -32,3 +32,4 @@ yarn-error.log*
 # Design
 /design
 yarn.lock
+vue.config.js
