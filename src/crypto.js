@@ -6,7 +6,6 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const IVector = require("./vector.js");
-// const zlib = require("zlib");
 const AES256 = "aes-256-gcm";
 
 export default class Crypto {
@@ -55,7 +54,7 @@ export default class Crypto {
         
         Utils.createTempFiles();
         var args = {
-            "output": `${Constants.LNXTMP}/${file.name}.tar`,
+            "output": `${Constants.TMP}/${file.name}.tar`,
             "path": file.path,
             "level": 1
         };
@@ -130,24 +129,32 @@ export default class Crypto {
      * @return {Promise}
      */
     async decrypt(file, completeFile) {
-        const authTagPosition = 16;
-        const extPosition = authTagPosition + 8;
+        const size = fs.statSync(file.path).size;
+        const extSize = 8;
+        const authTagSize = 16;
+        const ivSize = 16;
+        const extPosition = authTagSize + 8;
+
+        const bufferExtStart = size - (authTagSize + extSize);
+        const bufferExtEnd = size - (authTagSize + 1);
+        const authTagStart = size - authTagSize;
+        const startFile = ivSize;
+        const endFile = size - (extPosition + 1);
 
         let completedSize = 0;
-        let size = fs.statSync(file.path).size;
         // Read first 16 bytes to get iv and next 16 bytes to get the authTag necessary for GCM
         const iv = await this._getPositionalBytes(file.path, { end: 15 });
-        const bufferExt = await this._getPositionalBytes(file.path, { start: size - 24, end: size - (authTagPosition + 1) });
-        const authTag = await this._getPositionalBytes(file.path, { start: size - authTagPosition, end: size });
+        const bufferExt = await this._getPositionalBytes(file.path, { start: bufferExtStart, end: bufferExtEnd });
+        const authTag = await this._getPositionalBytes(file.path, { start: authTagStart, end: size });
         var ext = bufferExt.filter(byte => byte != 42);
-        const readStream = fs.createReadStream(file.path, { start: 16, end: size - (extPosition + 1) });
+        const readStream = fs.createReadStream(file.path, { start: startFile, end: endFile });
         const cipherKey = this._getCipherKey();
         const decipher = crypto.createDecipheriv(AES256, cipherKey, iv).setAuthTag(authTag);
         return new Promise((resolve, reject) => {
             try {
                 // If not a folder save in file directory else in temporal directory
                 if (ext.toString("utf-8") === "tar") Utils.createTempFiles();
-                const unencFile = ext.toString("utf-8") !== "tar" ? file.path.split(".")[0].concat(`.${ext}`) : `${Constants.LNXTMP}/${file.name.split(".")[0]}.tar`;
+                const unencFile = ext.toString("utf-8") !== "tar" ? file.path.split(".")[0].concat(`.${ext}`) : `${Constants.TMP}/${file.name.split(".")[0]}.tar`;
                 const writeStream = fs.createWriteStream(unencFile);
                 writeStream.on("finish", () => {
                     if (ext.toString("utf-8") === "tar") {

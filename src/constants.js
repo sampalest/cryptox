@@ -1,6 +1,7 @@
-// To add temporal path
-const LNXTMP = "/tmp/cryptox";
-const WINTMP = "/tmp/cryptox";
+const { app } = require("electron").remote;
+
+// Temporal
+const TMP = `${app.getPath("temp")}cryptox`;
 
 // Extension
 const POINT_EXT = ".ctx";
@@ -13,6 +14,5 @@ export default {
     EXT: EXT,
     POINT_EXT: POINT_EXT,
     PASSWORD_ERROR: PASSWORD_ERROR,
-    LNXTMP: LNXTMP,
-    WINTMP: WINTMP
+    TMP: TMP
 };

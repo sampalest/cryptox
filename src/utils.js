@@ -1,5 +1,4 @@
 import Constants from "./constants.js";
-
 const fs = require("fs");
 const filetype = require("file-type");
 const Path = require("path");
@@ -11,7 +10,7 @@ export default class Utils {
         switch (process.platform) {
         case "darwin":
         case "linux":
-            dir = Constants.LNXTMP;
+            dir = Constants.TMP;
             if (!fs.existsSync(dir)) fs.mkdir(dir, err => {
                 if(err) console.log("error", err);
             });
