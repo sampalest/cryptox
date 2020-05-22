@@ -24,9 +24,7 @@ export default {
     beforeMount() {
       this.language = app.getLocale().substring(0, 2);
       this.messages = {...Messages[this.language]};
-      // process.argv.forEach(ev => {console.log(ev);});
-      app.on("open-file", ev => {console.log(ev);});
-      app.on("open-url", ev => {console.log(ev);});
+      this.tempFiles = app.getPath("temp");
     }
 };
 </script>

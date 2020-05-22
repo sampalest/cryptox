@@ -16,7 +16,7 @@ export default {
                 this.fileEvent.counter++;
                 
                 if (this.fileEvent.counter == this.files.length) {
-                    if (Utils.isDirectory(file.path)) Utils.rmRf(Constants.LNXTMP + "/"); // TODO: OS
+                    if (Utils.isDirectory(file.path)) Utils.rmRf(this.$parent.tempFiles + "/");
                     this.finish = true;
                 }
             });

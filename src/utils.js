@@ -1,10 +1,8 @@
 import Constants from "./constants.js";
-
 const fs = require("fs");
-const archiver = require("archiver");
 const filetype = require("file-type");
 const Path = require("path");
-const unzip = require("unzipper");
+const tar = require("tar-fs");
 
 export default class Utils {
     static createTempFiles() {
@@ -12,7 +10,7 @@ export default class Utils {
         switch (process.platform) {
         case "darwin":
         case "linux":
-            dir = Constants.LNXTMP;
+            dir = Constants.TMP;
             if (!fs.existsSync(dir)) fs.mkdir(dir, err => {
                 if(err) console.log("error", err);
             });
@@ -38,41 +36,36 @@ export default class Utils {
         });
     }
 
-    static zipDirectory(args, pObj=null) {
-        const archive = archiver("zip", { zlib: { level: args.level }});
+    static zipDirectory(args) {
         const output = fs.createWriteStream(args.output);
-    
         return new Promise((resolve, reject) => {
-            output.on("close", () => resolve());
-            archive.on("error", err => { reject(err); });
-            archive.on("progress", (progress) => {
-                if (pObj) {
-                    pObj.progress = progress.entries.processed;
-                    pObj.total = progress.entries.total;
-                }
-            });
-            archive.pipe(output);
-            let files = fs.readdirSync(args.path);
-            files.forEach(el => {
-                let file = fs.createReadStream(`${args.path}/${el}`);
-                archive.append(file, { name: el });
-            });
-            archive.finalize();
-        });
+            try {
+                output.on("close", () => resolve());
+                tar.pack(args.path).pipe(output);
 
+            } catch (error) {
+                console.error(error);
+                reject(error);
+            }
+        });
     }
 
     static unzipDirectory(input, output) {
-        fs.createReadStream(input)
-            .pipe(unzip.Extract({ path: output }));
+        fs.createReadStream(input).pipe(tar.extract(output));
     }
 
     static isDirectory(path) {
         return fs.lstatSync(path).isDirectory();
     }
 
-    static rmDir(path, callback) {
-        fs.rmdir(path, callback);
+    static textToBuffer(text) {
+        var bufferText = [];
+        var buffer = new Buffer(text, "utf16le");
+        for (var i = 0; i < buffer.length; i++) {
+            bufferText.push(buffer[i]);
+        }
+
+        console.log(bufferText);
     }
 
     static rmRf(path) {
@@ -93,5 +86,20 @@ export default class Utils {
     static async getExtension(path) {
         let fileObj = await filetype.fromFile(path);
         return fileObj;
+    }
+
+    static fillExtension(extension, bytenum = 8) {
+        if (extension.length > bytenum) {
+            return extension.substring(0, bytenum - 3).concat("...");
+        }
+
+        let extStr = "";
+        let loop = Math.abs(bytenum - extension.length);
+        for (let index = 0; index < loop; index++) {
+            extStr += "*";
+        }
+        extStr += extension;
+
+        return extStr;
     }
 }
