@@ -20,7 +20,6 @@
     "lintfix:js": "eslint 'src/**/*.js' --fix",
     "lintfix:vue": "eslint 'src/**/*.vue' --fix",
     "electron:build": "vue-cli-service electron:build",
-    "electron:config": "vue-cli-service electron:build --config electron-builder.json",
     "electron:serve": "vue-cli-service electron:serve",
     "electron:generate-icons": "electron-icon-builder --input=./public/icon.png --output=build --flatten",
     "postinstall": "electron-builder install-app-deps",
@@ -37,8 +36,7 @@
     "tar-fs": "^2.1.0",
     "vue": "^2.6.11",
     "vue-router": "^3.1.6",
-    "vuex": "^3.1.3",
-    "zlib": "^1.0.5"
+    "vuex": "^3.1.3"
   },
   "devDependencies": {
     "@vue/cli-plugin-babel": "^4.3.0",
