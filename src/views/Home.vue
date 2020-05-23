@@ -7,8 +7,8 @@
                 <div class="app-title">Cryptox</div>
                 <div class="app-subtitle">Secure Everything</div>
             </div>
-            <div class="logo-block" :key="3" :data-index="3">
-                <img class="cryptox-logo" src="@/assets/cryptox.svg" alt="Cryptox icon">
+            <div class="logo-block" :key="3" :data-index="3" @click="animateLogo">
+                <img ref="logo" class="cryptox-logo" src="@/assets/cryptox.svg" alt="Cryptox icon">
                 <fileloader @imageFile="selectFile"></fileloader>
             </div>
             <div class="description-page row" :key="2" :data-index="2">
@@ -38,7 +38,8 @@ export default {
             password: "",
             files: null,
             loader: false,
-			error: false
+            error: false,
+            animationSTO: null
         };
     },
     mixins: [animation, sysevents],
@@ -65,6 +66,7 @@ export default {
             this.showPassword = false;
         },
         inputFile(e) {
+            console.log(e.target.files);
             this.selectFile(e.target.files);
         },
         selectFile(files) {
@@ -98,6 +100,17 @@ export default {
         },
         setEncrypt(bool) {
             this.encrypted = bool;
+        },
+        animateLogo() {
+            const ANIMATION_SECONDS = 2300;
+            this.$refs.logo.classList.add("bounce-in-fwd");
+            if (this.animationSTO != null) {
+                clearTimeout(this.animationSTO);
+            }
+
+            this.animationSTO = setTimeout(() => {
+                this.$refs.logo.classList.remove("bounce-in-fwd");
+            }, ANIMATION_SECONDS);
         }
     }
 };

@@ -29,6 +29,7 @@
   "dependencies": {
     "animate.css": "^3.7.2",
     "core-js": "^3.6.4",
+    "electron-log": "^4.2.0",
     "file-system": "^2.2.2",
     "file-type": "^14.3.0",
     "jquery": "^3.5.1",
@@ -49,7 +50,7 @@
     "@vue/test-utils": "1.0.0-beta.31",
     "babel-eslint": "^10.1.0",
     "chromedriver": "81",
-    "electron": "^6.0.0",
+    "electron": "^9.0.0",
     "eslint": "^6.7.2",
     "eslint-plugin-vue": "^6.2.2",
     "geckodriver": "^1.19.1",
