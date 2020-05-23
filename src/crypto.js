@@ -51,8 +51,7 @@ export default class Crypto {
     async _compressFolder(file, fileEvent) {
         fileEvent.loader = true;
         fileEvent.msg = "Reading files...";
-        
-        Utils.createTempFiles();
+                
         var args = {
             "output": `${Constants.TMP}/${file.name}.tar`,
             "path": file.path,
@@ -84,6 +83,7 @@ export default class Crypto {
         let isDirectory = Utils.isDirectory(file.path);
         let filepath = file.path;
         if (isDirectory) {
+            Utils.createTempFiles();
             let obj = await this._compressFolder(file, fileEvent);
             size = obj.size;
             filepath = obj.filepath;

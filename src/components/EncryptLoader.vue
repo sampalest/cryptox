@@ -43,10 +43,7 @@ export default {
     },
     mixins: [animation, fileCrypto],
     props: {
-        files: {
-            type: FileList,
-            default: []
-        },
+        files: {},
         password: {
             type: String,
             default: ""

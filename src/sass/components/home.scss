@@ -29,7 +29,11 @@
         }
 
         & .cryptox-logo {
-            width: $cryptox_logo;            
+            width: $cryptox_logo;
+            &.bounce-in-fwd {
+                -webkit-animation: bounce-in-fwd 1.1s both;
+                animation: bounce-in-fwd 1.1s both;
+            }
         }
     }
 
@@ -45,6 +49,7 @@
         font-family: 'Montserrat-Regular';
         padding: 1em 2em;
         border-radius: 5em;
+        border: 0;
         color: white;
         user-select: none;
         font-weight: 600;
@@ -87,5 +92,5 @@
         & img {
             max-width: 250px;
         }
-    }
+    }    
 }

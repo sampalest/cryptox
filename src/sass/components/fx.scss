@@ -75,6 +75,25 @@
 }
 
 
+.spinner {
+	margin: 100px auto;
+	width: 80px;
+	height: 80px;
+	position: relative;
+	text-align: center;
+
+	-webkit-animation: sk-rotate 2.0s infinite linear;
+	animation: sk-rotate 2.0s infinite linear;
+}
+    
+.fade-enter-active, .fade-leave-active {
+	transition: opacity .5s;
+}
+.fade-enter, .fade-leave-to {
+	opacity: 0;
+}
+
+
 @keyframes shadow-pulse {
     0% {
         box-shadow: 0 0 0 0px rgba(0, 0, 0, 0.3);      
@@ -108,20 +127,147 @@
     100% {opacity: #1466cc; opacity: 1;}
 }
 
-.spinner {
-    margin: 100px auto;
-    width: 80px;
-    height: 80px;
-    position: relative;
-    text-align: center;
-    
-    -webkit-animation: sk-rotate 2.0s infinite linear;
-    animation: sk-rotate 2.0s infinite linear;
+@-webkit-keyframes bounce-in-fwd {
+    0% {
+      -webkit-transform: scale(0);
+              transform: scale(0);
+      -webkit-animation-timing-function: ease-in;
+              animation-timing-function: ease-in;
+      opacity: 0;
+    }
+    38% {
+      -webkit-transform: scale(1);
+              transform: scale(1);
+      -webkit-animation-timing-function: ease-out;
+              animation-timing-function: ease-out;
+      opacity: 1;
+    }
+    55% {
+      -webkit-transform: scale(0.7);
+              transform: scale(0.7);
+      -webkit-animation-timing-function: ease-in;
+              animation-timing-function: ease-in;
+    }
+    72% {
+      -webkit-transform: scale(1);
+              transform: scale(1);
+      -webkit-animation-timing-function: ease-out;
+              animation-timing-function: ease-out;
+    }
+    81% {
+      -webkit-transform: scale(0.84);
+              transform: scale(0.84);
+      -webkit-animation-timing-function: ease-in;
+              animation-timing-function: ease-in;
+    }
+    89% {
+      -webkit-transform: scale(1);
+              transform: scale(1);
+      -webkit-animation-timing-function: ease-out;
+              animation-timing-function: ease-out;
+    }
+    95% {
+      -webkit-transform: scale(0.95);
+              transform: scale(0.95);
+      -webkit-animation-timing-function: ease-in;
+              animation-timing-function: ease-in;
+    }
+    100% {
+      -webkit-transform: scale(1);
+              transform: scale(1);
+      -webkit-animation-timing-function: ease-out;
+              animation-timing-function: ease-out;
+    }
+  }
+  @keyframes bounce-in-fwd {
+    0% {
+      -webkit-transform: scale(0);
+              transform: scale(0);
+      -webkit-animation-timing-function: ease-in;
+              animation-timing-function: ease-in;
+      opacity: 0;
+    }
+    38% {
+      -webkit-transform: scale(1);
+              transform: scale(1);
+      -webkit-animation-timing-function: ease-out;
+              animation-timing-function: ease-out;
+      opacity: 1;
+    }
+    55% {
+      -webkit-transform: scale(0.7);
+              transform: scale(0.7);
+      -webkit-animation-timing-function: ease-in;
+              animation-timing-function: ease-in;
+    }
+    72% {
+      -webkit-transform: scale(1);
+              transform: scale(1);
+      -webkit-animation-timing-function: ease-out;
+              animation-timing-function: ease-out;
+    }
+    81% {
+      -webkit-transform: scale(0.84);
+              transform: scale(0.84);
+      -webkit-animation-timing-function: ease-in;
+              animation-timing-function: ease-in;
+    }
+    89% {
+      -webkit-transform: scale(1);
+              transform: scale(1);
+      -webkit-animation-timing-function: ease-out;
+              animation-timing-function: ease-out;
+    }
+    95% {
+      -webkit-transform: scale(0.95);
+              transform: scale(0.95);
+      -webkit-animation-timing-function: ease-in;
+              animation-timing-function: ease-in;
+    }
+    100% {
+      -webkit-transform: scale(1);
+              transform: scale(1);
+      -webkit-animation-timing-function: ease-out;
+              animation-timing-function: ease-out;
+    }
 }
 
-.fade-enter-active, .fade-leave-active {
-    transition: opacity .5s;
+/**
+ * ----------------------------------------
+ * animation color-change-5x
+ * ----------------------------------------
+ */
+ @-webkit-keyframes color-change-5x {
+	0% {
+		background: #19dcea;
+	}
+	25% {
+		background: #b22cff;
+	}
+	50% {
+		background: #ea2222;
+	}
+	75% {
+		background: #f5be10;
+	}
+	100% {
+		background: #3bd80d;
+	}
 }
-.fade-enter, .fade-leave-to /* .fade-leave-active below version 2.1.8 */ {
-    opacity: 0;
+@keyframes color-change-5x {
+	0% {
+		background: #19dcea;
+	}
+	25% {
+		background: #b22cff;
+	}
+	50% {
+		background: #ea2222;
+	}
+	75% {
+		background: #f5be10;
+	}
+	100% {
+		background: #3bd80d;
+	}
 }
