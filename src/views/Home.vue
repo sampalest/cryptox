@@ -8,7 +8,7 @@
                 <div class="app-subtitle">Secure Everything</div>
             </div>
             <div class="logo-block" :key="3" :data-index="3" @click="animateLogo">
-                <img ref="logo" class="cryptox-logo" src="@/assets/cryptox.svg" alt="Cryptox icon">
+                <img ref="logo" class="cryptox-logo" src="@/assets/cryptox_app.svg" alt="Cryptox icon">
                 <fileloader @imageFile="selectFile"></fileloader>
             </div>
             <div class="description-page row" :key="2" :data-index="2">
@@ -26,6 +26,7 @@ import Constants from "@/constants.js";
 import animation from "@/components/mixins/animation.js";
 import sysevents from "@/components/mixins/sysevents.js";
 import FileLoader from "@/components/FileLoader.vue";
+import FileManager from "@/filemanager.js";
 import PasswordScreen from "@/components/PasswordScreen.vue";
 import EncryptLoader from "@/components/EncryptLoader.vue";
 
@@ -48,6 +49,13 @@ export default {
         "password-screen": PasswordScreen,
         "encrypt-loader": EncryptLoader
     },
+    computed: {
+        openFile() {
+            alert();
+            this.selectFile([new FileManager(this.$store.getters.files)]);
+            return this.$store.getters.files;
+        }
+    },
     watch: {
         password() {
             if (this.password != "") {
@@ -66,7 +74,6 @@ export default {
             this.showPassword = false;
         },
         inputFile(e) {
-            console.log(e.target.files);
             this.selectFile(e.target.files);
         },
         selectFile(files) {
@@ -112,6 +119,11 @@ export default {
                 this.$refs.logo.classList.remove("bounce-in-fwd");
             }, ANIMATION_SECONDS);
         }
+    },
+    beforeMount() {
+        let path = this.$store.getters.files;
+        if (path) this.selectFile([new FileManager(path)]);
+        this.$store.dispatch("delFiles");
     }
 };
 </script>

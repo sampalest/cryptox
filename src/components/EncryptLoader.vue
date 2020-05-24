@@ -14,8 +14,9 @@
             <div v-else class="indeterminate"></div>
         </div>
         <p v-if="!fileEvent.loader" class="progress-perc">{{percent.value}}%</p>
-        <p v-else-if="fileEvent.progress > 0" class="progress-perc">{{fileEvent.progress}} / {{fileEvent.total}}</p>
-
+        <div class="cancel-button">
+            <a @click="cancel">Cancel</a>
+        </div>
     </div>
 </template>
 <script>
@@ -39,6 +40,7 @@ export default {
                 msg: "",
                 filename: ""
             },
+            STOcancel: null
         };
     },
     mixins: [animation, fileCrypto],
@@ -89,7 +91,7 @@ export default {
             });
         });
 
-        setTimeout(() => {
+        this.STOcancel = setTimeout(() => {
             if (this.percent.value === 0 && !this.fileEvent.loader) {
                 this.cancel();
             }

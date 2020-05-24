@@ -4,7 +4,7 @@ import { app, protocol, BrowserWindow } from "electron";
 import { createProtocol } from "vue-cli-plugin-electron-builder/lib";
 import store from "./store/index.js";
 const isDevelopment = process.env.NODE_ENV !== "production";
-const log = require('electron-log');
+const logger = require("electron-log");
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
@@ -14,7 +14,6 @@ let win;
 protocol.registerSchemesAsPrivileged([{scheme: "app", privileges: { secure: true, standard: true } }]);
 
 function createWindow () {
-    // Create the browser window.
     win = new BrowserWindow({
         width: 700,
         height: 600,
@@ -42,27 +41,21 @@ function createWindow () {
         win = null;
     });
 }
-
-app.on('open-file', (event, file) => {
-    if (app.isReady()) {
-        log.info(`FILE: ${file}`);
+app.name = "Cryptox";
+app.on("open-file", (event, file) => {
+    if (!app.isReady()) {
+        logger.info("Calling function setFiles");
         store.dispatch("setFiles", file);
     }
-    event.preventDefault()
-  })
-
-app.name = "Cryptox";
-
+    event.preventDefault();
+});
 
 if (process.platform === "darwin") {
     // To fix chrome-bug on MacOS
     app.commandLine.appendArgument("--enable-features=Metal");
 }
 
-// Quit when all windows are closed.
 app.on("window-all-closed", () => {
-    // On macOS it is common for applications and their menu bar
-    // to stay active until the user quits explicitly with Cmd + Q
     if (process.platform !== "darwin") {
         app.quit();
     }
@@ -76,9 +69,6 @@ app.on("activate", () => {
     }
 });
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
 app.on("ready", async () => {
     createWindow();
 });
