@@ -49,13 +49,6 @@ export default {
         "password-screen": PasswordScreen,
         "encrypt-loader": EncryptLoader
     },
-    computed: {
-        openFile() {
-            alert();
-            this.selectFile([new FileManager(this.$store.getters.files)]);
-            return this.$store.getters.files;
-        }
-    },
     watch: {
         password() {
             if (this.password != "") {
