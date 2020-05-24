@@ -1,5 +1,3 @@
-/* eslint-disable */
-import Constants from "@/constants.js";
 import FileManager from "@/filemanager.js";
 const electron = require("electron");
 const { app, Menu, dialog } = electron.remote;
@@ -27,8 +25,8 @@ export default {
                     }
                 }
 
-            ]
-			const dockMenu = Menu.buildFromTemplate(template);            
+            ];
+			const dockMenu = Menu.buildFromTemplate(template);
 			app.dock.setMenu(dockMenu);
         },
         onRoute() {
@@ -48,7 +46,7 @@ export default {
 
                 paths.forEach(path => {
                     fileList.push(new FileManager(path, name));
-                });            
+                });
                 this.selectFile(fileList);
                 if (!files) return;
             });
@@ -86,6 +84,11 @@ export default {
             
             const customMenu = Menu.buildFromTemplate(macTemplate);
             Menu.setApplicationMenu(customMenu);
+        },
+        openFileListener() {
+            app.on("open-file", (_, file) => {
+                this.selectFile([new FileManager(file)]);
+            });
         }
     },
     mounted() {
@@ -93,5 +96,6 @@ export default {
             if (isMac) this.initDockMenu();
             this.initCustomMenu();
         });
+        this.openFileListener();
     }
 };
