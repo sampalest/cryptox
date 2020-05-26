@@ -1,7 +1,7 @@
 <br>
 <div align="center">
 <img src="screenshots/logo.png" width="400"/>
-<p><> with ❤️ by Samuel</p>
+<p><> with ❤️ by Sam</p>
 </div>
 <hr>
 
