@@ -142,17 +142,18 @@ export default class Crypto {
         const endFile = size - (extPosition + 1);
 
         let completedSize = 0;
-        // Read first 16 bytes to get iv and next 16 bytes to get the authTag necessary for GCM
+        // Read first 16 bytes to get iv, 8 bytes to get extension and 16 bytes to get the authTag necessary for GCM.
         const iv = await this._getPositionalBytes(file.path, { end: 15 });
         const bufferExt = await this._getPositionalBytes(file.path, { start: bufferExtStart, end: bufferExtEnd });
         const authTag = await this._getPositionalBytes(file.path, { start: authTagStart, end: size });
-        var ext = bufferExt.filter(byte => byte != 42);
-        const readStream = fs.createReadStream(file.path, { start: startFile, end: endFile });
-        const cipherKey = this._getCipherKey();
-        const decipher = crypto.createDecipheriv(AES256, cipherKey, iv).setAuthTag(authTag);
         return new Promise((resolve, reject) => {
             try {
-                // If not a folder save in file directory else in temporal directory
+                // Remove all "*" from extension.
+                var ext = bufferExt.filter(byte => byte != 42);
+                const cipherKey = this._getCipherKey();
+                const decipher = crypto.createDecipheriv(AES256, cipherKey, iv).setAuthTag(authTag);
+                const readStream = fs.createReadStream(file.path, { start: startFile, end: endFile });
+                // If not a folder save in file directory else in temporal directory.
                 if (ext.toString("utf-8") === "tar") Utils.createTempFiles();
                 const unencFile = ext.toString("utf-8") !== "tar" ? file.path.split(".")[0].concat(`.${ext}`) : `${Constants.TMP}/${file.name.split(".")[0]}.tar`;
                 const writeStream = fs.createWriteStream(unencFile);
