@@ -1,6 +1,6 @@
 import Crypto from "../../crypto.js";
-import Constants from "../../constants.js";
 import Utils from "../../utils.js";
+const logger = require("electron-log");
 
 export default {
     name: "file-crypto",
@@ -28,9 +28,8 @@ export default {
                     this.finish = true;
                 })
                 .catch(err => {
-                    if (err.message == Constants.PASSWORD_ERROR) {
-                        alert("Decrypt error, please try again.");
-                    }
+                    alert("Decrypt error, please try again.");
+                    logger.error(err);
                     this.finish = true;
                 });
         }
