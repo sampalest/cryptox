@@ -48,9 +48,10 @@ export default class Crypto {
      * @param {Object} fileEvent Loader Interface object pointer. 
      * @return {Object}
      */
-    async _compressFolder(file, fileEvent) {
+    async _compressFolder(file, fileEvent, onStatus) {
         fileEvent.loader = true;
         fileEvent.msg = "Reading files...";
+        if (onStatus) onStatus({ loader: true, msg: fileEvent.msg });
                 
         var args = {
             "output": `${Constants.TMP}/${file.name}.tar`,
@@ -59,6 +60,7 @@ export default class Crypto {
         };
         await Utils.zipDirectory(args);
         fileEvent.loader = false;
+        if (onStatus) onStatus({ loader: false });
 
         return {
             "endfile": file.path.concat(Constants.POINT_EXT),
@@ -75,8 +77,11 @@ export default class Crypto {
      * @param {Object} fileEvent Vue var: necessary for UI.
      * @return {Promise}
      */
-    async encrypt(file, completeFile, fileEvent) {
+    async encrypt(file, completeFile, fileEvent, events = {}) {
+        const onProgress = events.onProgress;
+        const onStatus = events.onStatus;
         fileEvent.filename = file.name;
+        if (onStatus) onStatus({ filename: fileEvent.filename });
         let completedSize = 0;
         let size = fs.statSync(file.path).size;
         let endfile = file.path.split(".")[0].concat(Constants.POINT_EXT);
@@ -84,13 +89,13 @@ export default class Crypto {
         let filepath = file.path;
         if (isDirectory) {
             Utils.createTempFiles();
-            let obj = await this._compressFolder(file, fileEvent);
+            let obj = await this._compressFolder(file, fileEvent, onStatus);
             size = obj.size;
             filepath = obj.filepath;
             endfile = obj.endfile;
         }
 
-        return new Promise(resolve => {
+        return new Promise((resolve, reject) => {
             const initVect = crypto.randomBytes(16);
             const CIPHER_KEY = this._getCipherKey();
             const readStream = fs.createReadStream(filepath);
@@ -105,8 +110,13 @@ export default class Crypto {
                 let fillExt = isDirectory ? Utils.fillExtension("tar") : Utils.fillExtension(extension);
                 let extBuffer = Buffer.from(fillExt, "utf-8");
                 fs.appendFileSync(endfile, Buffer.concat([extBuffer, authTag]));
+                if (isDirectory) Utils.rmRf(Constants.TMP);
                 resolve();
             });
+
+            readStream.on("error", reject);
+            cipher.on("error", reject);
+            writeStream.on("error", reject);
             
             readStream
                 .pipe(cipher)
@@ -114,7 +124,10 @@ export default class Crypto {
                 .on("data", buffer => {
                     completedSize += buffer.length;
                     let complete = parseInt((completedSize / size * 100));
-                    if (complete != completeFile.value) completeFile.value = complete;
+                    if (complete != completeFile.value) {
+                        completeFile.value = complete;
+                        if (onProgress) onProgress(complete);
+                    }
                 })
                 .pipe(writeStream);
         });
@@ -128,7 +141,8 @@ export default class Crypto {
      * @param {Number} completeFile Necesary to save percent of decryption.
      * @return {Promise}
      */
-    async decrypt(file, completeFile) {
+    async decrypt(file, completeFile, events = {}) {
+        const onProgress = events.onProgress;
         const size = fs.statSync(file.path).size;
         const extSize = 8;
         const authTagSize = 16;
@@ -163,13 +177,20 @@ export default class Crypto {
                     }
                     resolve();
                 });
+
+                readStream.on("error", reject);
+                decipher.on("error", reject);
+                writeStream.on("error", reject);
             
                 readStream
                     .pipe(decipher)
                     .on("data", buffer => {
                         completedSize += buffer.length;
                         let complete = parseInt((completedSize / size * 100));
-                        if (complete != completeFile.value) completeFile.value = complete;
+                        if (complete != completeFile.value) {
+                            completeFile.value = complete;
+                            if (onProgress) onProgress(complete);
+                        }
                     })
                     .pipe(writeStream);
 

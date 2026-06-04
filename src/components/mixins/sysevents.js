@@ -1,101 +1,42 @@
 import FileManager from "@/filemanager.js";
-const electron = require("electron");
-const { app, Menu, dialog } = electron.remote;
-const isMac = process.platform === "darwin";
 
 export default {
     name: "sysevents",
     data: () => {
-        return {};
+        return {
+            unsubscribeMenuOpen: null,
+            unsubscribeMenuAbout: null,
+            unsubscribeOpenFile: null
+        };
     },
     methods: {
-        initDockMenu() {
-            const template = [
-                {
-                    label: "Open file",
-                    click: () => {
-                        this.onOpen();
-                    }
-                },
-                { type: "separator" },
-                {
-                    label: "About...",
-                    click: () => {
-                        this.onRoute();
-                    }
-                }
-
-            ];
-			const dockMenu = Menu.buildFromTemplate(template);
-			app.dock.setMenu(dockMenu);
-        },
         onRoute() {
             this.$router.push("/about");
         },
-        onOpen() {
-            const win = electron.remote.getCurrentWindow();
-            dialog.showOpenDialog(win, {
-                properties: ["openFile", "openDirectory"],
-                filters: [{
-                    name: "All Files", extensions: ["*"]
-                }]
-            })
-            .then(files => {
+        async onOpen() {
+            const paths = await window.cryptox.dialog.openFiles();
+            if (paths && paths.length) {
                 let fileList = [];
-                let paths = files.filePaths;
-
                 paths.forEach(path => {
-                    fileList.push(new FileManager(path, name));
+                    fileList.push(new FileManager(path));
                 });
                 this.selectFile(fileList);
-                if (!files) return;
-            });
-        },
-        initCustomMenu() {
-            const macTemplate = [
-                {
-                    label: app.name,
-                    submenu: [
-                        {
-                            label: "About Cryptox",
-                            click: () => {
-                                this.onRoute();
-                            }
-                        },
-                        { type: "separator" },
-                        { role: "hide" },
-                        { role: "hideothers" },
-                        { role: "unhide" },
-                        { type: "separator" },
-                        { role: "quit" }
-                    ]
-                },
-                {
-                    label: "File",
-                    submenu: [
-                        {
-                            label: "Open File",
-                            accelerator: "CmdOrCtrl+O",
-                            click: () => { this.onOpen(); }
-                        },
-                    ]
-                }
-            ];
-            
-            const customMenu = Menu.buildFromTemplate(macTemplate);
-            Menu.setApplicationMenu(customMenu);
+            }
         },
         openFileListener() {
-            app.on("open-file", (_, file) => {
+            this.unsubscribeOpenFile = window.cryptox.files.onOpenFile(file => {
                 this.selectFile([new FileManager(file)]);
             });
         }
     },
     mounted() {
-        this.$nextTick(() => {
-            if (isMac) this.initDockMenu();
-            this.initCustomMenu();
-        });
+        this.unsubscribeMenuOpen = window.cryptox.menu.onOpenFile(this.onOpen);
+        this.unsubscribeMenuAbout = window.cryptox.menu.onAbout(this.onRoute);
         this.openFileListener();
+    },
+    beforeDestroy() {
+        if (this.unsubscribeMenuOpen) this.unsubscribeMenuOpen();
+        if (this.unsubscribeMenuAbout) this.unsubscribeMenuAbout();
+        if (this.unsubscribeOpenFile) this.unsubscribeOpenFile();
     }
 };

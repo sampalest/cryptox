@@ -1,7 +1,5 @@
-const { app } = require("electron").remote;
-
 // Temporal
-const TMP = `${app.getPath("temp")}cryptox`;
+const TMP = "/tmp/cryptox";
 
 // Extension
 const POINT_EXT = ".ctx";
