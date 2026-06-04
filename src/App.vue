@@ -8,7 +8,6 @@
   </div>
 </template>
 <script>
-const { app } = require("electron").remote;
 import Messages from "@/messages.js";
 
 export default {
@@ -21,10 +20,11 @@ export default {
 		messages: {}
 		};
 	},
-	beforeMount() {
-		this.language = app.getLocale().substring(0, 2);
+	async beforeMount() {
+		const appInfo = await window.cryptox.app.getInfo();
+		this.language = appInfo.locale.substring(0, 2);
 		this.messages = { ...Messages[this.language] };
-		this.tempFiles = app.getPath("temp");
+		this.tempFiles = appInfo.tempPath;
 	}
 };
 </script>
