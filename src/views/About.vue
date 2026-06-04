@@ -20,13 +20,12 @@
 </template>
 <script>
 import animation from "@/components/mixins/animation.js";
-const { shell } = require("electron").remote;
 export default {
-    name: "about",
+    name: "about-view",
     mixins: [animation],
     methods: {
         goGithub() {
-            shell.openExternal("https://github.com/Samuelpe/cryptox");
+            window.cryptox.shell.openExternal("https://github.com/Samuelpe/cryptox");
         }
     }
 };

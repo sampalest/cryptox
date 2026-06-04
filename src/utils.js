@@ -1,6 +1,5 @@
 import Constants from "./constants.js";
 const fs = require("fs");
-const filetype = require("file-type");
 const Path = require("path");
 const tar = require("tar-fs");
 
@@ -60,7 +59,7 @@ export default class Utils {
 
     static textToBuffer(text) {
         var bufferText = [];
-        var buffer = new Buffer(text, "utf16le");
+        var buffer = Buffer.from(text, "utf16le");
         for (var i = 0; i < buffer.length; i++) {
             bufferText.push(buffer[i]);
         }
@@ -81,11 +80,6 @@ export default class Utils {
             });
             fs.rmdirSync(path);
         }
-    }
-
-    static async getExtension(path) {
-        let fileObj = await filetype.fromFile(path);
-        return fileObj;
     }
 
     static fillExtension(extension, bytenum = 8) {
