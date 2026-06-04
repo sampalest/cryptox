@@ -1,22 +1,23 @@
-const webpack = require('webpack')
+const webpack = require("webpack");
 
 module.exports = {
   configureWebpack: {
     resolve: {
-      extensions: ['.js'],
+      extensions: [".js"],
       alias: {
-        'jquery': 'jquery/dist/jquery.js',
+        "jquery": "jquery/dist/jquery.js",
       }
     },
     plugins: [
       new webpack.ProvidePlugin({
-        '$': 'jquery',
-        jQuery: 'jquery',
+        "$": "jquery",
+        jQuery: "jquery",
       })
     ]
   },
   pluginOptions: {
     electronBuilder: {
+      preload: "src/preload.js",
       builderOptions: {
         appId: "com.sampalest.cryptox",
         productName: "Cryptox",
@@ -31,7 +32,7 @@ module.exports = {
           category: "public.app-category.utilities",
           identity: "sampalest@icloud.com",
           darkModeSupport: false,
-          type: "distribution",    
+          type: "distribution",
           target: [
             "dmg",
             "zip"
@@ -40,4 +41,4 @@ module.exports = {
       }
     }
   }
-}
+};

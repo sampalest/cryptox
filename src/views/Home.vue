@@ -31,7 +31,7 @@ import PasswordScreen from "@/components/PasswordScreen.vue";
 import EncryptLoader from "@/components/EncryptLoader.vue";
 
 export default {
-    name: "home",
+    name: "home-view",
     data: () => {
         return {
             showPassword: false,
@@ -71,7 +71,11 @@ export default {
         },
         selectFile(files) {
             let ctx = 0;
-            this.files = files;
+            this.files = Array.from(files).map(file => {
+                if (file.path) return file;
+                const filePath = window.cryptox.files.getPathForFile(file);
+                return new FileManager(filePath);
+            });
             this.files.forEach(file => {
                 let filesplit = file.name.split(".");
                 if (filesplit && filesplit[1] === Constants.EXT) {
