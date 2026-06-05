@@ -1,7 +1,7 @@
 <template>
     <div>
-		<encrypt-loader v-if="loader" :files="files" :password="password" :isEncrypt="encrypted" @finish="finishOperation" @cancel="finishOperation"></encrypt-loader>
-        <password-screen v-else-if="showPassword" :isEncrypt="encrypted" @password="setPassword" @cancel="cancelPassword" @setEncrypt="setEncrypt"></password-screen>
+		<encrypt-loader v-if="loader" :files="files" :password="password" :is-encrypt="encrypted" @finish="finishOperation" @cancel="finishOperation"></encrypt-loader>
+        <password-screen v-else-if="showPassword" :is-encrypt="encrypted" @password="setPassword" @cancel="cancelPassword" @setEncrypt="setEncrypt"></password-screen>
         <transition-group v-else id="animation-transition" appear @before-enter="beforeEnter" @enter="enter($event, 'fadeInUp')" tag="div">
             <div class="title-block" :key="0" :data-index="0">
                 <div class="app-title">Cryptox</div>
@@ -29,6 +29,7 @@ import FileLoader from "@/components/FileLoader.vue";
 import FileManager from "@/filemanager.js";
 import PasswordScreen from "@/components/PasswordScreen.vue";
 import EncryptLoader from "@/components/EncryptLoader.vue";
+import { useFilesStore } from "@/store/files.js";
 
 export default {
     name: "home-view",
@@ -118,9 +119,10 @@ export default {
         }
     },
     beforeMount() {
-        let path = this.$store.getters.files;
+        const filesStore = useFilesStore();
+        const path = filesStore.files;
         if (path) this.selectFile([new FileManager(path)]);
-        this.$store.dispatch("delFiles");
+        filesStore.clearFiles();
     }
 };
 </script>

@@ -1,7 +1,7 @@
 import Constants from "./constants.js";
-const fs = require("fs");
-const Path = require("path");
-const tar = require("tar-fs");
+import fs from "node:fs";
+import Path from "node:path";
+import tar from "tar-fs";
 
 export default class Utils {
     static createTempFiles() {

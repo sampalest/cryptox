@@ -46,6 +46,7 @@ export default {
         };
     },
     mixins: [animation],
+    emits: ["password", "cancel", "setEncrypt"],
     props: {
         isEncrypt: {
             type: Boolean,

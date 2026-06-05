@@ -44,8 +44,12 @@ export default {
         };
     },
     mixins: [animation, fileCrypto],
+    emits: ["finish", "cancel"],
     props: {
-        files: {},
+        files: {
+            type: Array,
+            required: true
+        },
         password: {
             type: String,
             default: ""
@@ -74,6 +78,9 @@ export default {
     methods: {
         cancel() {
             this.$emit("cancel", true);
+        },
+        destroy() {
+            this.cancel();
         }
     },
     beforeMount() {

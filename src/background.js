@@ -1,31 +1,40 @@
 "use strict";
 
-import { app, protocol, BrowserWindow, Menu, dialog, ipcMain, shell } from "electron";
-import createProtocol from "vue-cli-plugin-electron-builder/lib/createProtocol";
+import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from "electron";
 import path from "path";
+import { fileURLToPath } from "url";
 import Crypto from "./crypto.js";
 import FileManager from "./filemanager.js";
+import { normalizeCryptoPayload, validateExternalUrl } from "./ipcValidation.js";
 const isDevelopment = process.env.NODE_ENV !== "production";
-const logger = require("electron-log");
+import logger from "electron-log";
+
+const runtimeDir = typeof __dirname === "string"
+    ? __dirname
+    : path.dirname(fileURLToPath(import.meta.url));
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
 let win;
-let pendingOpenFile = null;
-
-// Scheme must be registered before the app is ready
-protocol.registerSchemesAsPrivileged([{scheme: "app", privileges: { secure: true, standard: true } }]);
+let rendererReady = false;
+let pendingOpenFiles = [];
 
 function sendToRenderer(channel, payload) {
-    if (win && win.webContents) {
+    if (win && !win.isDestroyed() && win.webContents) {
         win.webContents.send(channel, payload);
     }
 }
 
+function flushPendingOpenFiles() {
+    if (!rendererReady) return;
+    pendingOpenFiles.forEach(file => sendToRenderer("files:open-file", file));
+    pendingOpenFiles = [];
+}
+
 function openFile(file) {
     if (!file) return;
-    if (!app.isReady() || !win) {
-        pendingOpenFile = file;
+    if (!app.isReady() || !win || !rendererReady) {
+        pendingOpenFiles.push(file);
         return;
     }
     sendToRenderer("files:open-file", file);
@@ -81,6 +90,7 @@ function buildApplicationMenu() {
 }
 
 function createWindow () {
+    rendererReady = false;
     win = new BrowserWindow({
         width: 700,
         height: 600,
@@ -91,29 +101,20 @@ function createWindow () {
         webPreferences: {
             contextIsolation: true,
             nodeIntegration: false,
-            preload: path.join(__dirname, "preload.js")
+            preload: path.join(runtimeDir, "preload.cjs")
         }
     });
 
-    if (process.env.WEBPACK_DEV_SERVER_URL) {
-    // Load the url of the dev server if in development mode
-        win.loadURL(process.env.WEBPACK_DEV_SERVER_URL);
+    if (process.env.VITE_DEV_SERVER_URL) {
+        win.loadURL(process.env.VITE_DEV_SERVER_URL);
         if (!process.env.IS_TEST) win.webContents.openDevTools();
     } else {
-        createProtocol("app");
-        // Load the index.html when not in development
-        win.loadURL("app://./index.html");
+        win.loadFile(path.join(runtimeDir, "..", "dist", "index.html"));
     }
 
     win.on("closed", () => {
         win = null;
-    });
-
-    win.webContents.once("did-finish-load", () => {
-        if (pendingOpenFile) {
-            sendToRenderer("files:open-file", pendingOpenFile);
-            pendingOpenFile = null;
-        }
+        rendererReady = false;
     });
 }
 app.name = "Cryptox";
@@ -147,6 +148,16 @@ app.on("ready", async () => {
     createWindow();
 });
 
+ipcMain.handle("files:renderer-ready", event => {
+    if (win && event.sender === win.webContents) {
+        rendererReady = true;
+        flushPendingOpenFiles();
+        if (process.env.CRYPTOX_SMOKE_TEST) {
+            runSmokeTest();
+        }
+    }
+});
+
 ipcMain.handle("app:info", () => ({
     locale: app.getLocale(),
     name: app.name,
@@ -165,20 +176,22 @@ ipcMain.handle("dialog:open-files", async () => {
     return files.filePaths;
 });
 
-ipcMain.handle("shell:open-external", (_, url) => shell.openExternal(url));
+ipcMain.handle("shell:open-external", (_, url) => shell.openExternal(validateExternalUrl(url)));
 
-ipcMain.handle("crypto:encrypt", async (event, { file, password, operationId }) => {
+ipcMain.handle("crypto:encrypt", async (event, payload) => {
+    const { filePath, password, operationId } = normalizeCryptoPayload(payload);
     const crypto = new Crypto(password);
-    const normalizedFile = new FileManager(file.path);
+    const normalizedFile = new FileManager(filePath);
     await crypto.encrypt(normalizedFile, { value: 0 }, {}, {
         onProgress: value => event.sender.send("crypto:progress", { operationId, value }),
         onStatus: status => event.sender.send("crypto:status", { operationId, status })
     });
 });
 
-ipcMain.handle("crypto:decrypt", async (event, { file, password, operationId }) => {
+ipcMain.handle("crypto:decrypt", async (event, payload) => {
+    const { filePath, password, operationId } = normalizeCryptoPayload(payload);
     const crypto = new Crypto(password);
-    const normalizedFile = new FileManager(file.path);
+    const normalizedFile = new FileManager(filePath);
     await crypto.decrypt(normalizedFile, { value: 0 }, {
         onProgress: value => event.sender.send("crypto:progress", { operationId, value })
     });
@@ -187,6 +200,22 @@ ipcMain.handle("crypto:decrypt", async (event, { file, password, operationId }) 
 ipcMain.handle("log:error", (_, error) => {
     logger.error(error);
 });
+
+async function runSmokeTest() {
+    try {
+        const hasBridge = await win.webContents.executeJavaScript(
+            "Boolean(window.cryptox && window.cryptox.app && window.cryptox.crypto && window.cryptox.files)"
+        );
+        if (!hasBridge) {
+            throw new Error("Preload bridge is unavailable.");
+        }
+        logger.info("Cryptox smoke test passed.");
+        app.exit(0);
+    } catch (error) {
+        logger.error(error);
+        app.exit(1);
+    }
+}
 
 // Exit cleanly on request from parent process in development mode.
 if (isDevelopment) {

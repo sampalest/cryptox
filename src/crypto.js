@@ -1,11 +1,9 @@
 import Constants from "./constants.js";
 import Utils from "./utils.js";
-// import * as e from "./exceptions.js";
-
-const crypto = require("crypto");
-const fs = require("fs");
-const path = require("path");
-const IVector = require("./vector.js");
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import IVector from "./vector.js";
 const AES256 = "aes-256-gcm";
 
 export default class Crypto {
