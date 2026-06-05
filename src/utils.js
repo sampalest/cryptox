@@ -10,7 +10,7 @@ export default class Utils {
                     console.error(err);
                     reject();
                 }
-                
+
                 resolve(filenames);
             });
         });
