@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld("cryptox", {
         }
     },
     files: {
+        ready: () => ipcRenderer.invoke("files:renderer-ready"),
         getPathForFile: file => webUtils.getPathForFile(file),
         onOpenFile: callback => {
             const listener = (_, file) => callback(file);
