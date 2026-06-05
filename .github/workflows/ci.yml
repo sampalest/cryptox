@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+
+jobs:
+  verify:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:unit
+      - run: npm run build
+      - run: npm run build:electron
+      - run: npm run test:e2e
+      - run: npm audit --audit-level=high
+      - run: npm run electron:build
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"

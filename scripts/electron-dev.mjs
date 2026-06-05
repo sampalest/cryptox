@@ -1,0 +1,36 @@
+import { spawn } from "node:child_process";
+import electronPath from "electron";
+import { createServer } from "vite";
+
+process.env.NODE_ENV = "development";
+
+const server = await createServer({
+    configFile: "vite.config.js",
+    server: {
+        host: "127.0.0.1",
+        port: 5173,
+        strictPort: false
+    }
+});
+
+await server.listen();
+const serverUrls = server.resolvedUrls.local;
+const rendererUrl = serverUrls[0];
+
+await import("./build-electron.mjs");
+
+const electron = spawn(electronPath, ["."], {
+    stdio: "inherit",
+    env: {
+        ...process.env,
+        VITE_DEV_SERVER_URL: rendererUrl
+    }
+});
+
+electron.on("exit", async code => {
+    await server.close();
+    process.exit(code ?? 0);
+});
+
+process.on("SIGTERM", () => electron.kill("SIGTERM"));
+process.on("SIGINT", () => electron.kill("SIGINT"));

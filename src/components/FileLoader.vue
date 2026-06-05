@@ -1,5 +1,5 @@
 <template>
-    <div class="pic-drag vertical-align-nc hidden"
+    <div ref="dropZone" class="pic-drag vertical-align-nc hidden"
         @drag.stop.prevent=""
         @dragover.stop.prevent=""
         @dragstart.stop.prevent="onDragStart"
@@ -13,31 +13,20 @@
 </template>
 
 <script>
-/* eslint-disable */
-
 export default {
     name: "image-loader",
-    data: () => {
-        return {
-            pic: null
-        }
-    },
+    emits: ["imageFile"],
     methods: {
-        onDragStart: function (e) {            
-            this.pic.classList.remove("hidden");
+        onDragStart() {
+            this.$refs.dropZone.classList.remove("hidden");
         },
-        onDragStop: function (e) {
-            this.pic.classList.add("hidden");
+        onDragStop() {
+            this.$refs.dropZone.classList.add("hidden");
         },
-        onFileDrop: function (e) {
-            this.$emit('imageFile', e.dataTransfer.files);
-            this.pic.classList.add("hidden");
+        onFileDrop(e) {
+            this.$emit("imageFile", e.dataTransfer.files);
+            this.$refs.dropZone.classList.add("hidden");
         }
-    },
-    mounted: function () {
-        this.$nextTick(() => {
-            this.pic = document.querySelector(".pic-drag");
-        });
     }
-}
+};
 </script>

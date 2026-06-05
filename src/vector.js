@@ -1,7 +1,6 @@
-/* eslint-disable */
-const { Transform } = require("stream");
+import { Transform } from "node:stream";
 
-class IVector extends Transform {
+export default class IVector extends Transform {
     constructor(initVect, opts) {
         super(opts);
         this.initVect = initVect;
@@ -14,8 +13,6 @@ class IVector extends Transform {
             this.appended = true;
         }
         this.push(chunk);
-        cb();        
+        cb();
     }
 }
-
-module.exports = IVector;
