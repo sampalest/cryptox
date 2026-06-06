@@ -25,7 +25,7 @@ export default {
     mixins: [animation],
     methods: {
         goGithub() {
-            window.cryptox.shell.openExternal("https://github.com/Samuelpe/cryptox");
+            window.cryptox.shell.openExternal("https://github.com/sampalest/cryptox");
         }
     }
 };
