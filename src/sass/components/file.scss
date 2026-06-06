@@ -1,6 +1,6 @@
 .pic-drag {
     width: min(82vw, 620px);
-    height: min(56vh, 360px);
+    height: min(45vh, 290px);
     border: 4px dashed #d4d4d4;
     position: absolute;
     margin: auto;
@@ -12,7 +12,7 @@
     background: rgba(253, 253, 253, 0.9);
     opacity: 1;
     transition: opacity .25s ease-in-out;
-    
+
     & .drag-icon {
         width: 25%;
         pointer-events: none;
