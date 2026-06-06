@@ -18,7 +18,7 @@ export default {
                 if (payload.operationId === operationId) Object.assign(this.fileEvent, payload.status);
             });
 
-            window.cryptox.crypto.encrypt(file, this.password, operationId).then(() => {
+            window.cryptox.crypto.encrypt({ path: file.path }, this.password, operationId).then(() => {
                 this.fileEvent.counter++;
                 
                 if (this.fileEvent.counter == this.files.length) this.finish = true;
@@ -33,7 +33,7 @@ export default {
                 if (payload.operationId === operationId) this.percent.value = payload.value;
             });
 
-            window.cryptox.crypto.decrypt(file, this.password, operationId)
+            window.cryptox.crypto.decrypt({ path: file.path }, this.password, operationId)
                 .then(() => {
                     this.finish = true;
                 })
