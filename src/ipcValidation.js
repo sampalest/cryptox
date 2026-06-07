@@ -1,7 +1,21 @@
+import Constants from "./constants.js";
+
 const ALLOWED_EXTERNAL_URLS = new Set([
     "https://github.com/Samuelpe/cryptox",
     "https://github.com/sampalest/cryptox"
 ]);
+
+export function validateDeletePath(value) {
+    if (typeof value !== "string" || value.trim() === "") {
+        throw new TypeError("Delete path must be a non-empty string.");
+    }
+
+    if (!value.endsWith(Constants.POINT_EXT)) {
+        throw new Error(`Only ${Constants.POINT_EXT} files may be deleted.`);
+    }
+
+    return value;
+}
 
 export function validateExternalUrl(value) {
     if (typeof value !== "string") {

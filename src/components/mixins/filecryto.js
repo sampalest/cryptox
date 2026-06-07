@@ -32,18 +32,29 @@ export default {
             const offProgress = window.cryptox.crypto.onProgress(payload => {
                 if (payload.operationId === operationId) this.percent.value = payload.value;
             });
+            const offStatus = window.cryptox.crypto.onStatus(payload => {
+                if (payload.operationId === operationId) Object.assign(this.fileEvent, payload.status);
+            });
 
             window.cryptox.crypto.decrypt({ path: file.path }, this.password, operationId)
-                .then(() => {
+                .then(async () => {
+                    // Decryption already succeeded; a failed delete prompt must not be reported
+                    // as a decrypt error, so keep it isolated from the catch below.
+                    try {
+                        await window.cryptox.files.confirmDeleteEncrypted(file.path);
+                    } catch (deleteErr) {
+                        window.cryptox.log.error(deleteErr);
+                    }
                     this.finish = true;
                 })
                 .catch(err => {
-                    alert("Decrypt error, please try again.");
                     window.cryptox.log.error(err);
-                    this.finish = true;
+                    alert("Incorrect password or the file is corrupted.");
+                    this.cancel();
                 })
                 .finally(() => {
                     offProgress();
+                    offStatus();
                 });
         }
     }
