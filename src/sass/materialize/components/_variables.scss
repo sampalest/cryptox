@@ -1,3 +1,5 @@
+@use "sass:color";
+
 // ==========================================================================
 // Materialize variables
 // ==========================================================================
@@ -34,9 +36,11 @@
 // 1. Colors
 // ==========================================================================
 
+@use "sass:math";
+
 $primary-color: color("blue", "darken-2") !default;
-$primary-color-light: lighten($primary-color, 15%) !default;
-$primary-color-dark: darken($primary-color, 15%) !default;
+$primary-color-light: color.adjust($primary-color, $lightness: 15%, $space: hsl) !default;
+$primary-color-dark: color.adjust($primary-color, $lightness: -15%, $space: hsl) !default;
 
 $secondary-color: color("grey", "darken-1") !default;
 $success-color: color("green", "base") !default;
@@ -56,7 +60,7 @@ $badge-height: 22px !default;
 
 // Shared styles
 $button-border: none !default;
-$button-background-focus: lighten($secondary-color, 4%) !default;
+$button-background-focus: color.adjust($secondary-color, $lightness: 4%, $space: hsl) !default;
 $button-font-size: 14px !default;
 $button-icon-font-size: 1.3rem !default;
 $button-height: 36px !default;
@@ -69,7 +73,7 @@ $button-disabled-color: #9F9F9F !default;
 
 // Raised buttons
 $button-raised-background: $secondary-color !default;
-$button-raised-background-hover: lighten($button-raised-background, 5%) !default;
+$button-raised-background-hover: color.adjust($button-raised-background, $lightness: 5%, $space: hsl) !default;
 $button-raised-color: #fff !default;
 
 // Large buttons
@@ -86,7 +90,7 @@ $button-floating-small-size: $button-height * .9 !default;
 
 // Flat buttons
 $button-flat-color: #343434 !default;
-$button-flat-disabled-color: lighten(#999, 10%) !default;
+$button-flat-disabled-color: color.adjust(#999, $lightness: 10%, $space: hsl) !default;
 
 // Floating buttons
 $button-floating-background: $secondary-color !default;
@@ -102,14 +106,14 @@ $button-floating-radius: 50% !default;
 $card-padding: 24px !default;
 $card-bg-color: #fff !default;
 $card-link-color: color("orange", "accent-2") !default;
-$card-link-color-light: lighten($card-link-color, 20%) !default;
+$card-link-color-light: color.adjust($card-link-color, $lightness: 20%, $space: hsl) !default;
 
 
 // 5. Carousel
 // ==========================================================================
 
 $carousel-height: 400px !default;
-$carousel-item-height: $carousel-height / 2 !default;
+$carousel-item-height: $carousel-height * 0.5 !default;
 $carousel-item-width: $carousel-item-height !default;
 
 
@@ -137,13 +141,13 @@ $chip-margin: 5px !default;
 $datepicker-display-font-size: 2.8rem;
 $datepicker-calendar-header-color: #999;
 $datepicker-weekday-color: rgba(0, 0, 0, .87) !default;
-$datepicker-weekday-bg: darken($secondary-color, 7%) !default;
+$datepicker-weekday-bg: color.adjust($secondary-color, $lightness: -7%, $space: hsl) !default;
 $datepicker-date-bg: $secondary-color !default;
 $datepicker-year: rgba(255, 255, 255, .7) !default;
 $datepicker-focus: rgba(0,0,0, .05) !default;
 $datepicker-selected: $secondary-color !default;
-$datepicker-selected-outfocus: desaturate(lighten($secondary-color, 35%), 15%) !default;
-$datepicker-day-focus: transparentize(desaturate($secondary-color, 5%), .75) !default;
+$datepicker-selected-outfocus: color.adjust(color.adjust($secondary-color, $lightness: 35%, $space: hsl), $saturation: -15%, $space: hsl) !default;
+$datepicker-day-focus: color.adjust(color.adjust($secondary-color, $saturation: -5%, $space: hsl), $alpha: -.75) !default;
 $datepicker-disabled-day-color: rgba(0, 0, 0, .3) !default;
 
 $timepicker-clock-color: rgba(0, 0, 0, .87) !default;
@@ -180,7 +184,7 @@ $input-disabled-solid-color: #949494 !default;
 $input-disabled-border: 1px dotted $input-disabled-color !default;
 $input-invalid-border: 1px solid $input-error-color !default;
 $input-icon-size: 2rem;
-$placeholder-text-color: lighten($input-border-color, 20%) !default;
+$placeholder-text-color: color.adjust($input-border-color, $lightness: 20%, $space: hsl) !default;
 
 // Radio Buttons
 $radio-fill-color: $secondary-color !default;
@@ -195,7 +199,7 @@ $track-height: 3px !default;
 // Select
 $select-border: 1px solid #f2f2f2 !default;
 $select-background: rgba(255, 255, 255, 0.90) !default;
-$select-focus: 1px solid lighten($secondary-color, 47%) !default;
+$select-focus: 1px solid color.adjust($secondary-color, $lightness: 47%, $space: hsl) !default;
 $select-option-hover: rgba(0,0,0,.08) !default;
 $select-option-focus: rgba(0,0,0,.08) !default;
 $select-option-selected: rgba(0,0,0,.03) !default;
@@ -205,7 +209,7 @@ $select-disabled-color: rgba(0,0,0,.3) !default;
 
 // Switches
 $switch-bg-color: $secondary-color !default;
-$switch-checked-lever-bg: desaturate(lighten($switch-bg-color, 25%), 25%) !default;
+$switch-checked-lever-bg: color.adjust(color.adjust($switch-bg-color, $lightness: 25%, $space: hsl), $saturation: -25%, $space: hsl) !default;
 $switch-unchecked-bg: #F1F1F1 !default;
 $switch-unchecked-lever-bg: rgba(0,0,0,.38) !default;
 $switch-radius: 15px !default;
@@ -235,8 +239,8 @@ $medium-only: "only screen and (min-width : #{$small-screen-up}) and (max-width 
 
 $num-cols: 12 !default;
 $gutter-width: 1.5rem !default;
-$element-top-margin: $gutter-width/3 !default;
-$element-bottom-margin: ($gutter-width*2)/3 !default;
+$element-top-margin: math.div($gutter-width, 3) !default;
+$element-bottom-margin: math.div($gutter-width*2, 3) !default;
 
 
 // 13. Navigation Bar
@@ -328,7 +332,7 @@ $footer-copyright-bg-color: rgba(51,51,51,.08) !default;
 
 $range : $large-screen - $small-screen !default;
 $intervals: 20 !default;
-$interval-size: $range / $intervals !default;
+$interval-size: math.div($range, $intervals) !default;
 
 
 // 23. Collections
@@ -337,7 +341,7 @@ $interval-size: $range / $intervals !default;
 $collection-border-color: #e0e0e0 !default;
 $collection-bg-color: #fff !default;
 $collection-active-bg-color: $secondary-color !default;
-$collection-active-color: lighten($secondary-color, 55%) !default;
+$collection-active-color: color.adjust($secondary-color, $lightness: 55%, $space: hsl) !default;
 $collection-hover-bg-color: #ddd !default;
 $collection-link-color: $secondary-color !default;
 $collection-line-height: 1.5rem !default;

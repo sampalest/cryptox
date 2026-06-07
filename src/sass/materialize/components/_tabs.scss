@@ -1,3 +1,5 @@
+@use "sass:color";
+
 .tabs {
   &.tabs-transparent {
     background-color: transparent;
@@ -47,7 +49,7 @@
     a {
       &:focus,
       &:focus.active {
-        background-color: transparentize($tabs-underline-color, .8);
+        background-color: color.adjust($tabs-underline-color, $alpha: -.8);
         outline: none;
       }
 

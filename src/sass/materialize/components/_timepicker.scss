@@ -1,3 +1,5 @@
+@use "sass:color";
+
 /* Timepicker Containers */
 .timepicker-modal {
   max-width: 325px;
@@ -100,7 +102,7 @@
 
 .timepicker-tick.active,
 .timepicker-tick:hover {
-	background-color: transparentize($secondary-color, .75);
+	background-color: color.adjust($secondary-color, $alpha: -.75);
 }
 .timepicker-dial {
 	transition: transform 350ms, opacity 350ms;
