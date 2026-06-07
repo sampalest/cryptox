@@ -1,3 +1,5 @@
+@use "sass:color";
+
 /***************
     Nav List
 ***************/
@@ -20,7 +22,7 @@
     display: inline-block;
 
     &:hover {
-      color: lighten(#757575, 20%);
+      color: color.adjust(#757575, $lightness: 20%, $space: hsl);
       padding-left: 15px;
       border-left: 1px solid $primary-color;
     }

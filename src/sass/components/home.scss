@@ -1,3 +1,5 @@
+@use "sass:color";
+
 .light {
     & .title-block {
         margin: 1.4em 0;
@@ -73,7 +75,7 @@
             @extend %all-transition-02;
 
             &:hover {
-                color: darken($cancel-button, 20%);
+                color: color.adjust($cancel-button, $lightness: -20%, $space: hsl);
             }
         }
         margin-top: 1em;

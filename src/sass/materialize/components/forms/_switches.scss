@@ -1,3 +1,5 @@
+@use "sass:color";
+
 /* Switch
    ========================================================================== */
 
@@ -55,7 +57,7 @@
   }
 
   &:before {
-    background-color: transparentize($switch-bg-color, .85);
+    background-color: color.adjust($switch-bg-color, $alpha: -.85);
   }
 
   &:after {
@@ -68,7 +70,7 @@
 input[type=checkbox]:checked:not(:disabled) ~ .lever:active::before,
 input[type=checkbox]:checked:not(:disabled).tabbed:focus ~ .lever::before {
   transform: scale(2.4);
-  background-color: transparentize($switch-bg-color, .85);
+  background-color: color.adjust($switch-bg-color, $alpha: -.85);
 }
 
 input[type=checkbox]:not(:disabled) ~ .lever:active:before,
