@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld("cryptox", {
     files: {
         ready: () => ipcRenderer.invoke("files:renderer-ready"),
         getPathForFile: file => webUtils.getPathForFile(file),
+        confirmDeleteEncrypted: path => ipcRenderer.invoke("files:confirm-delete-encrypted", path),
         onOpenFile: callback => {
             const listener = (_, file) => callback(file);
             ipcRenderer.on("files:open-file", listener);
