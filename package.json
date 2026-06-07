@@ -2,7 +2,7 @@
   "name": "cryptox",
   "productName": "Cryptox",
   "executableName": "Cryptox",
-  "version": "0.2.1-alpha",
+  "version": "0.3.0-alpha",
   "author": {
     "name": "Samuel Palomo Esteban",
     "email": "samuelpe@outlook.com"
@@ -20,7 +20,7 @@
     "lint": "eslint \"src/**/*.{js,vue}\" \"tests/**/*.js\" \"scripts/**/*.mjs\" \"*.config.{js,cjs}\"",
     "lintfix:js": "eslint 'src/**/*.js' --fix",
     "lintfix:vue": "eslint 'src/**/*.vue' --fix",
-    "electron:build": "npm run build && npm run build:electron && electron-builder --config electron-builder.config.cjs",
+    "electron:build": "npm run build && npm run build:electron && electron-builder --config electron-builder.config.cjs --publish never",
     "electron:serve": "node scripts/electron-dev.mjs",
     "electron:generate-icons": "electron-icon-builder --input=./public/icon.png --output=build --flatten",
     "postinstall": "electron-builder install-app-deps",
@@ -34,7 +34,7 @@
     "animate.css": "^3.7.2",
     "electron-log": "^4.4.0",
     "libsodium-wrappers-sumo": "^0.8.4",
-    "materialize-css": "^1.0.0",
+    "materialize-css": "^1.0.0-rc.2",
     "pinia": "^3.0.0",
     "tar-fs": "^3.1.2",
     "vue": "^3.5.0",
@@ -54,6 +54,7 @@
     "eslint-plugin-vue": "^9.33.0",
     "jest": "^30.0.0",
     "jest-environment-node": "^30.0.0",
+    "prettier": "3.8.3",
     "sass": "^1.94.2",
     "vite": "^8.0.0",
     "vue-eslint-parser": "^9.4.0"
