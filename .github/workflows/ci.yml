@@ -12,8 +12,8 @@ jobs:
     name: 🧹 Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -30,8 +30,8 @@ jobs:
     name: 🧪 Unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -46,8 +46,8 @@ jobs:
     name: 🛡️ Security audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -62,8 +62,8 @@ jobs:
     name: 🖥️ E2E smoke
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -87,8 +87,8 @@ jobs:
     permissions:
       contents: write # create releases / tags
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -104,30 +104,11 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
-      # A GitHub release is keyed by a single git tag, so each build publishes two:
-      #   master  -> "<version>"            (immutable) + "latest" (rolling)
-      #   develop -> "<version>.<shortsha>" (immutable) + "dev"    (rolling, prerelease)
-      # The rolling release is deleted and recreated so its tag tracks HEAD.
+      # Release strategy per branch (see scripts/publish-release.mjs):
+      #   master  -> release "v<version>", updated in place if it already exists.
+      #   develop -> prerelease "v<version>.<shortsha>"; only this version's prior
+      #              prerelease is replaced — other versions' releases are untouched.
       - name: 🚀 Publish releases
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          version=$(node -p "require('./package.json').version")
-          sha=$(git rev-parse --short HEAD)
-          assets=(dist_electron/*.dmg dist_electron/*.zip)
-
-          if [ "${{ github.ref_name }}" = "master" ]; then
-            primary="$version"; rolling="latest"; flags=""
-          else
-            primary="$version.$sha"; rolling="dev"; flags="--prerelease"
-          fi
-
-          # Immutable, per-build release. Fails if it already exists (e.g. master
-          # pushed twice without bumping package.json version) — bump and re-push.
-          gh release create "$primary" "${assets[@]}" --target "$GITHUB_SHA" \
-            --title "$primary" --notes "Automated build of $sha" $flags
-
-          # Rolling pointer release — recreated each push so its tag tracks HEAD.
-          gh release delete "$rolling" --yes --cleanup-tag || true
-          gh release create "$rolling" "${assets[@]}" --target "$GITHUB_SHA" \
-            --title "$rolling" --notes "Rolling $rolling build ($primary)" $flags
+        run: node scripts/publish-release.mjs
