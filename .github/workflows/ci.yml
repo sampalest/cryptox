@@ -1,69 +1,133 @@
-name: CI
+name: 🔐 CI
 
 on:
   pull_request:
   push:
     branches:
       - develop
+      - master
 
 jobs:
-  verify:
-    runs-on: macos-15
-
+  lint:
+    name: 🧹 Lint
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
-
-      # Skip electron's binary download here: it's flaky from this runner (504s
-      # from GitHub) and would fail npm ci. We fetch it reliably in the next step.
-      - run: npm ci
+      # Skip electron's binary download: this job doesn't run electron, and the
+      # download is flaky from CI runners (504s from GitHub) and would fail npm ci.
+      - name: 📦 Install dependencies
+        run: npm ci
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: 🧹 Lint
+        run: npm run lint
 
-      # Reuse the downloaded electron zip across runs to avoid re-hitting GitHub.
-      - name: Cache Electron binary
-        uses: actions/cache@v4
+  unit:
+    name: 🧪 Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          path: ~/Library/Caches/electron
-          key: electron-${{ runner.os }}-${{ runner.arch }}-v40.10.2
-
-      # The electron binary install is unreliable on this runner: downloads 504
-      # intermittently, and even when the (checksum-verified) zip downloads,
-      # electron's bundled extract-zip only partially unpacks it (install.js
-      # exits 0 with a truncated dist/ and no path.txt), so `require("electron")`
-      # throws "Electron failed to install correctly" in the e2e smoke test.
-      # Download the zip with retries, then extract it ourselves with ditto and
-      # write path.txt. Verify the executable exists so the job fails here,
-      # loudly, if this ever breaks again.
-      - name: Ensure Electron binary is installed
-        run: |
-          for i in 1 2 3 4 5; do
-            node node_modules/electron/install.js && break || true
-            zip=$(ls ~/Library/Caches/electron/*/electron-v*-darwin-*.zip 2>/dev/null | head -1)
-            [ -n "$zip" ] && break
-            echo "electron download attempt $i failed; retrying in 10s..."
-            sleep 10
-          done
-          zip=$(ls ~/Library/Caches/electron/*/electron-v*-darwin-*.zip 2>/dev/null | head -1)
-          test -n "$zip" || { echo "Electron zip not found in cache after retries"; exit 1; }
-          rm -rf node_modules/electron/dist
-          mkdir -p node_modules/electron/dist
-          ditto -x -k "$zip" node_modules/electron/dist
-          printf 'Electron.app/Contents/MacOS/Electron' > node_modules/electron/path.txt
-          test -x node_modules/electron/dist/Electron.app/Contents/MacOS/Electron
+          node-version-file: .nvmrc
+          cache: npm
+      - name: 📦 Install dependencies
+        run: npm ci
         env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: ""
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: 🧪 Run unit tests
+        run: npm run test:unit
 
-      - run: npm run lint
-      - run: npm run test:unit
-      - run: npm run build
-      - run: npm run build:electron
-      - run: npm run test:e2e
-      - run: npm audit --audit-level=high
-      - run: npm run electron:build
+  audit:
+    name: 🛡️ Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: 📦 Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: 🛡️ Audit dependencies
+        run: npm audit --audit-level=high
+
+  e2e:
+    name: 🖥️ E2E smoke
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: 📦 Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: ⚡ Set up Electron
+        uses: ./.github/actions/setup-electron
+      # test:e2e builds the app + electron bundle internally before running smoke.
+      - name: 🖥️ Run E2E smoke test
+        run: npm run test:e2e
+
+  package:
+    name: 🚀 Package & release
+    runs-on: macos-15
+    needs: [lint, unit, e2e]
+    # Only package on pushes to develop/master (set by the workflow triggers),
+    # never on pull requests.
+    if: github.event_name == 'push'
+    permissions:
+      contents: write # create releases / tags
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: 📦 Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: ⚡ Set up Electron
+        uses: ./.github/actions/setup-electron
+      # electron:build builds the app + electron bundle internally, then packages.
+      - name: 🏗️ Build & package app
+        run: npm run electron:build
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      # A GitHub release is keyed by a single git tag, so each build publishes two:
+      #   master  -> "<version>"            (immutable) + "latest" (rolling)
+      #   develop -> "<version>.<shortsha>" (immutable) + "dev"    (rolling, prerelease)
+      # The rolling release is deleted and recreated so its tag tracks HEAD.
+      - name: 🚀 Publish releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          sha=$(git rev-parse --short HEAD)
+          assets=(dist_electron/*.dmg dist_electron/*.zip)
+
+          if [ "${{ github.ref_name }}" = "master" ]; then
+            primary="$version"; rolling="latest"; flags=""
+          else
+            primary="$version.$sha"; rolling="dev"; flags="--prerelease"
+          fi
+
+          # Immutable, per-build release. Fails if it already exists (e.g. master
+          # pushed twice without bumping package.json version) — bump and re-push.
+          gh release create "$primary" "${assets[@]}" --target "$GITHUB_SHA" \
+            --title "$primary" --notes "Automated build of $sha" $flags
+
+          # Rolling pointer release — recreated each push so its tag tracks HEAD.
+          gh release delete "$rolling" --yes --cleanup-tag || true
+          gh release create "$rolling" "${assets[@]}" --target "$GITHUB_SHA" \
+            --title "$rolling" --notes "Rolling $rolling build ($primary)" $flags
