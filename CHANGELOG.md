@@ -113,8 +113,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.1-alpha] - 2026-06-06
 
 ### Changed
+
+- Migrated the renderer to Vue 3 ([SAM-6]).
+- Modernized the build stack ([SAM-5]).
+- Switched file encryption and decryption to a file-path object API.
+- Updated Sass color functions to the new module syntax and improved colour calculations.
+- Adjusted `.pic-drag` dimensions and positioning for an improved layout.
+
+### Security
+
+- Replaced the weak SHA-256 key derivation with Argon2id.
+
+## [0.2.1-alpha] - 2026-06-10
+
+### Changed
+
 - License changed from MIT to PolyForm Noncommercial 1.0.0. Cryptox stays free for personal and noncommercial use, with contributions welcome, but commercial use by companies is no longer permitted. Versions released before this change (up to 0.2.0-alpha) remain under MIT.
--
 
 ## [0.2.0-alpha] - 2020-05-26
 
