@@ -2,10 +2,11 @@
 
 import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from "electron";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import Crypto from "./crypto.js";
 import FileManager from "./filemanager.js";
-import { normalizeCryptoPayload, validateExternalUrl } from "./ipcValidation.js";
+import { normalizeCryptoPayload, validateDeletePath, validateExternalUrl } from "./ipcValidation.js";
 const isDevelopment = process.env.NODE_ENV !== "production";
 import logger from "electron-log";
 
@@ -193,8 +194,27 @@ ipcMain.handle("crypto:decrypt", async (event, payload) => {
     const crypto = new Crypto(password);
     const normalizedFile = new FileManager(filePath);
     await crypto.decrypt(normalizedFile, { value: 0 }, {
-        onProgress: value => event.sender.send("crypto:progress", { operationId, value })
+        onProgress: value => event.sender.send("crypto:progress", { operationId, value }),
+        onStatus: status => event.sender.send("crypto:status", { operationId, status })
     });
+});
+
+ipcMain.handle("files:confirm-delete-encrypted", async (_, filePath) => {
+    const target = validateDeletePath(filePath);
+    const { response } = await dialog.showMessageBox(win, {
+        type: "question",
+        buttons: ["Delete", "Keep"],
+        defaultId: 1,
+        cancelId: 1,
+        title: "Delete encrypted file",
+        message: "Decryption successful.",
+        detail: "Do you want to delete the encrypted .ctx file?"
+    });
+
+    if (response !== 0) return false;
+
+    await fs.promises.unlink(target);
+    return true;
 });
 
 ipcMain.handle("log:error", (_, error) => {

@@ -62,6 +62,9 @@ describe("Crypto", () => {
         await expect(
             new Crypto("wrong horse").decrypt(new FileManager(encryptedPath), { value: 0 })
         ).rejects.toThrow();
+
+        // The partial/garbage output must be cleaned up, not left on disk.
+        expect(fs.existsSync(sourcePath)).toBe(false);
     });
 
     it("writes an Argon2id KDF header (no raw SHA-256 key path)", async () => {

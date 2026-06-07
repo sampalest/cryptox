@@ -144,7 +144,10 @@ export default class Crypto {
         const opslimit = sodium.crypto_pwhash_OPSLIMIT_MODERATE;
         const memlimit = sodium.crypto_pwhash_MEMLIMIT_MODERATE;
         const salt = Buffer.from(sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES));
+        // Argon2id is synchronous and CPU/memory heavy; show the indeterminate bar while it runs.
+        if (onStatus) onStatus({ loader: true, msg: "Securing password..." });
         const CIPHER_KEY = this._deriveKeyArgon2id(salt, opslimit, memlimit, Constants.KEY_LEN);
+        if (onStatus) onStatus({ loader: false });
         const header = this._buildHeader({
             kdf: "argon2id",
             salt: salt.toString("base64"),
@@ -176,18 +179,21 @@ export default class Crypto {
             readStream.on("error", reject);
             cipher.on("error", reject);
             writeStream.on("error", reject);
-            
+
+            // Count plaintext bytes read against the plaintext size so progress runs a clean
+            // 0->100% (counting the cipher output would also include the prepended IV).
+            readStream.on("data", buffer => {
+                completedSize += buffer.length;
+                let complete = parseInt((completedSize / size * 100));
+                if (complete != completeFile.value) {
+                    completeFile.value = complete;
+                    if (onProgress) onProgress(complete);
+                }
+            });
+
             readStream
                 .pipe(cipher)
                 .pipe(appendInitVect)
-                .on("data", buffer => {
-                    completedSize += buffer.length;
-                    let complete = parseInt((completedSize / size * 100));
-                    if (complete != completeFile.value) {
-                        completeFile.value = complete;
-                        if (onProgress) onProgress(complete);
-                    }
-                })
                 .pipe(writeStream);
         });
     }
@@ -202,6 +208,7 @@ export default class Crypto {
      */
     async decrypt(file, completeFile, events = {}) {
         const onProgress = events.onProgress;
+        const onStatus = events.onStatus;
         const size = fs.statSync(file.path).size;
         const extSize = 8;
         const authTagSize = 16;
@@ -231,7 +238,10 @@ export default class Crypto {
             const jsonBuf = await this._getPositionalBytes(file.path, { start: prefixLen, end: headerTotalBytes - 1 });
             const meta = JSON.parse(jsonBuf.toString("utf-8"));
             await this._ready();
+            // Argon2id is synchronous and CPU/memory heavy; show the indeterminate bar while it runs.
+            if (onStatus) onStatus({ loader: true, msg: "Securing password..." });
             cipherKey = this._deriveKeyArgon2id(Buffer.from(meta.salt, "base64"), meta.opslimit, meta.memlimit, meta.keyLen);
+            if (onStatus) onStatus({ loader: false });
             ivStart = headerTotalBytes;
         } else {
             cipherKey = this._getCipherKey();
@@ -254,6 +264,9 @@ export default class Crypto {
                 if (ext.toString("utf-8") === "tar") Utils.createTempFiles();
                 const unencFile = ext.toString("utf-8") !== "tar" ? file.path.split(".")[0].concat(`.${ext}`) : `${Constants.TMP}/${file.name.split(".")[0]}.tar`;
                 const writeStream = fs.createWriteStream(unencFile);
+                // Ciphertext slice length: progress is measured against this so the bar runs a
+                // clean 0->100% (the full file size includes the header/IV/ext/authTag overhead).
+                const cipherLength = endFile - startFile + 1;
                 writeStream.on("finish", () => {
                     if (ext.toString("utf-8") === "tar") {
                         Utils.unzipDirectory(unencFile, file.path.split(".")[0]);
@@ -261,15 +274,27 @@ export default class Crypto {
                     resolve();
                 });
 
-                readStream.on("error", reject);
-                decipher.on("error", reject);
-                writeStream.on("error", reject);
-            
+                // A wrong password fails GCM auth only at stream end, after partial garbage has
+                // been written. Tear down the streams and remove the bogus output before rejecting.
+                const handleError = error => {
+                    readStream.destroy();
+                    writeStream.destroy();
+                    try {
+                        if (fs.existsSync(unencFile)) fs.unlinkSync(unencFile);
+                    } catch (cleanupError) {
+                        // Best-effort cleanup; surface the original decrypt error.
+                    }
+                    reject(error);
+                };
+                readStream.on("error", handleError);
+                decipher.on("error", handleError);
+                writeStream.on("error", handleError);
+
                 readStream
                     .pipe(decipher)
                     .on("data", buffer => {
                         completedSize += buffer.length;
-                        let complete = parseInt((completedSize / size * 100));
+                        let complete = parseInt((completedSize / cipherLength * 100));
                         if (complete != completeFile.value) {
                             completeFile.value = complete;
                             if (onProgress) onProgress(complete);

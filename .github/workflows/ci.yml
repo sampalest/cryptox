@@ -18,7 +18,46 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      # Skip electron's binary download here: it's flaky from this runner (504s
+      # from GitHub) and would fail npm ci. We fetch it reliably in the next step.
       - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+      # Reuse the downloaded electron zip across runs to avoid re-hitting GitHub.
+      - name: Cache Electron binary
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/electron
+          key: electron-${{ runner.os }}-${{ runner.arch }}-v40.10.2
+
+      # The electron binary install is unreliable on this runner: downloads 504
+      # intermittently, and even when the (checksum-verified) zip downloads,
+      # electron's bundled extract-zip only partially unpacks it (install.js
+      # exits 0 with a truncated dist/ and no path.txt), so `require("electron")`
+      # throws "Electron failed to install correctly" in the e2e smoke test.
+      # Download the zip with retries, then extract it ourselves with ditto and
+      # write path.txt. Verify the executable exists so the job fails here,
+      # loudly, if this ever breaks again.
+      - name: Ensure Electron binary is installed
+        run: |
+          for i in 1 2 3 4 5; do
+            node node_modules/electron/install.js && break || true
+            zip=$(ls ~/Library/Caches/electron/*/electron-v*-darwin-*.zip 2>/dev/null | head -1)
+            [ -n "$zip" ] && break
+            echo "electron download attempt $i failed; retrying in 10s..."
+            sleep 10
+          done
+          zip=$(ls ~/Library/Caches/electron/*/electron-v*-darwin-*.zip 2>/dev/null | head -1)
+          test -n "$zip" || { echo "Electron zip not found in cache after retries"; exit 1; }
+          rm -rf node_modules/electron/dist
+          mkdir -p node_modules/electron/dist
+          ditto -x -k "$zip" node_modules/electron/dist
+          printf 'Electron.app/Contents/MacOS/Electron' > node_modules/electron/path.txt
+          test -x node_modules/electron/dist/Electron.app/Contents/MacOS/Electron
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: ""
+
       - run: npm run lint
       - run: npm run test:unit
       - run: npm run build
