@@ -88,16 +88,16 @@ export default class Crypto {
 
     /**
      * Compress folder and make only one file
-     * @function _compressFolder     
+     * @function _compressFolder
      * @param {File} file File.
-     * @param {Object} fileEvent Loader Interface object pointer. 
+     * @param {Object} fileEvent Loader Interface object pointer.
      * @return {Object}
      */
     async _compressFolder(file, fileEvent, onStatus) {
         fileEvent.loader = true;
         fileEvent.msg = "Reading files...";
         if (onStatus) onStatus({ loader: true, msg: fileEvent.msg });
-                
+
         var args = {
             "output": `${Constants.TMP}/${file.name}.tar`,
             "path": file.path,
