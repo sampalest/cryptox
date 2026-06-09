@@ -1,5 +1,6 @@
 import Constants from "./constants.js";
 import Format from "./format.js";
+import TempManager from "./temp.js";
 import Utils from "./utils.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -9,8 +10,11 @@ import IVector from "./vector.js";
 const AES256 = "aes-256-gcm";
 
 export default class Crypto {
-    constructor(password) {
+    constructor(password, operationId = crypto.randomUUID()) {
         this.password = password;
+        // Owns this operation's temp directory (see TempManager); one Crypto
+        // instance per operation, as the IPC handlers already do.
+        this.operationId = operationId;
     }
 
     /**
@@ -81,13 +85,13 @@ export default class Crypto {
      * @param {Object} fileEvent Loader Interface object pointer.
      * @return {Object}
      */
-    async _compressFolder(file, fileEvent, onStatus) {
+    async _compressFolder(file, fileEvent, onStatus, tempDir) {
         fileEvent.loader = true;
         fileEvent.msg = "Reading files...";
         if (onStatus) onStatus({ loader: true, msg: fileEvent.msg });
 
         var args = {
-            "output": `${Constants.TMP}/${file.name}.tar`,
+            "output": path.join(tempDir, `${file.name}.tar`),
             "path": file.path,
             "level": 1
         };
@@ -111,6 +115,16 @@ export default class Crypto {
      * @return {Promise}
      */
     async encrypt(file, completeFile, fileEvent, events = {}) {
+        try {
+            // Await inside the try so the operation-owned temp directory is
+            // released on success and on any failure alike.
+            return await this._encrypt(file, completeFile, fileEvent, events);
+        } finally {
+            TempManager.release(this.operationId);
+        }
+    }
+
+    async _encrypt(file, completeFile, fileEvent, events = {}) {
         const onProgress = events.onProgress;
         const onStatus = events.onStatus;
         fileEvent.filename = file.name;
@@ -121,8 +135,8 @@ export default class Crypto {
         let isDirectory = Utils.isDirectory(file.path);
         let filepath = file.path;
         if (isDirectory) {
-            Utils.createTempFiles();
-            let obj = await this._compressFolder(file, fileEvent, onStatus);
+            const tempDir = await TempManager.acquire(this.operationId);
+            let obj = await this._compressFolder(file, fileEvent, onStatus, tempDir);
             size = obj.size;
             filepath = obj.filepath;
             endfile = obj.endfile;
@@ -163,7 +177,6 @@ export default class Crypto {
 
             writeStream.on("finish", () => {
                 fs.appendFileSync(endfile, cipher.getAuthTag());
-                if (isDirectory) Utils.rmRf(Constants.TMP);
                 resolve();
             });
 
@@ -200,15 +213,21 @@ export default class Crypto {
      * @return {Promise}
      */
     async decrypt(file, completeFile, events = {}) {
-        const size = fs.statSync(file.path).size;
-        const head = await this._readBytes(file.path, 0, Math.min(size, 9));
-        switch (Format.detectFormat(head)) {
-        case "ctx1":
-            return this._decryptV1(file, size, completeFile, events);
-        case "ctxbox":
-            return this._decryptInterim(file, size, completeFile, events);
-        default:
-            return this._decryptLegacy(file, size, completeFile, events);
+        try {
+            // All three paths resolve only after extraction completed, so a
+            // single release here covers success and failure for each format.
+            const size = fs.statSync(file.path).size;
+            const head = await this._readBytes(file.path, 0, Math.min(size, 9));
+            switch (Format.detectFormat(head)) {
+            case "ctx1":
+                return await this._decryptV1(file, size, completeFile, events);
+            case "ctxbox":
+                return await this._decryptInterim(file, size, completeFile, events);
+            default:
+                return await this._decryptLegacy(file, size, completeFile, events);
+            }
+        } finally {
+            TempManager.release(this.operationId);
         }
     }
 
@@ -241,12 +260,13 @@ export default class Crypto {
         const isDirectory = (flags & Format.FLAG_DIRECTORY) !== 0;
         let outPath, extractTo;
         if (isDirectory) {
-            // Payload is a tar'd directory: write the archive to TMP, then
-            // extract next to the .ctx file under the original directory name.
+            // Payload is a tar'd directory: write the archive to this
+            // operation's temp directory, then extract next to the .ctx file
+            // under the original directory name.
             const dirName = path.parse(meta.name).name;
             if (!dirName) throw new Format.FormatError("header name has no directory stem");
-            Utils.createTempFiles();
-            outPath = `${Constants.TMP}/${meta.name}`;
+            const tempDir = await TempManager.acquire(this.operationId);
+            outPath = path.join(tempDir, meta.name);
             extractTo = path.join(targetDir, dirName);
         } else {
             outPath = path.join(targetDir, meta.name);
@@ -329,10 +349,11 @@ export default class Crypto {
 
         // Remove all "*" padding from the extension.
         const ext = bufferExt.filter(byte => byte != 42).toString("utf-8");
-        // If not a folder save in file directory else in temporal directory.
+        // If not a folder save in file directory else in the operation's temp directory.
         const isTar = ext === "tar";
-        if (isTar) Utils.createTempFiles();
-        const outPath = isTar ? `${Constants.TMP}/${file.name.split(".")[0]}.tar` : file.path.split(".")[0].concat(`.${ext}`);
+        const outPath = isTar
+            ? path.join(await TempManager.acquire(this.operationId), `${file.name.split(".")[0]}.tar`)
+            : file.path.split(".")[0].concat(`.${ext}`);
 
         return this._streamDecrypt({
             filePath: file.path,
@@ -372,7 +393,6 @@ export default class Crypto {
                             // Await extraction so success is not reported (nor the UI
                             // unblocked) before the archive is fully and safely unpacked.
                             await Utils.unzipDirectory(outPath, extractTo);
-                            Utils.rmRf(Constants.TMP);
                         } catch (error) {
                             return cleanupAndReject(error);
                         }
