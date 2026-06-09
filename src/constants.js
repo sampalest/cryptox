@@ -8,8 +8,9 @@ const EXT =  "ctx";
 // Exceptions
 const PASSWORD_ERROR = "password_error";
 
-// File format: new .ctx files start with this magic + version, followed by a
-// JSON KDF header. Legacy files have no magic (they begin with a raw 16-byte IV).
+// Interim file format written by the 0.3.x alphas (read-only support: decrypt
+// still understands it, but new files use the CTX1 format — see src/format.js).
+// Raw legacy files have no magic at all (they begin with a raw 16-byte IV).
 const CTX_MAGIC = "CTXBOX";
 const CTX_FORMAT_VERSION = 1;
 
