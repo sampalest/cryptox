@@ -1,6 +1,6 @@
 .pic-drag {
     width: min(82vw, 620px);
-    height: min(45vh, 290px);
+    height: min(46vh, 290px);
     border: 4px dashed #d4d4d4;
     position: absolute;
     margin: auto;
@@ -8,7 +8,7 @@
     left: 50%;
     transform: translate(-50%, -50%);
     z-index: 999;
-    border-radius: 2em;
+    border-radius: 5em;
     background: rgba(253, 253, 253, 0.9);
     opacity: 1;
     transition: opacity .25s ease-in-out;
