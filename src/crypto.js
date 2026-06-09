@@ -267,9 +267,16 @@ export default class Crypto {
                 // Ciphertext slice length: progress is measured against this so the bar runs a
                 // clean 0->100% (the full file size includes the header/IV/ext/authTag overhead).
                 const cipherLength = endFile - startFile + 1;
-                writeStream.on("finish", () => {
+                writeStream.on("finish", async () => {
                     if (ext.toString("utf-8") === "tar") {
-                        Utils.unzipDirectory(unencFile, file.path.split(".")[0]);
+                        try {
+                            // Await extraction so success is not reported (nor the UI
+                            // unblocked) before the archive is fully and safely unpacked.
+                            await Utils.unzipDirectory(unencFile, file.path.split(".")[0]);
+                            Utils.rmRf(Constants.TMP);
+                        } catch (error) {
+                            return handleError(error);
+                        }
                     }
                     resolve();
                 });

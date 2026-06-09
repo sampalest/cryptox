@@ -49,8 +49,92 @@ export default class Utils {
         });
     }
 
+    /**
+     * Validate a tar entry before it is written to disk. Only plain files and
+     * directories are allowed; anything else (symlink, hardlink, devices, FIFO,
+     * socket) and any name escaping the extraction root is rejected.
+     * @param {String} root Extraction root directory (already resolved).
+     * @param {Object} header tar entry header.
+     * @return {Error|null} The rejection error, or null when the entry is safe.
+     */
+    static _validateTarEntry(root, header) {
+        if (header.type !== "file" && header.type !== "directory") {
+            return new Error(`Unsafe tar entry type "${header.type}" for "${header.name}"`);
+        }
+        if (Path.isAbsolute(header.name) || /^[a-zA-Z]:[\\/]/.test(header.name)) {
+            return new Error(`Absolute path in tar entry "${header.name}"`);
+        }
+        if (header.name.split(/[\\/]/).includes("..")) {
+            return new Error(`Path traversal in tar entry "${header.name}"`);
+        }
+        const resolved = Path.resolve(root, header.name);
+        if (resolved !== root && !resolved.startsWith(root + Path.sep)) {
+            return new Error(`Tar entry "${header.name}" resolves outside the output directory`);
+        }
+        return null;
+    }
+
+    /**
+     * Safely extract a tar archive. Entries are validated (no traversal, no
+     * absolute paths, no link/device/FIFO/socket types) and written to a fresh
+     * temp directory next to the output, which is only moved into place once
+     * the whole archive extracted cleanly.
+     * @param {String} input Tar file path.
+     * @param {String} output Output directory path.
+     * @return {Promise.<void>}
+     */
     static unzipDirectory(input, output) {
-        fs.createReadStream(input).pipe(tar.extract(output));
+        const outputRoot = Path.resolve(output);
+        // Same parent as the output so the final move never crosses filesystems.
+        const tempRoot = fs.mkdtempSync(Path.join(Path.dirname(outputRoot), ".cryptox-extract-"));
+
+        return new Promise((resolve, reject) => {
+            const readStream = fs.createReadStream(input);
+            // On the first unsafe entry, remember the error and skip everything
+            // after it; the whole extraction is rejected once the stream ends.
+            // (Destroying the stream mid-entry would leak an unhandled error
+            // from tar-stream's inner entry stream.)
+            let entryError = null;
+            const extractStream = tar.extract(tempRoot, {
+                ignore: (name, header) => {
+                    if (!entryError) entryError = this._validateTarEntry(tempRoot, header);
+                    return entryError !== null;
+                }
+            });
+
+            let settled = false;
+            const fail = error => {
+                if (settled) return;
+                settled = true;
+                readStream.destroy();
+                this.rmRf(tempRoot);
+                reject(error);
+            };
+
+            readStream.on("error", fail);
+            extractStream.on("error", fail);
+            extractStream.on("finish", () => {
+                if (settled) return;
+                if (entryError) return fail(entryError);
+                settled = true;
+                try {
+                    if (fs.existsSync(outputRoot)) {
+                        // Output already exists (e.g. the original folder was kept):
+                        // merge the validated entries into it.
+                        fs.cpSync(tempRoot, outputRoot, { recursive: true });
+                        this.rmRf(tempRoot);
+                    } else {
+                        fs.renameSync(tempRoot, outputRoot);
+                    }
+                    resolve();
+                } catch (error) {
+                    this.rmRf(tempRoot);
+                    reject(error);
+                }
+            });
+
+            readStream.pipe(extractStream);
+        });
     }
 
     static isDirectory(path) {
