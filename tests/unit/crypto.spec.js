@@ -2,8 +2,9 @@ import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import sodium from "libsodium-wrappers-sumo";
 import Crypto from "@/crypto.js";
-import Constants from "@/constants.js";
+import Format from "@/format.js";
 import FileManager from "@/filemanager.js";
 
 // Argon2id (MODERATE) is intentionally CPU/memory heavy; give the KDF room to run.
@@ -23,6 +24,97 @@ function writeLegacyCtx(destPath, password, plaintext, extension) {
     const fillExt = "*".repeat(8 - extension.length) + extension;
     const extBuffer = Buffer.from(fillExt, "utf-8");
     fs.writeFileSync(destPath, Buffer.concat([iv, ciphertext, extBuffer, authTag]));
+}
+
+/**
+ * Derive an Argon2id key with MIN limits so test files decrypt fast (this also
+ * exercises that decrypt honors the per-file KDF params from the header).
+ */
+async function deriveTestKey(password, salt) {
+    await sodium.ready;
+    const opslimit = sodium.crypto_pwhash_OPSLIMIT_MIN;
+    const memlimit = sodium.crypto_pwhash_MEMLIMIT_MIN;
+    const key = Buffer.from(sodium.crypto_pwhash(32, password, salt, opslimit, memlimit, sodium.crypto_pwhash_ALG_ARGON2ID13));
+    return { key, opslimit, memlimit };
+}
+
+/**
+ * Write an interim-format (CTXBOX, 0.3.x alphas) .ctx file:
+ * [magic 6][version 1][headerLen u16BE][JSON kdf meta][IV][ciphertext][ext 8][tag 16].
+ * Header is NOT authenticated. Mirrors the alpha writer so we can assert the
+ * read fallback keeps working.
+ */
+async function writeInterimCtx(destPath, password, plaintext, extension, metaOverrides = {}) {
+    await sodium.ready;
+    const salt = Buffer.from(sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES));
+    const { key, opslimit, memlimit } = await deriveTestKey(password, salt);
+    const meta = Object.assign({
+        kdf: "argon2id",
+        salt: salt.toString("base64"),
+        opslimit: opslimit,
+        memlimit: memlimit,
+        keyLen: 32
+    }, metaOverrides);
+    const json = Buffer.from(JSON.stringify(meta), "utf-8");
+    const prefix = Buffer.alloc(9);
+    prefix.write("CTXBOX", 0, "utf-8");
+    prefix.writeUInt8(1, 6);
+    prefix.writeUInt16BE(json.length, 7);
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+    const ciphertext = Buffer.concat([cipher.update(Buffer.from(plaintext)), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+    const fillExt = "*".repeat(8 - extension.length) + extension;
+    fs.writeFileSync(destPath, Buffer.concat([prefix, json, iv, ciphertext, Buffer.from(fillExt, "utf-8"), authTag]));
+}
+
+/**
+ * Write a CTX1 file directly (bypassing encrypt()), so tests can use fast MIN
+ * KDF limits and emit headers the production writer would refuse (malformed
+ * JSON, traversal names, oversized lengths, hostile flags, ...).
+ */
+async function writeCtx1File(destPath, password, payload, { flags = 0, metaOverrides = {}, rawHeader } = {}) {
+    await sodium.ready;
+    const salt = Buffer.from(sodium.randombytes_buf(16));
+    const { key, opslimit, memlimit } = await deriveTestKey(password, salt);
+    let header = rawHeader;
+    if (!header) {
+        const meta = Object.assign({
+            alg: "aes-256-gcm",
+            kdf: "argon2id",
+            salt: salt.toString("base64"),
+            opslimit: opslimit,
+            memlimit: memlimit,
+            keyLen: 32,
+            name: "payload.txt"
+        }, metaOverrides);
+        const json = Buffer.from(JSON.stringify(meta), "utf-8");
+        const prefix = Buffer.alloc(8);
+        prefix.write("CTX1", 0, "utf-8");
+        prefix.writeUInt8(1, 4);
+        prefix.writeUInt8(flags, 5);
+        prefix.writeUInt16BE(json.length, 6);
+        header = Buffer.concat([prefix, json]);
+    }
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+    cipher.setAAD(header);
+    const ciphertext = Buffer.concat([cipher.update(Buffer.from(payload)), cipher.final()]);
+    fs.writeFileSync(destPath, Buffer.concat([header, iv, ciphertext, cipher.getAuthTag()]));
+}
+
+/** Parse the header of a CTX1 file written by encrypt(). */
+function readCtx1Header(ctxPath) {
+    const buf = fs.readFileSync(ctxPath);
+    const headerLen = buf.readUInt16BE(6);
+    return {
+        magic: buf.slice(0, 4).toString("utf-8"),
+        version: buf.readUInt8(4),
+        flags: buf.readUInt8(5),
+        headerLen: headerLen,
+        meta: JSON.parse(buf.slice(8, 8 + headerLen).toString("utf-8")),
+        raw: buf
+    };
 }
 
 describe("Crypto", () => {
@@ -67,36 +159,35 @@ describe("Crypto", () => {
         expect(fs.existsSync(sourcePath)).toBe(false);
     });
 
-    it("writes an Argon2id KDF header (no raw SHA-256 key path)", async () => {
+    it("writes the CTX1 format and never the old layouts", async () => {
         const sourcePath = path.join(tempDir, "sample.txt");
-        const encryptedPath = path.join(tempDir, "sample.ctx");
-        fs.writeFileSync(sourcePath, "hello cryptox");
+        const plaintext = "hello cryptox";
+        fs.writeFileSync(sourcePath, plaintext);
 
         await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
 
-        const buf = fs.readFileSync(encryptedPath);
-        const magicLen = Constants.CTX_MAGIC.length;
-        expect(buf.slice(0, magicLen).toString("utf-8")).toBe(Constants.CTX_MAGIC);
-        expect(buf.readUInt8(magicLen)).toBe(Constants.CTX_FORMAT_VERSION);
-
-        const headerLen = buf.readUInt16BE(magicLen + 1);
-        const meta = JSON.parse(buf.slice(magicLen + 3, magicLen + 3 + headerLen).toString("utf-8"));
+        const { magic, version, flags, headerLen, meta, raw } = readCtx1Header(path.join(tempDir, "sample.ctx"));
+        expect(magic).toBe("CTX1");
+        expect(version).toBe(1);
+        expect(flags).toBe(0);
+        expect(headerLen).toBeGreaterThan(0);
+        expect(headerLen).toBeLessThanOrEqual(Format.MAX_HEADER_JSON);
+        expect(meta.alg).toBe("aes-256-gcm");
         expect(meta.kdf).toBe("argon2id");
-        expect(typeof meta.salt).toBe("string");
-        expect(meta.salt.length).toBeGreaterThan(0);
+        expect(meta.name).toBe("sample.txt");
         expect(meta.keyLen).toBe(32);
+        expect(Buffer.from(meta.salt, "base64").length).toBe(16);
         expect(meta.opslimit).toBeGreaterThan(0);
         expect(meta.memlimit).toBeGreaterThan(0);
+
+        // Pin the exact layout: [header][IV 16][ciphertext][tag 16] with no
+        // trailing 8-byte '*'-padded extension field (the old layouts' marker).
+        expect(raw.slice(0, 6).toString("utf-8")).not.toBe("CTXBOX");
+        expect(raw.length).toBe(8 + headerLen + 16 + plaintext.length + 16);
+        expect(raw.slice(raw.length - 24, raw.length - 16).toString("utf-8")).not.toBe("*****txt");
     });
 
     it("uses a different random salt per file", async () => {
-        const readSalt = (ctxPath) => {
-            const buf = fs.readFileSync(ctxPath);
-            const magicLen = Constants.CTX_MAGIC.length;
-            const headerLen = buf.readUInt16BE(magicLen + 1);
-            return JSON.parse(buf.slice(magicLen + 3, magicLen + 3 + headerLen).toString("utf-8")).salt;
-        };
-
         const firstSource = path.join(tempDir, "first.txt");
         const secondSource = path.join(tempDir, "second.txt");
         fs.writeFileSync(firstSource, "hello cryptox");
@@ -105,7 +196,40 @@ describe("Crypto", () => {
         await new Crypto("same password").encrypt(new FileManager(firstSource), { value: 0 }, {});
         await new Crypto("same password").encrypt(new FileManager(secondSource), { value: 0 }, {});
 
-        expect(readSalt(path.join(tempDir, "first.ctx"))).not.toBe(readSalt(path.join(tempDir, "second.ctx")));
+        const firstSalt = readCtx1Header(path.join(tempDir, "first.ctx")).meta.salt;
+        const secondSalt = readCtx1Header(path.join(tempDir, "second.ctx")).meta.salt;
+        expect(firstSalt).not.toBe(secondSalt);
+    });
+
+    it("decrypts using the header name even when the .ctx file is renamed", async () => {
+        const encryptedPath = path.join(tempDir, "renamed.blob");
+        await writeCtx1File(encryptedPath, "correct horse", "named payload", { metaOverrides: { name: "original.txt" } });
+
+        await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
+
+        expect(fs.readFileSync(path.join(tempDir, "original.txt"), "utf-8")).toBe("named payload");
+    });
+
+    it("rejects a tampered header even with the correct password", async () => {
+        const encryptedPath = path.join(tempDir, "tamper.ctx");
+        await writeCtx1File(encryptedPath, "correct horse", "tamper payload", { metaOverrides: { name: "sample.txt" } });
+
+        // Swap one letter of the name in the raw bytes: the JSON stays valid,
+        // the name stays sane and the derived key is unchanged (salt untouched),
+        // so only the AAD authentication can catch this.
+        const buf = fs.readFileSync(encryptedPath);
+        const idx = buf.indexOf("sample.txt");
+        expect(idx).toBeGreaterThan(0);
+        buf.write("zample.txt", idx, "utf-8");
+        fs.writeFileSync(encryptedPath, buf);
+
+        await expect(
+            new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 })
+        ).rejects.toThrow();
+
+        // No output may be left behind, under either name.
+        expect(fs.existsSync(path.join(tempDir, "sample.txt"))).toBe(false);
+        expect(fs.existsSync(path.join(tempDir, "zample.txt"))).toBe(false);
     });
 
     it("still decrypts legacy (SHA-256) .ctx files", async () => {
@@ -118,6 +242,85 @@ describe("Crypto", () => {
         expect(fs.readFileSync(recoveredPath, "utf-8")).toBe("legacy payload");
     });
 
+    it("still decrypts interim (CTXBOX) .ctx files", async () => {
+        const encryptedPath = path.join(tempDir, "interim.ctx");
+        const recoveredPath = path.join(tempDir, "interim.txt");
+        await writeInterimCtx(encryptedPath, "correct horse", "interim payload", "txt");
+
+        await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
+
+        expect(fs.readFileSync(recoveredPath, "utf-8")).toBe("interim payload");
+    });
+
+    it("rejects an interim file with an absurd memlimit before any KDF work", async () => {
+        const encryptedPath = path.join(tempDir, "interim.ctx");
+        await writeInterimCtx(encryptedPath, "correct horse", "interim payload", "txt", { memlimit: 2147483648 });
+
+        await expect(
+            new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 })
+        ).rejects.toThrow(/memlimit/);
+    });
+
+    it("rejects malformed CTX1 headers before any KDF or stream work", async () => {
+        const writeRaw = (name, header, padding = 64) => {
+            const filePath = path.join(tempDir, name);
+            fs.writeFileSync(filePath, Buffer.concat([header, Buffer.alloc(padding)]));
+            return filePath;
+        };
+        const prefix = (flags, headerLen) => {
+            const buf = Buffer.alloc(8);
+            buf.write("CTX1", 0, "utf-8");
+            buf.writeUInt8(1, 4);
+            buf.writeUInt8(flags, 5);
+            buf.writeUInt16BE(headerLen, 6);
+            return buf;
+        };
+        const withJson = (json) => Buffer.concat([prefix(0, Buffer.byteLength(json)), Buffer.from(json, "utf-8")]);
+        const validKdf = "\"kdf\":\"argon2id\",\"salt\":\"" + Buffer.alloc(16).toString("base64") + "\",\"opslimit\":1,\"memlimit\":8192,\"keyLen\":32";
+
+        const cases = [
+            ["oversized.ctx", prefix(0, 5000), /header length/],
+            ["badjson.ctx", withJson("{definitely not json"), /JSON/],
+            ["dos.ctx", withJson("{\"alg\":\"aes-256-gcm\"," + validKdf.replace("\"memlimit\":8192", "\"memlimit\":2147483648") + ",\"name\":\"a.txt\"}"), /memlimit/],
+            ["traversal.ctx", withJson("{\"alg\":\"aes-256-gcm\"," + validKdf + ",\"name\":\"../evil.txt\"}"), /name/],
+            ["badversion.ctx", Buffer.concat([Buffer.from("CTX1"), Buffer.from([9, 0, 0, 2])]), /unsupported format version/]
+        ];
+
+        for (const [name, header, pattern] of cases) {
+            const filePath = writeRaw(name, header);
+            await expect(
+                new Crypto("correct horse").decrypt(new FileManager(filePath), { value: 0 })
+            ).rejects.toThrow(pattern);
+        }
+    });
+
+    it("rejects a truncated CTX1 file cleanly", async () => {
+        const encryptedPath = path.join(tempDir, "trunc.ctx");
+        await writeCtx1File(encryptedPath, "correct horse", "truncate me", { metaOverrides: { name: "trunc.txt" } });
+
+        // Cut inside the IV/ciphertext region: the header still parses, but the
+        // payload no longer fits.
+        const headerLen = fs.readFileSync(encryptedPath).readUInt16BE(6);
+        fs.truncateSync(encryptedPath, 8 + headerLen + 10);
+
+        await expect(
+            new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 })
+        ).rejects.toThrow(/too short/);
+        expect(fs.existsSync(path.join(tempDir, "trunc.txt"))).toBe(false);
+    });
+
+    it("round-trips an empty file", async () => {
+        const sourcePath = path.join(tempDir, "empty.txt");
+        fs.writeFileSync(sourcePath, "");
+
+        await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
+        fs.unlinkSync(sourcePath);
+
+        await new Crypto("correct horse").decrypt(new FileManager(path.join(tempDir, "empty.ctx")), { value: 0 });
+
+        expect(fs.readFileSync(sourcePath, "utf-8")).toBe("");
+    });
+
     it("encrypts and decrypts a directory, with contents in place once decrypt resolves", async () => {
         const dirPath = path.join(tempDir, "folder");
         fs.mkdirSync(path.join(dirPath, "nested"), { recursive: true });
@@ -126,6 +329,11 @@ describe("Crypto", () => {
 
         await new Crypto("correct horse").encrypt(new FileManager(dirPath), { value: 0 }, {});
         expect(fs.existsSync(`${dirPath}.ctx`)).toBe(true);
+
+        // Directory payloads carry the flag bit and the tar name in the header.
+        const { flags, meta } = readCtx1Header(`${dirPath}.ctx`);
+        expect(flags & Format.FLAG_DIRECTORY).toBe(Format.FLAG_DIRECTORY);
+        expect(meta.name).toBe("folder.tar");
 
         fs.rmSync(dirPath, { force: true, recursive: true });
         await new Crypto("correct horse").decrypt(new FileManager(`${dirPath}.ctx`), { value: 0 });
@@ -137,25 +345,27 @@ describe("Crypto", () => {
     });
 
     it("rejects when a decrypted directory archive contains traversal entries", async () => {
-        // Encrypting a regular *.tar file marks the ctx payload as a directory
-        // archive, so decrypt runs it through extraction — exactly the path a
-        // malicious archive would take.
+        // Build a malicious tar in memory and wrap it in a CTX1 file with the
+        // directory flag set — exactly the path a hostile archive would take.
         const { pack } = require("tar-stream");
-        const tarPath = path.join(tempDir, "payload.tar");
-        await new Promise((resolve, reject) => {
+        const tarBuffer = await new Promise((resolve, reject) => {
             const archive = pack();
-            const output = fs.createWriteStream(tarPath);
-            output.on("close", resolve);
-            output.on("error", reject);
+            const chunks = [];
+            archive.on("data", chunk => chunks.push(chunk));
+            archive.on("end", () => resolve(Buffer.concat(chunks)));
+            archive.on("error", reject);
             archive.entry({ name: "../escape.txt", type: "file" }, "pwned");
             archive.finalize();
-            archive.pipe(output);
         });
 
-        await new Crypto("correct horse").encrypt(new FileManager(tarPath), { value: 0 }, {});
+        const encryptedPath = path.join(tempDir, "payload.ctx");
+        await writeCtx1File(encryptedPath, "correct horse", tarBuffer, {
+            flags: Format.FLAG_DIRECTORY,
+            metaOverrides: { name: "payload.tar" }
+        });
 
         await expect(
-            new Crypto("correct horse").decrypt(new FileManager(path.join(tempDir, "payload.ctx")), { value: 0 })
+            new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 })
         ).rejects.toThrow(/traversal/i);
 
         expect(fs.existsSync(path.join(tempDir, "escape.txt"))).toBe(false);
