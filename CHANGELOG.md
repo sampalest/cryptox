@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3-alpha] - 2026-06-10
+
+### Security
+
+- Replaced the fixed, predictable `/tmp/cryptox` temporary directory with a
+  per-operation temp lifecycle ([CTX-7]). Each encrypt/decrypt operation owns
+  a unique `fs.mkdtemp` directory under the OS temp location (created with
+  mode `0o700` on POSIX), tracked by its operation id and removed when the
+  operation succeeds or fails, so concurrent operations can never share or
+  delete each other's temp paths. No code path deletes a global shared temp
+  folder anymore, and directory encryption now uses the platform temp
+  location on Windows as well.
+
+### Fixed
+
+- Directory encryption no longer leaks the temporary tar archive when the
+  encryption stream fails ([CTX-7]).
+
 ## [0.3.2-alpha] - 2026-06-09
 
 ### Added
@@ -81,6 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Folder compression before encryption.
 - Materialize-based UI.
 
+[0.3.3-alpha]: https://github.com/Samuelpe/cryptox/compare/v0.3.2-alpha...v0.3.3-alpha
 [0.3.2-alpha]: https://github.com/Samuelpe/cryptox/compare/v0.3.1-alpha.61d56c5...v0.3.2-alpha
 [0.3.1-alpha]: https://github.com/Samuelpe/cryptox/compare/v0.3.0-alpha.6342062...v0.3.1-alpha.61d56c5
 [0.3.0-alpha]: https://github.com/Samuelpe/cryptox/compare/v0.2-alpha...v0.3.0-alpha

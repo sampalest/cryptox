@@ -6,6 +6,8 @@ import sodium from "libsodium-wrappers-sumo";
 import Crypto from "@/crypto.js";
 import Format from "@/format.js";
 import FileManager from "@/filemanager.js";
+import TempManager from "@/temp.js";
+import Utils from "@/utils.js";
 
 // Argon2id (MODERATE) is intentionally CPU/memory heavy; give the KDF room to run.
 jest.setTimeout(30000);
@@ -119,12 +121,24 @@ function readCtx1Header(ctxPath) {
 
 describe("Crypto", () => {
     let tempDir;
+    // Wraps the real TempManager.acquire so tests can assert which temp
+    // directories an operation got and that they are gone afterwards.
+    let acquiredDirs;
 
     beforeEach(() => {
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cryptox-test-"));
+        acquiredDirs = [];
+        const realAcquire = TempManager.acquire.bind(TempManager);
+        jest.spyOn(TempManager, "acquire").mockImplementation(async (...args) => {
+            const dir = await realAcquire(...args);
+            if (!acquiredDirs.includes(dir)) acquiredDirs.push(dir);
+            return dir;
+        });
     });
 
     afterEach(() => {
+        jest.restoreAllMocks();
+        TempManager.releaseAll();
         fs.rmSync(tempDir, { force: true, recursive: true });
     });
 
@@ -326,9 +340,16 @@ describe("Crypto", () => {
         fs.mkdirSync(path.join(dirPath, "nested"), { recursive: true });
         fs.writeFileSync(path.join(dirPath, "a.txt"), "alpha");
         fs.writeFileSync(path.join(dirPath, "nested", "b.txt"), "beta");
+        // Snapshot, not bare non-existence: a stale dir left by old versions
+        // on the host must not fail the test — only (re)creating it should.
+        const hadLegacyGlobalTmp = fs.existsSync("/tmp/cryptox");
 
         await new Crypto("correct horse").encrypt(new FileManager(dirPath), { value: 0 }, {});
         expect(fs.existsSync(`${dirPath}.ctx`)).toBe(true);
+
+        // The operation-owned temp directory must be gone once encrypt resolves.
+        expect(acquiredDirs).toHaveLength(1);
+        expect(fs.existsSync(acquiredDirs[0])).toBe(false);
 
         // Directory payloads carry the flag bit and the tar name in the header.
         const { flags, meta } = readCtx1Header(`${dirPath}.ctx`);
@@ -342,6 +363,72 @@ describe("Crypto", () => {
         // are fully in place as soon as the promise settles.
         expect(fs.readFileSync(path.join(dirPath, "a.txt"), "utf-8")).toBe("alpha");
         expect(fs.readFileSync(path.join(dirPath, "nested", "b.txt"), "utf-8")).toBe("beta");
+
+        // Decrypt's temp directory is cleaned up too, and the old fixed global
+        // temp directory is never created.
+        expect(acquiredDirs).toHaveLength(2);
+        expect(fs.existsSync(acquiredDirs[1])).toBe(false);
+        expect(fs.existsSync("/tmp/cryptox")).toBe(hadLegacyGlobalTmp);
+    });
+
+    it("gives concurrent directory operations distinct temp paths", async () => {
+        // Two source directories with the SAME basename: under the old global
+        // /tmp/cryptox both tars would have collided at folder.tar.
+        const contents = {};
+        for (const parent of ["a", "b"]) {
+            const dirPath = path.join(tempDir, parent, "folder");
+            fs.mkdirSync(dirPath, { recursive: true });
+            contents[parent] = `payload of ${parent}`;
+            fs.writeFileSync(path.join(dirPath, "data.txt"), contents[parent]);
+        }
+
+        await Promise.all(["a", "b"].map(parent =>
+            new Crypto("correct horse").encrypt(new FileManager(path.join(tempDir, parent, "folder")), { value: 0 }, {})
+        ));
+
+        expect(acquiredDirs).toHaveLength(2);
+        expect(acquiredDirs[0]).not.toBe(acquiredDirs[1]);
+        for (const dir of acquiredDirs) {
+            expect(path.basename(dir)).toMatch(/^cryptox-/);
+            expect(fs.existsSync(dir)).toBe(false);
+        }
+
+        for (const parent of ["a", "b"]) {
+            const dirPath = path.join(tempDir, parent, "folder");
+            fs.rmSync(dirPath, { force: true, recursive: true });
+            await new Crypto("correct horse").decrypt(new FileManager(`${dirPath}.ctx`), { value: 0 });
+            expect(fs.readFileSync(path.join(dirPath, "data.txt"), "utf-8")).toBe(contents[parent]);
+        }
+    });
+
+    it("cleans up the temp directory when directory encryption fails", async () => {
+        const dirPath = path.join(tempDir, "folder");
+        fs.mkdirSync(dirPath, { recursive: true });
+        fs.writeFileSync(path.join(dirPath, "a.txt"), "alpha");
+        jest.spyOn(Utils, "zipDirectory").mockRejectedValue(new Error("tar failed"));
+
+        await expect(
+            new Crypto("correct horse").encrypt(new FileManager(dirPath), { value: 0 }, {})
+        ).rejects.toThrow("tar failed");
+
+        expect(acquiredDirs).toHaveLength(1);
+        expect(fs.existsSync(acquiredDirs[0])).toBe(false);
+    });
+
+    it("cleans up the temp directory when directory decryption fails", async () => {
+        const dirPath = path.join(tempDir, "folder");
+        fs.mkdirSync(dirPath, { recursive: true });
+        fs.writeFileSync(path.join(dirPath, "a.txt"), "alpha");
+        await new Crypto("correct horse").encrypt(new FileManager(dirPath), { value: 0 }, {});
+        fs.rmSync(dirPath, { force: true, recursive: true });
+        acquiredDirs.length = 0;
+
+        await expect(
+            new Crypto("wrong horse").decrypt(new FileManager(`${dirPath}.ctx`), { value: 0 })
+        ).rejects.toThrow();
+
+        expect(acquiredDirs).toHaveLength(1);
+        expect(fs.existsSync(acquiredDirs[0])).toBe(false);
     });
 
     it("rejects when a decrypted directory archive contains traversal entries", async () => {
@@ -369,5 +456,9 @@ describe("Crypto", () => {
         ).rejects.toThrow(/traversal/i);
 
         expect(fs.existsSync(path.join(tempDir, "escape.txt"))).toBe(false);
+
+        // The rejected operation's temp directory must not be left behind.
+        expect(acquiredDirs).toHaveLength(1);
+        expect(fs.existsSync(acquiredDirs[0])).toBe(false);
     });
 });

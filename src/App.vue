@@ -15,7 +15,6 @@ export default {
 		return {
 		appTitle: "CRYPTOX",
 		language: "en",
-		tempFiles: "/tmp/cryptox",
 		dockMenu: null,
 		messages: {}
 		};
@@ -24,7 +23,6 @@ export default {
 		const appInfo = await window.cryptox.app.getInfo();
 		this.language = appInfo.locale.substring(0, 2);
 		this.messages = { ...Messages[this.language] };
-		this.tempFiles = appInfo.tempPath;
 	}
 };
 </script>
