@@ -1,4 +1,5 @@
 import Constants from "./constants.js";
+import Format from "./format.js";
 import Utils from "./utils.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -52,38 +53,25 @@ export default class Crypto {
     }
 
     /**
-     * Build the new-format file header: MAGIC + version + uint16 length + JSON meta.
-     * @function _buildHeader
-     * @param {Object} meta KDF metadata stored as JSON.
-     * @return {Buffer}
-     */
-    _buildHeader(meta) {
-        const json = Buffer.from(JSON.stringify(meta), "utf-8");
-        const prefix = Buffer.alloc(Constants.CTX_MAGIC.length + 1 + 2);
-        prefix.write(Constants.CTX_MAGIC, 0, "utf-8");
-        prefix.writeUInt8(Constants.CTX_FORMAT_VERSION, Constants.CTX_MAGIC.length);
-        prefix.writeUInt16BE(json.length, Constants.CTX_MAGIC.length + 1);
-        return Buffer.concat([prefix, json]);
-    }
-
-    /**
-     * Get positional bytes
-     * @function _getPositionalBytes
-     * @param {Object} obj Object with start and end parameters.
-     * @param {File} file File.
+     * Read exactly `length` bytes at `start`. Unlike a read stream, this can
+     * never silently return a partial range: a short read (truncated file)
+     * throws instead of hanging or handing back garbage offsets.
+     * @function _readBytes
+     * @param {String} filePath File path.
+     * @param {Number} start Byte offset to read from.
+     * @param {Number} length Number of bytes to read.
      * @return {Promise.<Buffer>}
      */
-    _getPositionalBytes(file, obj) {
-        return new Promise(resolve => {
-            var rs = fs.createReadStream(file, obj);
-            var bytes;
-            rs.on("data", (chunk) => {
-                bytes = chunk;
-            });
-            rs.on("close", () => {
-                resolve(bytes);
-            });
-        });
+    async _readBytes(filePath, start, length) {
+        const handle = await fs.promises.open(filePath, "r");
+        try {
+            const buffer = Buffer.alloc(length);
+            const { bytesRead } = await handle.read(buffer, 0, length, start);
+            if (bytesRead !== length) throw new Format.FormatError("file is truncated");
+            return buffer;
+        } finally {
+            await handle.close();
+        }
     }
 
     /**
@@ -148,30 +136,33 @@ export default class Crypto {
         if (onStatus) onStatus({ loader: true, msg: "Securing password..." });
         const CIPHER_KEY = this._deriveKeyArgon2id(salt, opslimit, memlimit, Constants.KEY_LEN);
         if (onStatus) onStatus({ loader: false });
-        const header = this._buildHeader({
-            kdf: "argon2id",
+        // CTX1 header: the original name travels in the (authenticated) header
+        // instead of a trailing padded-extension field, and a flag bit marks
+        // directory payloads instead of the old magic "tar" extension.
+        const header = Format.buildHeaderV1({
+            alg: Format.ALG_AES_256_GCM,
+            kdf: Format.KDF_ARGON2ID,
             salt: salt.toString("base64"),
             opslimit: opslimit,
             memlimit: memlimit,
-            keyLen: Constants.KEY_LEN
-        });
+            keyLen: Constants.KEY_LEN,
+            name: isDirectory ? `${file.name}.tar` : file.name
+        }, isDirectory ? Format.FLAG_DIRECTORY : 0);
 
         return new Promise((resolve, reject) => {
             const initVect = crypto.randomBytes(16);
             const readStream = fs.createReadStream(filepath);
             const cipher = crypto.createCipheriv(AES256, CIPHER_KEY, initVect);
+            // The header is associated data: the GCM tag authenticates it, so
+            // any tampering with the stored metadata fails decryption.
+            cipher.setAAD(header);
             const appendInitVect = new IVector(initVect);
             const writeStream = fs.createWriteStream(path.join(endfile));
-            // Header is written first so the file is [header][IV][ciphertext][ext][authTag].
+            // Header is written first so the file is [header][IV][ciphertext][authTag].
             writeStream.write(header);
 
             writeStream.on("finish", () => {
-                let authTag = cipher.getAuthTag();
-                let splitfile = file.name.split(".");
-                let extension = splitfile[splitfile.length - 1];
-                let fillExt = isDirectory ? Utils.fillExtension("tar") : Utils.fillExtension(extension);
-                let extBuffer = Buffer.from(fillExt, "utf-8");
-                fs.appendFileSync(endfile, Buffer.concat([extBuffer, authTag]));
+                fs.appendFileSync(endfile, cipher.getAuthTag());
                 if (isDirectory) Utils.rmRf(Constants.TMP);
                 resolve();
             });
@@ -199,7 +190,9 @@ export default class Crypto {
     }
 
     /**
-     * Decrypt File
+     * Decrypt File. Dispatches on the on-disk format: CTX1 (authenticated
+     * header), interim CTXBOX (0.3.x alphas, read-only) or raw legacy
+     * (IV-first, SHA-256 key).
      * @async
      * @function decrypt
      * @param {String} file File path
@@ -207,96 +200,222 @@ export default class Crypto {
      * @return {Promise}
      */
     async decrypt(file, completeFile, events = {}) {
-        const onProgress = events.onProgress;
-        const onStatus = events.onStatus;
         const size = fs.statSync(file.path).size;
-        const extSize = 8;
-        const authTagSize = 16;
-        const ivSize = 16;
-        const extPosition = authTagSize + 8;
+        const head = await this._readBytes(file.path, 0, Math.min(size, 9));
+        switch (Format.detectFormat(head)) {
+        case "ctx1":
+            return this._decryptV1(file, size, completeFile, events);
+        case "ctxbox":
+            return this._decryptInterim(file, size, completeFile, events);
+        default:
+            return this._decryptLegacy(file, size, completeFile, events);
+        }
+    }
 
-        const bufferExtStart = size - (authTagSize + extSize);
-        const bufferExtEnd = size - (authTagSize + 1);
-        const authTagStart = size - authTagSize;
-        const endFile = size - (extPosition + 1);
+    /**
+     * Decrypt a CTX1 file: bounded header parse, Argon2id key from the stored
+     * params, header bytes verified as GCM associated data, output name taken
+     * from the (authenticated) header.
+     * @function _decryptV1
+     */
+    async _decryptV1(file, size, completeFile, events = {}) {
+        const prefix = await this._readBytes(file.path, 0, Format.PREFIX_LEN_V1);
+        const { headerLen } = Format.parsePrefixV1(prefix);
+        if (size < Format.PREFIX_LEN_V1 + headerLen + Format.IV_LEN + Format.TAG_LEN) {
+            throw new Format.FormatError("file too short for CTX1 payload");
+        }
+        const headerBuf = await this._readBytes(file.path, 0, Format.PREFIX_LEN_V1 + headerLen);
+        const { flags, meta, headerBytes } = Format.parseHeaderV1(headerBuf, size);
 
-        // Detect format: new files begin with MAGIC + version + uint16 header length,
-        // followed by a JSON KDF header. Legacy files begin directly with the 16-byte IV
-        // (a random IV colliding with the 6-byte magic is ~1/2^48, acceptably rare).
+        await this._ready();
+        // Argon2id is synchronous and CPU/memory heavy; show the indeterminate bar while it runs.
+        if (events.onStatus) events.onStatus({ loader: true, msg: "Securing password..." });
+        const cipherKey = this._deriveKeyArgon2id(Buffer.from(meta.salt, "base64"), meta.opslimit, meta.memlimit, meta.keyLen);
+        if (events.onStatus) events.onStatus({ loader: false });
+
+        const headerEnd = headerBytes.length;
+        const iv = await this._readBytes(file.path, headerEnd, Format.IV_LEN);
+        const authTag = await this._readBytes(file.path, size - Format.TAG_LEN, Format.TAG_LEN);
+
+        const targetDir = path.dirname(file.path);
+        const isDirectory = (flags & Format.FLAG_DIRECTORY) !== 0;
+        let outPath, extractTo;
+        if (isDirectory) {
+            // Payload is a tar'd directory: write the archive to TMP, then
+            // extract next to the .ctx file under the original directory name.
+            const dirName = path.parse(meta.name).name;
+            if (!dirName) throw new Format.FormatError("header name has no directory stem");
+            Utils.createTempFiles();
+            outPath = `${Constants.TMP}/${meta.name}`;
+            extractTo = path.join(targetDir, dirName);
+        } else {
+            outPath = path.join(targetDir, meta.name);
+        }
+
+        return this._streamDecrypt({
+            filePath: file.path,
+            cipherKey: cipherKey,
+            iv: iv,
+            authTag: authTag,
+            aad: headerBytes,
+            ctStart: headerEnd + Format.IV_LEN,
+            ctEnd: size - Format.TAG_LEN - 1,
+            outPath: outPath,
+            extractTo: extractTo,
+            completeFile: completeFile,
+            onProgress: events.onProgress
+        });
+    }
+
+    /**
+     * Decrypt an interim CTXBOX file (written by the 0.3.x alphas):
+     * [magic 6][version u8][headerLen u16BE][JSON kdf meta][IV][ciphertext][ext 8][tag 16].
+     * The header cannot be authenticated retroactively, but parsing is bounded
+     * and the KDF params are clamped to the same limits as CTX1.
+     * @function _decryptInterim
+     */
+    async _decryptInterim(file, size, completeFile, events = {}) {
         const magicLen = Constants.CTX_MAGIC.length;
         const prefixLen = magicLen + 1 + 2;
-        const head = await this._getPositionalBytes(file.path, { start: 0, end: prefixLen - 1 });
-        const isNewFormat = head.length >= prefixLen
-            && head.slice(0, magicLen).toString("utf-8") === Constants.CTX_MAGIC
-            && head.readUInt8(magicLen) === Constants.CTX_FORMAT_VERSION;
-
-        let cipherKey;
-        let ivStart;
-        if (isNewFormat) {
-            const headerLen = head.readUInt16BE(magicLen + 1);
-            const headerTotalBytes = prefixLen + headerLen;
-            const jsonBuf = await this._getPositionalBytes(file.path, { start: prefixLen, end: headerTotalBytes - 1 });
-            const meta = JSON.parse(jsonBuf.toString("utf-8"));
-            await this._ready();
-            // Argon2id is synchronous and CPU/memory heavy; show the indeterminate bar while it runs.
-            if (onStatus) onStatus({ loader: true, msg: "Securing password..." });
-            cipherKey = this._deriveKeyArgon2id(Buffer.from(meta.salt, "base64"), meta.opslimit, meta.memlimit, meta.keyLen);
-            if (onStatus) onStatus({ loader: false });
-            ivStart = headerTotalBytes;
-        } else {
-            cipherKey = this._getCipherKey();
-            ivStart = 0;
+        const head = await this._readBytes(file.path, 0, prefixLen);
+        if (head.readUInt8(magicLen) !== Constants.CTX_FORMAT_VERSION) {
+            throw new Format.FormatError(`unsupported format version: ${head.readUInt8(magicLen)}`);
         }
-        const startFile = ivStart + ivSize;
+        const headerLen = head.readUInt16BE(magicLen + 1);
+        if (headerLen < 2 || headerLen > Format.MAX_HEADER_JSON) throw new Format.FormatError("header length out of range");
+        // header + IV + ext field + auth tag must fit in the file.
+        if (size < prefixLen + headerLen + Format.IV_LEN + 8 + Format.TAG_LEN) {
+            throw new Format.FormatError("file too short for CTXBOX payload");
+        }
+        const jsonBuf = await this._readBytes(file.path, prefixLen, headerLen);
+        let meta;
+        try {
+            meta = JSON.parse(jsonBuf.toString("utf-8"));
+        } catch (error) {
+            throw new Format.FormatError("header is not valid JSON");
+        }
+        Format.validateKdfParams(meta);
 
-        let completedSize = 0;
-        // Read the IV, then 8 bytes for the extension and 16 bytes for the GCM authTag.
-        const iv = await this._getPositionalBytes(file.path, { start: ivStart, end: ivStart + ivSize - 1 });
-        const bufferExt = await this._getPositionalBytes(file.path, { start: bufferExtStart, end: bufferExtEnd });
-        const authTag = await this._getPositionalBytes(file.path, { start: authTagStart, end: size });
+        await this._ready();
+        // Argon2id is synchronous and CPU/memory heavy; show the indeterminate bar while it runs.
+        if (events.onStatus) events.onStatus({ loader: true, msg: "Securing password..." });
+        const cipherKey = this._deriveKeyArgon2id(Buffer.from(meta.salt, "base64"), meta.opslimit, meta.memlimit, meta.keyLen);
+        if (events.onStatus) events.onStatus({ loader: false });
+
+        return this._decryptTrailingExt(file, size, completeFile, events, cipherKey, prefixLen + headerLen);
+    }
+
+    /**
+     * Decrypt a raw legacy file: [IV 16][ciphertext][ext 8][tag 16], key is the
+     * unsalted SHA-256 of the password (read-only backward compatibility).
+     * @function _decryptLegacy
+     */
+    async _decryptLegacy(file, size, completeFile, events = {}) {
+        // IV + ext field + auth tag is the minimum possible legacy file.
+        if (size < Format.IV_LEN + 8 + Format.TAG_LEN) throw new Format.FormatError("file too short for legacy payload");
+        return this._decryptTrailingExt(file, size, completeFile, events, this._getCipherKey(), 0);
+    }
+
+    /**
+     * Shared tail of the interim/legacy paths: both store an 8-byte '*'-padded
+     * extension before the trailing auth tag, with the IV at `ivStart`.
+     * @function _decryptTrailingExt
+     */
+    async _decryptTrailingExt(file, size, completeFile, events, cipherKey, ivStart) {
+        const extSize = 8;
+        const iv = await this._readBytes(file.path, ivStart, Format.IV_LEN);
+        const bufferExt = await this._readBytes(file.path, size - (Format.TAG_LEN + extSize), extSize);
+        const authTag = await this._readBytes(file.path, size - Format.TAG_LEN, Format.TAG_LEN);
+
+        // Remove all "*" padding from the extension.
+        const ext = bufferExt.filter(byte => byte != 42).toString("utf-8");
+        // If not a folder save in file directory else in temporal directory.
+        const isTar = ext === "tar";
+        if (isTar) Utils.createTempFiles();
+        const outPath = isTar ? `${Constants.TMP}/${file.name.split(".")[0]}.tar` : file.path.split(".")[0].concat(`.${ext}`);
+
+        return this._streamDecrypt({
+            filePath: file.path,
+            cipherKey: cipherKey,
+            iv: iv,
+            authTag: authTag,
+            ctStart: ivStart + Format.IV_LEN,
+            ctEnd: size - (Format.TAG_LEN + extSize) - 1,
+            outPath: outPath,
+            extractTo: isTar ? file.path.split(".")[0] : undefined,
+            completeFile: completeFile,
+            onProgress: events.onProgress
+        });
+    }
+
+    /**
+     * Common streaming decrypt core: read the ciphertext slice, pipe it through
+     * AES-256-GCM (with the header as associated data when given), write the
+     * plaintext, and extract it when the payload is a directory archive.
+     * On any failure the partial output is removed before rejecting.
+     * @function _streamDecrypt
+     * @param {Object} job { filePath, cipherKey, iv, authTag, aad?, ctStart, ctEnd, outPath, extractTo?, completeFile, onProgress? }
+     * @return {Promise}
+     */
+    _streamDecrypt({ filePath, cipherKey, iv, authTag, aad, ctStart, ctEnd, outPath, extractTo, completeFile, onProgress }) {
         return new Promise((resolve, reject) => {
             try {
-                // Remove all "*" from extension.
-                var ext = bufferExt.filter(byte => byte != 42);
                 const decipher = crypto.createDecipheriv(AES256, cipherKey, iv).setAuthTag(authTag);
-                const readStream = fs.createReadStream(file.path, { start: startFile, end: endFile });
-                // If not a folder save in file directory else in temporal directory.
-                if (ext.toString("utf-8") === "tar") Utils.createTempFiles();
-                const unencFile = ext.toString("utf-8") !== "tar" ? file.path.split(".")[0].concat(`.${ext}`) : `${Constants.TMP}/${file.name.split(".")[0]}.tar`;
-                const writeStream = fs.createWriteStream(unencFile);
+                if (aad) decipher.setAAD(aad);
                 // Ciphertext slice length: progress is measured against this so the bar runs a
-                // clean 0->100% (the full file size includes the header/IV/ext/authTag overhead).
-                const cipherLength = endFile - startFile + 1;
-                writeStream.on("finish", async () => {
-                    if (ext.toString("utf-8") === "tar") {
+                // clean 0->100% (the full file size includes the header/IV/authTag overhead).
+                const cipherLength = ctEnd - ctStart + 1;
+
+                const finalize = async () => {
+                    if (extractTo) {
                         try {
                             // Await extraction so success is not reported (nor the UI
                             // unblocked) before the archive is fully and safely unpacked.
-                            await Utils.unzipDirectory(unencFile, file.path.split(".")[0]);
+                            await Utils.unzipDirectory(outPath, extractTo);
                             Utils.rmRf(Constants.TMP);
                         } catch (error) {
-                            return handleError(error);
+                            return cleanupAndReject(error);
                         }
                     }
                     resolve();
-                });
+                };
 
-                // A wrong password fails GCM auth only at stream end, after partial garbage has
-                // been written. Tear down the streams and remove the bogus output before rejecting.
-                const handleError = error => {
-                    readStream.destroy();
-                    writeStream.destroy();
+                const cleanupAndReject = error => {
                     try {
-                        if (fs.existsSync(unencFile)) fs.unlinkSync(unencFile);
+                        if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
                     } catch (cleanupError) {
                         // Best-effort cleanup; surface the original decrypt error.
                     }
                     reject(error);
                 };
+
+                if (cipherLength <= 0) {
+                    // Empty plaintext: GCM still authenticates the tag (and AAD)
+                    // on final(), but a read stream cannot express a zero-length
+                    // range (start > end is rejected by fs).
+                    decipher.final();
+                    fs.writeFileSync(outPath, Buffer.alloc(0));
+                    finalize();
+                    return;
+                }
+
+                const readStream = fs.createReadStream(filePath, { start: ctStart, end: ctEnd });
+                const writeStream = fs.createWriteStream(outPath);
+                writeStream.on("finish", finalize);
+
+                // A wrong password (or tampered header) fails GCM auth only at stream
+                // end, after partial garbage has been written. Tear down the streams
+                // and remove the bogus output before rejecting.
+                const handleError = error => {
+                    readStream.destroy();
+                    writeStream.destroy();
+                    cleanupAndReject(error);
+                };
                 readStream.on("error", handleError);
                 decipher.on("error", handleError);
                 writeStream.on("error", handleError);
 
+                let completedSize = 0;
                 readStream
                     .pipe(decipher)
                     .on("data", buffer => {
