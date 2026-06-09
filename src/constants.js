@@ -1,6 +1,3 @@
-// Temporal
-const TMP = "/tmp/cryptox";
-
 // Extension
 const POINT_EXT = ".ctx";
 const EXT =  "ctx";
@@ -23,7 +20,6 @@ export default {
     EXT: EXT,
     POINT_EXT: POINT_EXT,
     PASSWORD_ERROR: PASSWORD_ERROR,
-    TMP: TMP,
     CTX_MAGIC: CTX_MAGIC,
     CTX_FORMAT_VERSION: CTX_FORMAT_VERSION,
     KEY_LEN: KEY_LEN

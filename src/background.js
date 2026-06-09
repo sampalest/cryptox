@@ -6,6 +6,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import Crypto from "./crypto.js";
 import FileManager from "./filemanager.js";
+import TempManager from "./temp.js";
 import { normalizeCryptoPayload, validateDeletePath, validateExternalUrl } from "./ipcValidation.js";
 const isDevelopment = process.env.NODE_ENV !== "production";
 import logger from "electron-log";
@@ -130,6 +131,12 @@ if (process.platform === "darwin") {
     app.commandLine.appendArgument("--enable-features=Metal");
 }
 
+// Safety net: drop any operation-owned temp directories that are still
+// registered (e.g. quit mid-operation).
+app.on("will-quit", () => {
+    TempManager.releaseAll();
+});
+
 app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {
         app.quit();
@@ -162,8 +169,7 @@ ipcMain.handle("files:renderer-ready", event => {
 ipcMain.handle("app:info", () => ({
     locale: app.getLocale(),
     name: app.name,
-    platform: process.platform,
-    tempPath: app.getPath("temp")
+    platform: process.platform
 }));
 
 ipcMain.handle("dialog:open-files", async () => {
@@ -181,7 +187,7 @@ ipcMain.handle("shell:open-external", (_, url) => shell.openExternal(validateExt
 
 ipcMain.handle("crypto:encrypt", async (event, payload) => {
     const { filePath, password, operationId } = normalizeCryptoPayload(payload);
-    const crypto = new Crypto(password);
+    const crypto = new Crypto(password, operationId);
     const normalizedFile = new FileManager(filePath);
     await crypto.encrypt(normalizedFile, { value: 0 }, {}, {
         onProgress: value => event.sender.send("crypto:progress", { operationId, value }),
@@ -191,7 +197,7 @@ ipcMain.handle("crypto:encrypt", async (event, payload) => {
 
 ipcMain.handle("crypto:decrypt", async (event, payload) => {
     const { filePath, password, operationId } = normalizeCryptoPayload(payload);
-    const crypto = new Crypto(password);
+    const crypto = new Crypto(password, operationId);
     const normalizedFile = new FileManager(filePath);
     await crypto.decrypt(normalizedFile, { value: 0 }, {
         onProgress: value => event.sender.send("crypto:progress", { operationId, value }),
