@@ -1,27 +1,8 @@
-import Constants from "./constants.js";
 import fs from "node:fs";
 import Path from "node:path";
 import tar from "tar-fs";
 
 export default class Utils {
-    static createTempFiles() {
-        var dir = "";
-        switch (process.platform) {
-        case "darwin":
-        case "linux":
-            dir = Constants.TMP;
-            if (!fs.existsSync(dir)) fs.mkdir(dir, err => {
-                if(err) console.log("error", err);
-            });
-            break;
-
-        case "win32":
-            break;
-        }
-
-        return dir;
-    }
-
     static getFilesDir(dir) {
         return new Promise((resolve, reject) => {
             fs.readdir(dir, (err, filenames) => {
