@@ -118,54 +118,46 @@ describe("Crypto", () => {
         expect(fs.readFileSync(recoveredPath, "utf-8")).toBe("legacy payload");
     });
 
-    it("writes an Argon2id KDF header (no raw SHA-256 key path)", async () => {
-        const sourcePath = path.join(tempDir, "sample.txt");
-        const encryptedPath = path.join(tempDir, "sample.ctx");
-        fs.writeFileSync(sourcePath, "hello cryptox");
+    it("encrypts and decrypts a directory, with contents in place once decrypt resolves", async () => {
+        const dirPath = path.join(tempDir, "folder");
+        fs.mkdirSync(path.join(dirPath, "nested"), { recursive: true });
+        fs.writeFileSync(path.join(dirPath, "a.txt"), "alpha");
+        fs.writeFileSync(path.join(dirPath, "nested", "b.txt"), "beta");
 
-        await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
+        await new Crypto("correct horse").encrypt(new FileManager(dirPath), { value: 0 }, {});
+        expect(fs.existsSync(`${dirPath}.ctx`)).toBe(true);
 
-        const buf = fs.readFileSync(encryptedPath);
-        const magicLen = Constants.CTX_MAGIC.length;
-        expect(buf.slice(0, magicLen).toString("utf-8")).toBe(Constants.CTX_MAGIC);
-        expect(buf.readUInt8(magicLen)).toBe(Constants.CTX_FORMAT_VERSION);
+        fs.rmSync(dirPath, { force: true, recursive: true });
+        await new Crypto("correct horse").decrypt(new FileManager(`${dirPath}.ctx`), { value: 0 });
 
-        const headerLen = buf.readUInt16BE(magicLen + 1);
-        const meta = JSON.parse(buf.slice(magicLen + 3, magicLen + 3 + headerLen).toString("utf-8"));
-        expect(meta.kdf).toBe("argon2id");
-        expect(typeof meta.salt).toBe("string");
-        expect(meta.salt.length).toBeGreaterThan(0);
-        expect(meta.keyLen).toBe(32);
-        expect(meta.opslimit).toBeGreaterThan(0);
-        expect(meta.memlimit).toBeGreaterThan(0);
+        // decrypt must not resolve before extraction completed, so the files
+        // are fully in place as soon as the promise settles.
+        expect(fs.readFileSync(path.join(dirPath, "a.txt"), "utf-8")).toBe("alpha");
+        expect(fs.readFileSync(path.join(dirPath, "nested", "b.txt"), "utf-8")).toBe("beta");
     });
 
-    it("uses a different random salt per file", async () => {
-        const readSalt = (ctxPath) => {
-            const buf = fs.readFileSync(ctxPath);
-            const magicLen = Constants.CTX_MAGIC.length;
-            const headerLen = buf.readUInt16BE(magicLen + 1);
-            return JSON.parse(buf.slice(magicLen + 3, magicLen + 3 + headerLen).toString("utf-8")).salt;
-        };
+    it("rejects when a decrypted directory archive contains traversal entries", async () => {
+        // Encrypting a regular *.tar file marks the ctx payload as a directory
+        // archive, so decrypt runs it through extraction — exactly the path a
+        // malicious archive would take.
+        const { pack } = require("tar-stream");
+        const tarPath = path.join(tempDir, "payload.tar");
+        await new Promise((resolve, reject) => {
+            const archive = pack();
+            const output = fs.createWriteStream(tarPath);
+            output.on("close", resolve);
+            output.on("error", reject);
+            archive.entry({ name: "../escape.txt", type: "file" }, "pwned");
+            archive.finalize();
+            archive.pipe(output);
+        });
 
-        const firstSource = path.join(tempDir, "first.txt");
-        const secondSource = path.join(tempDir, "second.txt");
-        fs.writeFileSync(firstSource, "hello cryptox");
-        fs.writeFileSync(secondSource, "hello cryptox");
+        await new Crypto("correct horse").encrypt(new FileManager(tarPath), { value: 0 }, {});
 
-        await new Crypto("same password").encrypt(new FileManager(firstSource), { value: 0 }, {});
-        await new Crypto("same password").encrypt(new FileManager(secondSource), { value: 0 }, {});
+        await expect(
+            new Crypto("correct horse").decrypt(new FileManager(path.join(tempDir, "payload.ctx")), { value: 0 })
+        ).rejects.toThrow(/traversal/i);
 
-        expect(readSalt(path.join(tempDir, "first.ctx"))).not.toBe(readSalt(path.join(tempDir, "second.ctx")));
-    });
-
-    it("still decrypts legacy (SHA-256) .ctx files", async () => {
-        const encryptedPath = path.join(tempDir, "legacy.ctx");
-        const recoveredPath = path.join(tempDir, "legacy.txt");
-        writeLegacyCtx(encryptedPath, "correct horse", "legacy payload", "txt");
-
-        await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
-
-        expect(fs.readFileSync(recoveredPath, "utf-8")).toBe("legacy payload");
+        expect(fs.existsSync(path.join(tempDir, "escape.txt"))).toBe(false);
     });
 });
