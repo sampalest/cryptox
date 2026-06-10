@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4-alpha] - 2026-06-10
+
+### Fixed
+
+- Output naming no longer truncates filenames at the first dot ([CTX-8]).
+  Multi-dot names (`document.backup.txt`) and Unicode names now round-trip
+  correctly: encryption replaces only the last extension
+  (`document.backup.ctx`) and decryption restores the full original name from
+  the authenticated CTX1 header. Legacy and interim files keep their multi-dot
+  stems on decryption as well.
+- Encrypted-file detection in the UI checks the last extension instead of the
+  segment after the first dot, so files like `archive.backup.ctx` are routed
+  to decryption ([CTX-8]).
+
+### Changed
+
+- Encryption and decryption never overwrite existing files or directories: a
+  free `name (1).ctx` / `name (1)` variant is chosen automatically, and output
+  files are created with exclusive flags so a race fails loudly instead of
+  clobbering data ([CTX-8]).
+- The unauthenticated trailing extension field of legacy and interim files is
+  validated before being used in an output path ([CTX-8]).
+
 ## [0.3.3-alpha] - 2026-06-10
 
 ### Security
@@ -99,6 +122,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Folder compression before encryption.
 - Materialize-based UI.
 
+[0.3.4-alpha]: https://github.com/sampalest/cryptox/compare/v0.3.3-alpha...v0.3.4-alpha
 [0.3.3-alpha]: https://github.com/Samuelpe/cryptox/compare/v0.3.2-alpha...v0.3.3-alpha
 [0.3.2-alpha]: https://github.com/Samuelpe/cryptox/compare/v0.3.1-alpha.61d56c5...v0.3.2-alpha
 [0.3.1-alpha]: https://github.com/Samuelpe/cryptox/compare/v0.3.0-alpha.6342062...v0.3.1-alpha.61d56c5
