@@ -122,6 +122,28 @@ export default class Utils {
         return fs.lstatSync(path).isDirectory();
     }
 
+    /**
+     * Return desiredPath if nothing exists there, otherwise the first free
+     * "name (n)" variant. For files the counter goes before the last extension
+     * ("report.ctx" -> "report (1).ctx"); for directories it goes at the very
+     * end ("mydir.v2" -> "mydir.v2 (1)"), since a dotted directory name has no
+     * extension to preserve.
+     * @param {String} desiredPath Wanted output path.
+     * @param {Boolean} isDirectory Whether the output is a directory.
+     * @return {String} A path that did not exist when checked.
+     */
+    static uniquePath(desiredPath, isDirectory = false) {
+        if (!fs.existsSync(desiredPath)) return desiredPath;
+        const parsed = Path.parse(desiredPath);
+        const stem = isDirectory ? parsed.base : parsed.name;
+        const ext = isDirectory ? "" : parsed.ext;
+        for (let i = 1; i <= 10000; i++) {
+            const candidate = Path.join(parsed.dir, `${stem} (${i})${ext}`);
+            if (!fs.existsSync(candidate)) return candidate;
+        }
+        throw new Error(`could not find a free output name for ${desiredPath}`);
+    }
+
     static textToBuffer(text) {
         var bufferText = [];
         var buffer = Buffer.from(text, "utf16le");

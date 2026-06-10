@@ -131,7 +131,10 @@ export default class Crypto {
         if (onStatus) onStatus({ filename: fileEvent.filename });
         let completedSize = 0;
         let size = fs.statSync(file.path).size;
-        let endfile = file.path.split(".")[0].concat(Constants.POINT_EXT);
+        // Replace only the last extension, so multi-dot names keep their stem
+        // ("document.backup.txt" -> "document.backup.ctx").
+        const parsedSource = path.parse(file.path);
+        let endfile = path.join(parsedSource.dir, parsedSource.name + Constants.POINT_EXT);
         let isDirectory = Utils.isDirectory(file.path);
         let filepath = file.path;
         if (isDirectory) {
@@ -163,6 +166,12 @@ export default class Crypto {
             name: isDirectory ? `${file.name}.tar` : file.name
         }, isDirectory ? Format.FLAG_DIRECTORY : 0);
 
+        // Never overwrite: deflect to "name (1).ctx" etc. Resolved here, after
+        // the multi-second KDF, to keep the check-to-open window small; the
+        // exclusive "wx" flag below turns a lost race into an error instead of
+        // an overwrite.
+        endfile = Utils.uniquePath(endfile);
+
         return new Promise((resolve, reject) => {
             const initVect = crypto.randomBytes(16);
             const readStream = fs.createReadStream(filepath);
@@ -171,7 +180,7 @@ export default class Crypto {
             // any tampering with the stored metadata fails decryption.
             cipher.setAAD(header);
             const appendInitVect = new IVector(initVect);
-            const writeStream = fs.createWriteStream(path.join(endfile));
+            const writeStream = fs.createWriteStream(endfile, { flags: "wx" });
             // Header is written first so the file is [header][IV][ciphertext][authTag].
             writeStream.write(header);
 
@@ -267,9 +276,9 @@ export default class Crypto {
             if (!dirName) throw new Format.FormatError("header name has no directory stem");
             const tempDir = await TempManager.acquire(this.operationId);
             outPath = path.join(tempDir, meta.name);
-            extractTo = path.join(targetDir, dirName);
+            extractTo = Utils.uniquePath(path.join(targetDir, dirName), true);
         } else {
-            outPath = path.join(targetDir, meta.name);
+            outPath = Utils.uniquePath(path.join(targetDir, meta.name));
         }
 
         return this._streamDecrypt({
@@ -349,11 +358,18 @@ export default class Crypto {
 
         // Remove all "*" padding from the extension.
         const ext = bufferExt.filter(byte => byte != 42).toString("utf-8");
+        // Strip only the trailing .ctx, keeping multi-dot stems intact
+        // ("multi.dot.name.ctx" -> "multi.dot.name.txt").
+        const parsedSource = path.parse(file.path);
+        const outName = ext ? `${parsedSource.name}.${ext}` : parsedSource.name;
+        // The trailing ext field is NOT covered by the GCM tag in these old
+        // layouts: reject anything that could steer the output path.
+        Format.sanitizeName(outName);
         // If not a folder save in file directory else in the operation's temp directory.
         const isTar = ext === "tar";
         const outPath = isTar
-            ? path.join(await TempManager.acquire(this.operationId), `${file.name.split(".")[0]}.tar`)
-            : file.path.split(".")[0].concat(`.${ext}`);
+            ? path.join(await TempManager.acquire(this.operationId), `${parsedSource.name}.tar`)
+            : Utils.uniquePath(path.join(parsedSource.dir, outName));
 
         return this._streamDecrypt({
             filePath: file.path,
@@ -363,7 +379,7 @@ export default class Crypto {
             ctStart: ivStart + Format.IV_LEN,
             ctEnd: size - (Format.TAG_LEN + extSize) - 1,
             outPath: outPath,
-            extractTo: isTar ? file.path.split(".")[0] : undefined,
+            extractTo: isTar ? Utils.uniquePath(path.join(parsedSource.dir, parsedSource.name), true) : undefined,
             completeFile: completeFile,
             onProgress: events.onProgress
         });
@@ -402,7 +418,12 @@ export default class Crypto {
 
                 const cleanupAndReject = error => {
                     try {
-                        if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+                        // The output is opened with "wx" (never overwrite). On
+                        // EEXIST the file at outPath predates this operation:
+                        // unlinking it would delete the very file we refused
+                        // to overwrite.
+                        const refusedOverwrite = error && error.code === "EEXIST";
+                        if (!refusedOverwrite && fs.existsSync(outPath)) fs.unlinkSync(outPath);
                     } catch (cleanupError) {
                         // Best-effort cleanup; surface the original decrypt error.
                     }
@@ -414,13 +435,13 @@ export default class Crypto {
                     // on final(), but a read stream cannot express a zero-length
                     // range (start > end is rejected by fs).
                     decipher.final();
-                    fs.writeFileSync(outPath, Buffer.alloc(0));
+                    fs.writeFileSync(outPath, Buffer.alloc(0), { flag: "wx" });
                     finalize();
                     return;
                 }
 
                 const readStream = fs.createReadStream(filePath, { start: ctStart, end: ctEnd });
-                const writeStream = fs.createWriteStream(outPath);
+                const writeStream = fs.createWriteStream(outPath, { flags: "wx" });
                 writeStream.on("finish", finalize);
 
                 // A wrong password (or tampered header) fails GCM auth only at stream
