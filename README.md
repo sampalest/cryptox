@@ -5,7 +5,7 @@
 </div>
 <hr>
 
-## Version 0.3.5-alpha
+## Version 0.3.6-alpha
 
 ## Description
 * Simple app for encrypt files
@@ -36,9 +36,12 @@ npm run electron:serve
 npm run lint
 npm run test:unit
 npm run test:e2e
+npm run test:large
 ```
 
 `test:e2e` runs a real Electron smoke test for startup, renderer load, and preload bridge availability.
+
+`test:large` generates a 1 GB file and a 1 GB folder and verifies the UI progress/status contract against real output visibility, printing timing metrics. Override the payload size with `CRYPTOX_LARGE_SIZE_MB` (e.g. `CRYPTOX_LARGE_SIZE_MB=128 npm run test:large`). The "Large payload tests" GitHub Actions workflow runs this suite on Linux, macOS and Windows via manual dispatch.
 
 ### Build and packaging
 
