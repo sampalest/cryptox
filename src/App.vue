@@ -11,18 +11,18 @@
 import Messages from "@/messages.js";
 
 export default {
-	data: () => {
-		return {
-		appTitle: "CRYPTOX",
-		language: "en",
-		dockMenu: null,
-		messages: {}
-		};
-	},
-	async beforeMount() {
-		const appInfo = await window.cryptox.app.getInfo();
-		this.language = appInfo.locale.substring(0, 2);
-		this.messages = { ...Messages[this.language] };
-	}
+    data: () => {
+        return {
+            appTitle: "CRYPTOX",
+            language: "en",
+            dockMenu: null,
+            messages: {}
+        };
+    },
+    async beforeMount() {
+        const appInfo = await window.cryptox.app.getInfo();
+        this.language = appInfo.locale.substring(0, 2);
+        this.messages = { ...Messages[this.language] };
+    }
 };
 </script>
