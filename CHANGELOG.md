@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5-alpha] - 2026-06-10
+
+### Security
+
+- Decryption no longer writes plaintext directly to the final output path
+  ([CTX-9]). The plaintext is streamed to a hidden, randomly named temporary
+  file next to the destination and is only moved into place, with an
+  overwrite-safe link-then-unlink, after AES-GCM authentication succeeds. A
+  wrong password, tampered ciphertext or auth tag, a bad header, or a failed
+  stream removes the temporary file and leaves no output at the final path.
+  Directory decryption keeps the same guarantee: the archive is decrypted in
+  the operation temp directory, and the validated extraction is moved into a
+  fresh output directory instead of being merged into an existing one.
+
 ## [0.3.4-alpha] - 2026-06-10
 
 ### Fixed
@@ -122,6 +136,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Folder compression before encryption.
 - Materialize-based UI.
 
+[0.3.5-alpha]: https://github.com/sampalest/cryptox/compare/v0.3.4-alpha...v0.3.5-alpha
 [0.3.4-alpha]: https://github.com/sampalest/cryptox/compare/v0.3.3-alpha...v0.3.4-alpha
 [0.3.3-alpha]: https://github.com/Samuelpe/cryptox/compare/v0.3.2-alpha...v0.3.3-alpha
 [0.3.2-alpha]: https://github.com/Samuelpe/cryptox/compare/v0.3.1-alpha.61d56c5...v0.3.2-alpha

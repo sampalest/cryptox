@@ -59,7 +59,9 @@ export default class Utils {
      * Safely extract a tar archive. Entries are validated (no traversal, no
      * absolute paths, no link/device/FIFO/socket types) and written to a fresh
      * temp directory next to the output, which is only moved into place once
-     * the whole archive extracted cleanly.
+     * the whole archive extracted cleanly. The extraction never merges into an
+     * existing directory: if the output name got taken mid-extraction, the
+     * result lands at a fresh "name (n)" variant instead.
      * @param {String} input Tar file path.
      * @param {String} output Output directory path.
      * @return {Promise.<void>}
@@ -99,14 +101,13 @@ export default class Utils {
                 if (entryError) return fail(entryError);
                 settled = true;
                 try {
-                    if (fs.existsSync(outputRoot)) {
-                        // Output already exists (e.g. the original folder was kept):
-                        // merge the validated entries into it.
-                        fs.cpSync(tempRoot, outputRoot, { recursive: true });
-                        this.rmRf(tempRoot);
-                    } else {
-                        fs.renameSync(tempRoot, outputRoot);
-                    }
+                    // Merging into an existing directory would overwrite files
+                    // inside it and could leave partial output if interrupted:
+                    // re-resolve to a fresh name and move atomically instead.
+                    const target = fs.existsSync(outputRoot)
+                        ? this.uniquePath(outputRoot, true)
+                        : outputRoot;
+                    fs.renameSync(tempRoot, target);
                     resolve();
                 } catch (error) {
                     this.rmRf(tempRoot);
