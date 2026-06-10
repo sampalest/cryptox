@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("cryptox", {
     crypto: {
         encrypt: (file, password, operationId) => ipcRenderer.invoke("crypto:encrypt", { file: { path: file?.path }, password, operationId }),
         decrypt: (file, password, operationId) => ipcRenderer.invoke("crypto:decrypt", { file: { path: file?.path }, password, operationId }),
+        cancel: operationId => ipcRenderer.invoke("crypto:cancel", operationId),
         onProgress: callback => {
             const listener = (_, payload) => callback(payload);
             ipcRenderer.on("crypto:progress", listener);

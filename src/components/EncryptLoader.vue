@@ -77,6 +77,7 @@ export default {
     },
     methods: {
         cancel() {
+            this.cancelOperations();
             this.$emit("cancel", true);
         },
         destroy() {
