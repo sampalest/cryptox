@@ -5,6 +5,58 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6-alpha] - 2026-06-10
+
+### Added
+
+- The Cancel button now performs a real cancellation instead of only resetting
+  the UI ([CTX-10]). A main-process operation registry tracks every in-flight
+  encrypt/decrypt operation by its operation id, and a new `crypto:cancel` IPC
+  channel (exposed through the preload bridge) destroys the active read,
+  cipher and write streams, removes partial and staged outputs, and releases
+  the operation's temp directory. Cancelled operations report a distinct
+  cancelled result to the renderer, so they are never counted as successes or
+  shown as errors. Quitting the app mid-operation tears down in-flight
+  operations the same way.
+- Concurrent operations targeting the same input or output path are now
+  blocked ([CTX-10]): the registry claims each operation's normalized paths
+  and rejects a second operation on a busy path instead of letting two
+  operations race the same file.
+- New large payload test suite (`npm run test:large`): generates a 1 GB file
+  and a 1 GB folder, verifies the UI progress/status event contract against
+  real output visibility on disk for encrypt and decrypt, and reports timing
+  metrics. A new manually dispatched GitHub Actions workflow runs it on
+  Linux, macOS and Windows.
+
+### Changed
+
+- The progress bar reaches 100% only once the output file is visible at its
+  final path ([CTX-10]). Streaming progress is capped at 99%, and while the
+  output is finalized (auth tag, flush, move into place, or directory
+  extraction) the UI shows the indeterminate bar with a "Saving file..." or
+  "Extracting files..." status, so a large operation can no longer look
+  complete while the result is still a hidden staging file.
+- Clearer status messages ([CTX-10]): the key derivation phase now reads
+  "Preparing secure key..." instead of the misleading "Securing password...",
+  and the finalization phase reads "Saving file..." instead of "Finishing...".
+- Completion now waits for the output to be flushed to disk ([CTX-10]).
+  Staged outputs are fsync'd before being moved into place, so when the UI
+  reports success the file is physically stored, not merely queued in the OS
+  write cache. Previously a large file could still be flushing for seconds
+  after the interface finished, which delayed its appearance in Finder and
+  meant a power loss right after "success" could truncate the output.
+
+### Security
+
+- Encryption no longer writes ciphertext directly to the final output path
+  ([CTX-10]). Mirroring the decryption staging from [CTX-9], the ciphertext is
+  streamed to a hidden, randomly named temporary file next to the destination
+  and is only moved into place, with the overwrite-safe link-then-unlink, after
+  the GCM auth tag is appended. The `.ctx` file now appears only fully formed:
+  a cancelled, failed or interrupted encryption removes the staged file and
+  never leaves a partial `.ctx` at the final path, and file sync tools can no
+  longer pick up a half-written archive.
+
 ## [0.3.5-alpha] - 2026-06-10
 
 ### Security
