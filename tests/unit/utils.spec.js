@@ -108,7 +108,7 @@ describe("Utils", () => {
             expect(leftoverTempDirs()).toEqual([]);
         });
 
-        it("merges into an already existing output directory", async () => {
+        it("never merges into an existing output directory, deflecting instead", async () => {
             fs.mkdirSync(outputDir);
             fs.writeFileSync(path.join(outputDir, "existing.txt"), "keep me");
             await writeTar(tarPath, [
@@ -117,8 +117,11 @@ describe("Utils", () => {
 
             await Utils.unzipDirectory(tarPath, outputDir);
 
+            // The pre-existing directory is untouched and the extraction lands
+            // at a fresh "name (n)" variant.
             expect(fs.readFileSync(path.join(outputDir, "existing.txt"), "utf-8")).toBe("keep me");
-            expect(fs.readFileSync(path.join(outputDir, "fresh.txt"), "utf-8")).toBe("fresh");
+            expect(fs.existsSync(path.join(outputDir, "fresh.txt"))).toBe(false);
+            expect(fs.readFileSync(path.join(`${outputDir} (1)`, "fresh.txt"), "utf-8")).toBe("fresh");
             expect(leftoverTempDirs()).toEqual([]);
         });
 
