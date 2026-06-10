@@ -105,6 +105,14 @@ async function writeCtx1File(destPath, password, payload, { flags = 0, metaOverr
     fs.writeFileSync(destPath, Buffer.concat([header, iv, ciphertext, cipher.getAuthTag()]));
 }
 
+/**
+ * Names of staged/extract temp entries left in a directory. Decrypt failures
+ * must remove these, so tests assert the list is empty afterwards.
+ */
+function leftoverTempNames(dir) {
+    return fs.readdirSync(dir).filter(name => name.startsWith(".cryptox-"));
+}
+
 /** Parse the header of a CTX1 file written by encrypt(). */
 function readCtx1Header(ctxPath) {
     const buf = fs.readFileSync(ctxPath);
@@ -169,8 +177,10 @@ describe("Crypto", () => {
             new Crypto("wrong horse").decrypt(new FileManager(encryptedPath), { value: 0 })
         ).rejects.toThrow();
 
-        // The partial/garbage output must be cleaned up, not left on disk.
+        // The partial/garbage output must be cleaned up, not left on disk,
+        // and no staged temp file may remain either.
         expect(fs.existsSync(sourcePath)).toBe(false);
+        expect(leftoverTempNames(tempDir)).toEqual([]);
     });
 
     it("writes the CTX1 format and never the old layouts", async () => {
@@ -590,5 +600,124 @@ describe("Crypto", () => {
         ).rejects.toThrow(/illegal characters/);
 
         expect(fs.existsSync(path.join(tempDir, "x"))).toBe(false);
+    });
+
+    it("leaves no output when the auth tag is tampered", async () => {
+        const encryptedPath = path.join(tempDir, "payload.ctx");
+        await writeCtx1File(encryptedPath, "correct horse", "tagged payload", { metaOverrides: { name: "payload.txt" } });
+
+        // Flip a byte inside the trailing 16-byte GCM tag.
+        const buf = fs.readFileSync(encryptedPath);
+        buf[buf.length - 1] ^= 0xff;
+        fs.writeFileSync(encryptedPath, buf);
+
+        await expect(
+            new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 })
+        ).rejects.toThrow();
+
+        expect(fs.existsSync(path.join(tempDir, "payload.txt"))).toBe(false);
+        expect(leftoverTempNames(tempDir)).toEqual([]);
+    });
+
+    it("leaves no output when the ciphertext is tampered", async () => {
+        const encryptedPath = path.join(tempDir, "payload.ctx");
+        await writeCtx1File(encryptedPath, "correct horse", "tampered payload", { metaOverrides: { name: "payload.txt" } });
+
+        // Flip a byte in the middle of the ciphertext region:
+        // [8 + headerLen header][16 IV][ciphertext][16 tag].
+        const buf = fs.readFileSync(encryptedPath);
+        const headerLen = buf.readUInt16BE(6);
+        const ctStart = 8 + headerLen + 16;
+        const ctLen = buf.length - ctStart - 16;
+        buf[ctStart + Math.floor(ctLen / 2)] ^= 0xff;
+        fs.writeFileSync(encryptedPath, buf);
+
+        await expect(
+            new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 })
+        ).rejects.toThrow();
+
+        expect(fs.existsSync(path.join(tempDir, "payload.txt"))).toBe(false);
+        expect(leftoverTempNames(tempDir)).toEqual([]);
+    });
+
+    it("leaves no output when the output stream fails mid-decrypt", async () => {
+        const { Writable } = require("stream");
+        const encryptedPath = path.join(tempDir, "payload.ctx");
+        await writeCtx1File(encryptedPath, "correct horse", "doomed payload", { metaOverrides: { name: "payload.txt" } });
+
+        // Fail every write to the staged plaintext file, leaving all other
+        // streams (and unrelated tests) untouched.
+        const realCreateWriteStream = fs.createWriteStream.bind(fs);
+        jest.spyOn(fs, "createWriteStream").mockImplementation((target, options) => {
+            if (!String(target).includes(".cryptox-part-")) return realCreateWriteStream(target, options);
+            return new Writable({
+                write(chunk, encoding, callback) {
+                    callback(new Error("disk full"));
+                }
+            });
+        });
+
+        await expect(
+            new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 })
+        ).rejects.toThrow("disk full");
+
+        expect(fs.existsSync(path.join(tempDir, "payload.txt"))).toBe(false);
+        expect(leftoverTempNames(tempDir)).toEqual([]);
+    });
+
+    it("creates the final file only after decryption completes", async () => {
+        const encryptedPath = path.join(tempDir, "payload.ctx");
+        const finalPath = path.join(tempDir, "payload.txt");
+        const plaintext = "x".repeat(256 * 1024);
+        await writeCtx1File(encryptedPath, "correct horse", plaintext, { metaOverrides: { name: "payload.txt" } });
+
+        // Progress events fire while ciphertext is still streaming: the final
+        // path must not exist at any of those moments.
+        const observedDuringStream = [];
+        await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 }, {
+            onProgress: () => observedDuringStream.push(fs.existsSync(finalPath))
+        });
+
+        expect(observedDuringStream.length).toBeGreaterThan(0);
+        expect(observedDuringStream).not.toContain(true);
+        expect(fs.readFileSync(finalPath, "utf-8")).toBe(plaintext);
+        expect(leftoverTempNames(tempDir)).toEqual([]);
+    });
+
+    it("leaves no extracted output when directory decryption fails", async () => {
+        const { pack } = require("tar-stream");
+        const tarBuffer = await new Promise((resolve, reject) => {
+            const archive = pack();
+            const chunks = [];
+            archive.on("data", chunk => chunks.push(chunk));
+            archive.on("end", () => resolve(Buffer.concat(chunks)));
+            archive.on("error", reject);
+            archive.entry({ name: "data.txt", type: "file" }, "secret");
+            archive.finalize();
+        });
+
+        const encryptedPath = path.join(tempDir, "folder.ctx");
+        await writeCtx1File(encryptedPath, "correct horse", tarBuffer, {
+            flags: Format.FLAG_DIRECTORY,
+            metaOverrides: { name: "folder.tar" }
+        });
+
+        // Tampered tag: GCM authentication fails at stream end, before any
+        // extraction may run.
+        const buf = fs.readFileSync(encryptedPath);
+        buf[buf.length - 1] ^= 0xff;
+        fs.writeFileSync(encryptedPath, buf);
+
+        await expect(
+            new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 })
+        ).rejects.toThrow();
+
+        expect(fs.existsSync(path.join(tempDir, "folder"))).toBe(false);
+        expect(leftoverTempNames(tempDir)).toEqual([]);
+
+        // The rejected operation's temp directory (holding the staged tar)
+        // must be gone as well.
+        expect(acquiredDirs).toHaveLength(1);
+        expect(fs.existsSync(acquiredDirs[0])).toBe(false);
     });
 });
