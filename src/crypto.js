@@ -278,7 +278,10 @@ export default class Crypto {
             outPath = path.join(tempDir, meta.name);
             extractTo = Utils.uniquePath(path.join(targetDir, dirName), true);
         } else {
-            outPath = Utils.uniquePath(path.join(targetDir, meta.name));
+            // Desired final path only: the plaintext is staged in a hidden
+            // temp file and the free "name (n)" variant is resolved when the
+            // authenticated output is moved into place.
+            outPath = path.join(targetDir, meta.name);
         }
 
         return this._streamDecrypt({
@@ -365,11 +368,14 @@ export default class Crypto {
         // The trailing ext field is NOT covered by the GCM tag in these old
         // layouts: reject anything that could steer the output path.
         Format.sanitizeName(outName);
-        // If not a folder save in file directory else in the operation's temp directory.
+        // If not a folder save in file directory else in the operation's temp
+        // directory. For files this is the desired final path only; the free
+        // "name (n)" variant is resolved when the authenticated output is
+        // moved into place.
         const isTar = ext === "tar";
         const outPath = isTar
             ? path.join(await TempManager.acquire(this.operationId), `${parsedSource.name}.tar`)
-            : Utils.uniquePath(path.join(parsedSource.dir, outName));
+            : path.join(parsedSource.dir, outName);
 
         return this._streamDecrypt({
             filePath: file.path,
@@ -386,10 +392,56 @@ export default class Crypto {
     }
 
     /**
+     * Hidden staging path for decrypted plaintext: a randomly named dotfile in
+     * the same directory as the final destination, so the final move never
+     * crosses filesystems and is atomic.
+     * @function _tempOutputPath
+     * @param {String} finalPath Desired final output path.
+     * @return {String}
+     */
+    _tempOutputPath(finalPath) {
+        return path.join(path.dirname(finalPath), `.cryptox-part-${crypto.randomBytes(8).toString("hex")}`);
+    }
+
+    /**
+     * Move the authenticated plaintext from its staging path to the first free
+     * "name (n)" variant of the desired path. link(2) fails with EEXIST instead
+     * of overwriting (unlike rename), so a lost race re-resolves the name; on
+     * filesystems without hard links fall back to a re-check plus rename.
+     * @function _moveIntoPlace
+     * @param {String} tempPath Staged plaintext path (operation-owned).
+     * @param {String} desiredPath Wanted final output path.
+     * @return {String} The path the output landed at.
+     */
+    _moveIntoPlace(tempPath, desiredPath) {
+        const LINK_UNSUPPORTED = ["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS"];
+        for (let attempt = 0; attempt < 5; attempt++) {
+            const target = Utils.uniquePath(desiredPath);
+            try {
+                fs.linkSync(tempPath, target);
+                fs.unlinkSync(tempPath);
+                return target;
+            } catch (error) {
+                if (error.code === "EEXIST") continue;
+                if (LINK_UNSUPPORTED.includes(error.code)) {
+                    if (fs.existsSync(target)) continue;
+                    fs.renameSync(tempPath, target);
+                    return target;
+                }
+                throw error;
+            }
+        }
+        throw new Error(`could not move decrypted output into place for ${desiredPath}`);
+    }
+
+    /**
      * Common streaming decrypt core: read the ciphertext slice, pipe it through
-     * AES-256-GCM (with the header as associated data when given), write the
-     * plaintext, and extract it when the payload is a directory archive.
-     * On any failure the partial output is removed before rejecting.
+     * AES-256-GCM (with the header as associated data when given), and stage
+     * the plaintext in a hidden temp file. Only after GCM authentication
+     * succeeds is the output moved to its final path (or, for directory
+     * archives, validated and extracted there), so a wrong password, tampered
+     * ciphertext or interrupted stream never leaves plaintext at the final
+     * destination. On any failure the staged output is removed before rejecting.
      * @function _streamDecrypt
      * @param {Object} job { filePath, cipherKey, iv, authTag, aad?, ctStart, ctEnd, outPath, extractTo?, completeFile, onProgress? }
      * @return {Promise}
@@ -402,28 +454,31 @@ export default class Crypto {
                 // Ciphertext slice length: progress is measured against this so the bar runs a
                 // clean 0->100% (the full file size includes the header/IV/authTag overhead).
                 const cipherLength = ctEnd - ctStart + 1;
+                // Archive payloads already stream into the operation's temp
+                // directory; file payloads are staged next to the destination
+                // and only moved into place after authentication.
+                const writePath = extractTo ? outPath : this._tempOutputPath(outPath);
 
                 const finalize = async () => {
-                    if (extractTo) {
-                        try {
+                    try {
+                        if (extractTo) {
                             // Await extraction so success is not reported (nor the UI
                             // unblocked) before the archive is fully and safely unpacked.
-                            await Utils.unzipDirectory(outPath, extractTo);
-                        } catch (error) {
-                            return cleanupAndReject(error);
+                            await Utils.unzipDirectory(writePath, extractTo);
+                        } else {
+                            this._moveIntoPlace(writePath, outPath);
                         }
+                    } catch (error) {
+                        return cleanupAndReject(error);
                     }
                     resolve();
                 };
 
                 const cleanupAndReject = error => {
                     try {
-                        // The output is opened with "wx" (never overwrite). On
-                        // EEXIST the file at outPath predates this operation:
-                        // unlinking it would delete the very file we refused
-                        // to overwrite.
-                        const refusedOverwrite = error && error.code === "EEXIST";
-                        if (!refusedOverwrite && fs.existsSync(outPath)) fs.unlinkSync(outPath);
+                        // The staged output has a random operation-owned name,
+                        // so it is always ours to remove.
+                        if (fs.existsSync(writePath)) fs.unlinkSync(writePath);
                     } catch (cleanupError) {
                         // Best-effort cleanup; surface the original decrypt error.
                     }
@@ -434,14 +489,18 @@ export default class Crypto {
                     // Empty plaintext: GCM still authenticates the tag (and AAD)
                     // on final(), but a read stream cannot express a zero-length
                     // range (start > end is rejected by fs).
-                    decipher.final();
-                    fs.writeFileSync(outPath, Buffer.alloc(0), { flag: "wx" });
+                    try {
+                        decipher.final();
+                        fs.writeFileSync(writePath, Buffer.alloc(0), { flag: "wx" });
+                    } catch (error) {
+                        return cleanupAndReject(error);
+                    }
                     finalize();
                     return;
                 }
 
                 const readStream = fs.createReadStream(filePath, { start: ctStart, end: ctEnd });
-                const writeStream = fs.createWriteStream(outPath, { flags: "wx" });
+                const writeStream = fs.createWriteStream(writePath, { flags: "wx" });
                 writeStream.on("finish", finalize);
 
                 // A wrong password (or tampered header) fails GCM auth only at stream
