@@ -78,8 +78,7 @@ export default {
                 return new FileManager(filePath);
             });
             this.files.forEach(file => {
-                let filesplit = file.name.split(".");
-                if (filesplit && filesplit[1] === Constants.EXT) {
+                if (file.name.endsWith(Constants.POINT_EXT)) {
                     this.encrypted = true;
                     ctx++;
                 } else {

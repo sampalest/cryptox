@@ -461,4 +461,134 @@ describe("Crypto", () => {
         expect(acquiredDirs).toHaveLength(1);
         expect(fs.existsSync(acquiredDirs[0])).toBe(false);
     });
+
+    it("keeps multi-dot and Unicode stems when naming encrypted output", async () => {
+        const multiSource = path.join(tempDir, "report.2024.backup.txt");
+        const unicodeSource = path.join(tempDir, "naïve café.txt");
+        fs.writeFileSync(multiSource, "multi");
+        fs.writeFileSync(unicodeSource, "unicode");
+
+        await new Crypto("correct horse").encrypt(new FileManager(multiSource), { value: 0 }, {});
+        await new Crypto("correct horse").encrypt(new FileManager(unicodeSource), { value: 0 }, {});
+
+        // Only the last extension is replaced; the old first-dot truncation
+        // would have produced report.ctx.
+        expect(fs.existsSync(path.join(tempDir, "report.ctx"))).toBe(false);
+        expect(readCtx1Header(path.join(tempDir, "report.2024.backup.ctx")).meta.name).toBe("report.2024.backup.txt");
+        expect(readCtx1Header(path.join(tempDir, "naïve café.ctx")).meta.name).toBe("naïve café.txt");
+    });
+
+    it("round-trips a Unicode multi-dot name with a long extension from the header", async () => {
+        const encryptedPath = path.join(tempDir, "weird.ctx");
+        await writeCtx1File(encryptedPath, "correct horse", "weird payload", {
+            metaOverrides: { name: "архив.tar.gz.verylongextension" }
+        });
+
+        await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
+
+        // The full name survives: no 8-byte extension truncation anywhere.
+        expect(fs.readFileSync(path.join(tempDir, "архив.tar.gz.verylongextension"), "utf-8")).toBe("weird payload");
+    });
+
+    it("does not overwrite an existing file when encrypting", async () => {
+        const sourcePath = path.join(tempDir, "sample.txt");
+        const takenPath = path.join(tempDir, "sample.ctx");
+        fs.writeFileSync(sourcePath, "fresh secret");
+        fs.writeFileSync(takenPath, "pre-existing");
+
+        await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
+
+        expect(fs.readFileSync(takenPath, "utf-8")).toBe("pre-existing");
+        const deflected = readCtx1Header(path.join(tempDir, "sample (1).ctx"));
+        expect(deflected.magic).toBe("CTX1");
+        expect(deflected.meta.name).toBe("sample.txt");
+    });
+
+    it("does not overwrite an existing file when encrypting a directory", async () => {
+        const dirPath = path.join(tempDir, "folder");
+        fs.mkdirSync(dirPath);
+        fs.writeFileSync(path.join(dirPath, "a.txt"), "alpha");
+        fs.writeFileSync(`${dirPath}.ctx`, "pre-existing");
+
+        await new Crypto("correct horse").encrypt(new FileManager(dirPath), { value: 0 }, {});
+
+        expect(fs.readFileSync(`${dirPath}.ctx`, "utf-8")).toBe("pre-existing");
+        expect(readCtx1Header(path.join(tempDir, "folder (1).ctx")).meta.name).toBe("folder.tar");
+    });
+
+    it("does not overwrite an existing file when decrypting", async () => {
+        const encryptedPath = path.join(tempDir, "payload.ctx");
+        await writeCtx1File(encryptedPath, "correct horse", "decrypted payload", { metaOverrides: { name: "original.txt" } });
+        fs.writeFileSync(path.join(tempDir, "original.txt"), "keep me");
+
+        await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
+        expect(fs.readFileSync(path.join(tempDir, "original.txt"), "utf-8")).toBe("keep me");
+        expect(fs.readFileSync(path.join(tempDir, "original (1).txt"), "utf-8")).toBe("decrypted payload");
+
+        // A second decrypt deflects again instead of clobbering the first.
+        await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
+        expect(fs.readFileSync(path.join(tempDir, "original (2).txt"), "utf-8")).toBe("decrypted payload");
+    });
+
+    it("does not overwrite an existing directory when decrypting an archive", async () => {
+        const { pack } = require("tar-stream");
+        const tarBuffer = await new Promise((resolve, reject) => {
+            const archive = pack();
+            const chunks = [];
+            archive.on("data", chunk => chunks.push(chunk));
+            archive.on("end", () => resolve(Buffer.concat(chunks)));
+            archive.on("error", reject);
+            archive.entry({ name: "data.txt", type: "file" }, "fresh");
+            archive.finalize();
+        });
+
+        const encryptedPath = path.join(tempDir, "folder.ctx");
+        await writeCtx1File(encryptedPath, "correct horse", tarBuffer, {
+            flags: Format.FLAG_DIRECTORY,
+            metaOverrides: { name: "folder.tar" }
+        });
+        const existingDir = path.join(tempDir, "folder");
+        fs.mkdirSync(existingDir);
+        fs.writeFileSync(path.join(existingDir, "sentinel.txt"), "keep me");
+
+        await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
+
+        expect(fs.readFileSync(path.join(existingDir, "sentinel.txt"), "utf-8")).toBe("keep me");
+        expect(fs.existsSync(path.join(existingDir, "data.txt"))).toBe(false);
+        expect(fs.readFileSync(path.join(tempDir, "folder (1)", "data.txt"), "utf-8")).toBe("fresh");
+    });
+
+    it("keeps multi-dot stems when decrypting legacy files and never overwrites", async () => {
+        const encryptedPath = path.join(tempDir, "multi.dot.name.ctx");
+        writeLegacyCtx(encryptedPath, "correct horse", "legacy payload", "txt");
+        fs.writeFileSync(path.join(tempDir, "multi.dot.name.txt"), "keep me");
+
+        await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
+
+        // The old first-dot truncation would have produced multi.txt.
+        expect(fs.existsSync(path.join(tempDir, "multi.txt"))).toBe(false);
+        expect(fs.readFileSync(path.join(tempDir, "multi.dot.name.txt"), "utf-8")).toBe("keep me");
+        expect(fs.readFileSync(path.join(tempDir, "multi.dot.name (1).txt"), "utf-8")).toBe("legacy payload");
+    });
+
+    it("keeps multi-dot stems when decrypting interim files", async () => {
+        const encryptedPath = path.join(tempDir, "multi.dot.interim.ctx");
+        await writeInterimCtx(encryptedPath, "correct horse", "interim payload", "txt");
+
+        await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
+
+        expect(fs.readFileSync(path.join(tempDir, "multi.dot.interim.txt"), "utf-8")).toBe("interim payload");
+    });
+
+    it("rejects a legacy extension that smuggles path separators", async () => {
+        const encryptedPath = path.join(tempDir, "evil.ctx");
+        // 7 chars: fits the 8-byte field, carries a separator and traversal.
+        writeLegacyCtx(encryptedPath, "correct horse", "evil payload", "../../x");
+
+        await expect(
+            new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 })
+        ).rejects.toThrow(/illegal characters/);
+
+        expect(fs.existsSync(path.join(tempDir, "x"))).toBe(false);
+    });
 });
