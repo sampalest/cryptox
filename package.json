@@ -9,7 +9,7 @@
   },
   "copyright": "Copyright © 2020 Samuel Palomo Esteban",
   "description": "App to encrypt files easier",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "private": true,
   "scripts": {
     "serve": "vite --host 127.0.0.1",
