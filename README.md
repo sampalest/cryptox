@@ -5,7 +5,7 @@
 </div>
 <hr>
 
-## Version 0.3.3-alpha
+## Version 0.3.4-alpha
 
 ## Description
 * Simple app for encrypt files

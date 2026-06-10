@@ -32,6 +32,50 @@ describe("Utils", () => {
         expect(Utils.fillExtension("longextension")).toBe("longe...");
     });
 
+    describe("uniquePath", () => {
+        let tempDir;
+
+        beforeEach(() => {
+            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cryptox-unique-"));
+        });
+
+        afterEach(() => {
+            fs.rmSync(tempDir, { force: true, recursive: true });
+        });
+
+        it("returns the desired path untouched when it is free", () => {
+            const desired = path.join(tempDir, "report.ctx");
+            expect(Utils.uniquePath(desired)).toBe(desired);
+        });
+
+        it("inserts the counter before the last extension on collisions", () => {
+            const desired = path.join(tempDir, "report.ctx");
+            fs.writeFileSync(desired, "taken");
+            expect(Utils.uniquePath(desired)).toBe(path.join(tempDir, "report (1).ctx"));
+
+            fs.writeFileSync(path.join(tempDir, "report (1).ctx"), "also taken");
+            expect(Utils.uniquePath(desired)).toBe(path.join(tempDir, "report (2).ctx"));
+        });
+
+        it("appends the counter after a dotfile name", () => {
+            const desired = path.join(tempDir, ".env");
+            fs.writeFileSync(desired, "taken");
+            expect(Utils.uniquePath(desired)).toBe(path.join(tempDir, ".env (1)"));
+        });
+
+        it("appends the counter after the full name in directory mode", () => {
+            const desired = path.join(tempDir, "mydir.v2");
+            fs.mkdirSync(desired);
+            expect(Utils.uniquePath(desired, true)).toBe(path.join(tempDir, "mydir.v2 (1)"));
+        });
+
+        it("deflects when a directory occupies the desired file name", () => {
+            const desired = path.join(tempDir, "report.ctx");
+            fs.mkdirSync(desired);
+            expect(Utils.uniquePath(desired)).toBe(path.join(tempDir, "report (1).ctx"));
+        });
+    });
+
     describe("unzipDirectory", () => {
         let tempDir;
         let tarPath;
