@@ -1,4 +1,5 @@
 import Constants from "./constants.js";
+import { CancelledError } from "./exceptions.js";
 import Format from "./format.js";
 import TempManager from "./temp.js";
 import Utils from "./utils.js";
@@ -15,6 +16,37 @@ export default class Crypto {
         // Owns this operation's temp directory (see TempManager); one Crypto
         // instance per operation, as the IPC handlers already do.
         this.operationId = operationId;
+        this._cancelled = false;
+        // Streams of the in-flight pipeline, destroyed on cancel().
+        this._destroyables = new Set();
+    }
+
+    /**
+     * Cancel this operation: destroy any in-flight streams and make every
+     * later checkpoint abort with CancelledError. The synchronous Argon2id
+     * KDF and tar/untar steps cannot be interrupted mid-call, so a cancel
+     * issued during them takes effect at the next checkpoint. Idempotent.
+     * @function cancel
+     */
+    cancel() {
+        if (this._cancelled) return;
+        this._cancelled = true;
+        const error = new CancelledError();
+        for (const stream of [...this._destroyables]) {
+            stream.destroy(error);
+        }
+    }
+
+    _checkCancelled() {
+        if (this._cancelled) throw new CancelledError();
+    }
+
+    _track(...streams) {
+        streams.forEach(stream => this._destroyables.add(stream));
+    }
+
+    _untrackAll() {
+        this._destroyables.clear();
     }
 
     /**
@@ -125,6 +157,7 @@ export default class Crypto {
     }
 
     async _encrypt(file, completeFile, fileEvent, events = {}) {
+        this._checkCancelled();
         const onProgress = events.onProgress;
         const onStatus = events.onStatus;
         fileEvent.filename = file.name;
@@ -143,6 +176,7 @@ export default class Crypto {
             size = obj.size;
             filepath = obj.filepath;
             endfile = obj.endfile;
+            this._checkCancelled();
         }
 
         await this._ready();
@@ -150,9 +184,10 @@ export default class Crypto {
         const memlimit = sodium.crypto_pwhash_MEMLIMIT_MODERATE;
         const salt = Buffer.from(sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES));
         // Argon2id is synchronous and CPU/memory heavy; show the indeterminate bar while it runs.
-        if (onStatus) onStatus({ loader: true, msg: "Securing password..." });
+        if (onStatus) onStatus({ loader: true, msg: "Preparing secure key..." });
         const CIPHER_KEY = this._deriveKeyArgon2id(salt, opslimit, memlimit, Constants.KEY_LEN);
         if (onStatus) onStatus({ loader: false });
+        this._checkCancelled();
         // CTX1 header: the original name travels in the (authenticated) header
         // instead of a trailing padded-extension field, and a flag bit marks
         // directory payloads instead of the old magic "tar" extension.
@@ -166,38 +201,90 @@ export default class Crypto {
             name: isDirectory ? `${file.name}.tar` : file.name
         }, isDirectory ? Format.FLAG_DIRECTORY : 0);
 
-        // Never overwrite: deflect to "name (1).ctx" etc. Resolved here, after
-        // the multi-second KDF, to keep the check-to-open window small; the
-        // exclusive "wx" flag below turns a lost race into an error instead of
-        // an overwrite.
-        endfile = Utils.uniquePath(endfile);
-
+        // The ciphertext is staged in a hidden, randomly named temp file next
+        // to the destination (mirroring _streamDecrypt) and only moved into
+        // place after the auth tag is appended: a partial, failed or
+        // cancelled encryption is never visible at the final path, and the
+        // free "name (n).ctx" variant is resolved at move time.
         return new Promise((resolve, reject) => {
             const initVect = crypto.randomBytes(16);
+            const writePath = this._tempOutputPath(endfile);
             const readStream = fs.createReadStream(filepath);
             const cipher = crypto.createCipheriv(AES256, CIPHER_KEY, initVect);
             // The header is associated data: the GCM tag authenticates it, so
             // any tampering with the stored metadata fails decryption.
             cipher.setAAD(header);
             const appendInitVect = new IVector(initVect);
-            const writeStream = fs.createWriteStream(endfile, { flags: "wx" });
+            const writeStream = fs.createWriteStream(writePath, { flags: "wx" });
+            this._track(readStream, cipher, writeStream);
             // Header is written first so the file is [header][IV][ciphertext][authTag].
             writeStream.write(header);
 
-            writeStream.on("finish", () => {
-                fs.appendFileSync(endfile, cipher.getAuthTag());
+            // Destroying one stream of the pipeline makes the others error
+            // too, so teardown must be idempotent and remove the staged
+            // output exactly once.
+            let settled = false;
+            const removeStagedOutput = () => {
+                try {
+                    // The staged output has a random operation-owned name,
+                    // so it is always ours to remove.
+                    if (fs.existsSync(writePath)) fs.unlinkSync(writePath);
+                } catch (cleanupError) {
+                    // Best-effort cleanup; surface the original error.
+                }
+            };
+            const handleError = error => {
+                if (settled) return;
+                settled = true;
+                readStream.destroy();
+                cipher.destroy();
+                writeStream.destroy();
+                removeStagedOutput();
+                this._untrackAll();
+                reject(error);
+            };
+
+            writeStream.on("finish", async () => {
+                if (settled) return;
+                settled = true;
+                this._untrackAll();
+                // A cancel can race stream completion: never finalize a
+                // cancelled output, even if every byte made it to disk.
+                if (this._cancelled) {
+                    removeStagedOutput();
+                    reject(new CancelledError());
+                    return;
+                }
+                // The streamed bytes are queued but the output is still the
+                // hidden staged file: tell the UI finalization is running and
+                // reserve 100% for "flushed and visible at the final path".
+                if (onStatus) onStatus({ loader: true, msg: "Saving file..." });
+                try {
+                    fs.appendFileSync(writePath, cipher.getAuthTag());
+                    await this._flushToDisk(writePath);
+                    this._moveIntoPlace(writePath, endfile);
+                } catch (error) {
+                    if (onStatus) onStatus({ loader: false });
+                    removeStagedOutput();
+                    return reject(error);
+                }
+                if (onStatus) onStatus({ loader: false });
+                completeFile.value = 100;
+                if (onProgress) onProgress(100);
                 resolve();
             });
 
-            readStream.on("error", reject);
-            cipher.on("error", reject);
-            writeStream.on("error", reject);
+            readStream.on("error", handleError);
+            cipher.on("error", handleError);
+            writeStream.on("error", handleError);
 
-            // Count plaintext bytes read against the plaintext size so progress runs a clean
-            // 0->100% (counting the cipher output would also include the prepended IV).
+            // Count plaintext bytes read against the plaintext size so progress runs a
+            // clean 0->99% (counting the cipher output would also include the prepended
+            // IV). 100% is reserved for the moment the output is visible at its final
+            // path, after the auth tag is appended and the staged file moved into place.
             readStream.on("data", buffer => {
                 completedSize += buffer.length;
-                let complete = parseInt((completedSize / size * 100));
+                let complete = Math.min(parseInt((completedSize / size * 100)), 99);
                 if (complete != completeFile.value) {
                     completeFile.value = complete;
                     if (onProgress) onProgress(complete);
@@ -247,6 +334,7 @@ export default class Crypto {
      * @function _decryptV1
      */
     async _decryptV1(file, size, completeFile, events = {}) {
+        this._checkCancelled();
         const prefix = await this._readBytes(file.path, 0, Format.PREFIX_LEN_V1);
         const { headerLen } = Format.parsePrefixV1(prefix);
         if (size < Format.PREFIX_LEN_V1 + headerLen + Format.IV_LEN + Format.TAG_LEN) {
@@ -257,9 +345,10 @@ export default class Crypto {
 
         await this._ready();
         // Argon2id is synchronous and CPU/memory heavy; show the indeterminate bar while it runs.
-        if (events.onStatus) events.onStatus({ loader: true, msg: "Securing password..." });
+        if (events.onStatus) events.onStatus({ loader: true, msg: "Preparing secure key..." });
         const cipherKey = this._deriveKeyArgon2id(Buffer.from(meta.salt, "base64"), meta.opslimit, meta.memlimit, meta.keyLen);
         if (events.onStatus) events.onStatus({ loader: false });
+        this._checkCancelled();
 
         const headerEnd = headerBytes.length;
         const iv = await this._readBytes(file.path, headerEnd, Format.IV_LEN);
@@ -295,7 +384,8 @@ export default class Crypto {
             outPath: outPath,
             extractTo: extractTo,
             completeFile: completeFile,
-            onProgress: events.onProgress
+            onProgress: events.onProgress,
+            onStatus: events.onStatus
         });
     }
 
@@ -307,6 +397,7 @@ export default class Crypto {
      * @function _decryptInterim
      */
     async _decryptInterim(file, size, completeFile, events = {}) {
+        this._checkCancelled();
         const magicLen = Constants.CTX_MAGIC.length;
         const prefixLen = magicLen + 1 + 2;
         const head = await this._readBytes(file.path, 0, prefixLen);
@@ -330,9 +421,10 @@ export default class Crypto {
 
         await this._ready();
         // Argon2id is synchronous and CPU/memory heavy; show the indeterminate bar while it runs.
-        if (events.onStatus) events.onStatus({ loader: true, msg: "Securing password..." });
+        if (events.onStatus) events.onStatus({ loader: true, msg: "Preparing secure key..." });
         const cipherKey = this._deriveKeyArgon2id(Buffer.from(meta.salt, "base64"), meta.opslimit, meta.memlimit, meta.keyLen);
         if (events.onStatus) events.onStatus({ loader: false });
+        this._checkCancelled();
 
         return this._decryptTrailingExt(file, size, completeFile, events, cipherKey, prefixLen + headerLen);
     }
@@ -343,6 +435,7 @@ export default class Crypto {
      * @function _decryptLegacy
      */
     async _decryptLegacy(file, size, completeFile, events = {}) {
+        this._checkCancelled();
         // IV + ext field + auth tag is the minimum possible legacy file.
         if (size < Format.IV_LEN + 8 + Format.TAG_LEN) throw new Format.FormatError("file too short for legacy payload");
         return this._decryptTrailingExt(file, size, completeFile, events, this._getCipherKey(), 0);
@@ -387,14 +480,35 @@ export default class Crypto {
             outPath: outPath,
             extractTo: isTar ? Utils.uniquePath(path.join(parsedSource.dir, parsedSource.name), true) : undefined,
             completeFile: completeFile,
-            onProgress: events.onProgress
+            onProgress: events.onProgress,
+            onStatus: events.onStatus
         });
     }
 
     /**
-     * Hidden staging path for decrypted plaintext: a randomly named dotfile in
-     * the same directory as the final destination, so the final move never
-     * crosses filesystems and is atomic.
+     * Flush a staged output file's data to disk (fsync) before it is moved
+     * into place. Stream writes only queue bytes in the OS write cache: for
+     * large files the kernel keeps flushing for seconds after the streams
+     * finish, so without this the operation would report success while the
+     * output is not yet physically stored.
+     * @function _flushToDisk
+     * @param {String} filePath Staged output path.
+     * @return {Promise.<void>}
+     */
+    async _flushToDisk(filePath) {
+        const handle = await fs.promises.open(filePath, "r+");
+        try {
+            await handle.sync();
+        } finally {
+            await handle.close();
+        }
+    }
+
+    /**
+     * Hidden staging path for operation output (ciphertext on encrypt,
+     * plaintext on decrypt): a randomly named dotfile in the same directory
+     * as the final destination, so the final move never crosses filesystems
+     * and is atomic.
      * @function _tempOutputPath
      * @param {String} finalPath Desired final output path.
      * @return {String}
@@ -404,7 +518,7 @@ export default class Crypto {
     }
 
     /**
-     * Move the authenticated plaintext from its staging path to the first free
+     * Move the finished output from its staging path to the first free
      * "name (n)" variant of the desired path. link(2) fails with EEXIST instead
      * of overwriting (unlike rename), so a lost race re-resolves the name; on
      * filesystems without hard links fall back to a re-check plus rename.
@@ -431,7 +545,7 @@ export default class Crypto {
                 throw error;
             }
         }
-        throw new Error(`could not move decrypted output into place for ${desiredPath}`);
+        throw new Error(`could not move output into place for ${desiredPath}`);
     }
 
     /**
@@ -443,12 +557,13 @@ export default class Crypto {
      * ciphertext or interrupted stream never leaves plaintext at the final
      * destination. On any failure the staged output is removed before rejecting.
      * @function _streamDecrypt
-     * @param {Object} job { filePath, cipherKey, iv, authTag, aad?, ctStart, ctEnd, outPath, extractTo?, completeFile, onProgress? }
+     * @param {Object} job { filePath, cipherKey, iv, authTag, aad?, ctStart, ctEnd, outPath, extractTo?, completeFile, onProgress?, onStatus? }
      * @return {Promise}
      */
-    _streamDecrypt({ filePath, cipherKey, iv, authTag, aad, ctStart, ctEnd, outPath, extractTo, completeFile, onProgress }) {
+    _streamDecrypt({ filePath, cipherKey, iv, authTag, aad, ctStart, ctEnd, outPath, extractTo, completeFile, onProgress, onStatus }) {
         return new Promise((resolve, reject) => {
             try {
+                this._checkCancelled();
                 const decipher = crypto.createDecipheriv(AES256, cipherKey, iv).setAuthTag(authTag);
                 if (aad) decipher.setAAD(aad);
                 // Ciphertext slice length: progress is measured against this so the bar runs a
@@ -460,21 +575,36 @@ export default class Crypto {
                 const writePath = extractTo ? outPath : this._tempOutputPath(outPath);
 
                 const finalize = async () => {
+                    this._untrackAll();
+                    // A cancel can race stream completion: never move a
+                    // cancelled output into place, even fully authenticated.
+                    if (this._cancelled) return cleanupAndReject(new CancelledError());
+                    // The plaintext is authenticated but still staged/hidden:
+                    // tell the UI finalization is running and reserve 100% for
+                    // "visible at the final path".
+                    if (onStatus) onStatus({ loader: true, msg: extractTo ? "Extracting files..." : "Saving file..." });
                     try {
                         if (extractTo) {
                             // Await extraction so success is not reported (nor the UI
                             // unblocked) before the archive is fully and safely unpacked.
                             await Utils.unzipDirectory(writePath, extractTo);
                         } else {
+                            await this._flushToDisk(writePath);
                             this._moveIntoPlace(writePath, outPath);
                         }
                     } catch (error) {
                         return cleanupAndReject(error);
                     }
+                    if (onStatus) onStatus({ loader: false });
+                    completeFile.value = 100;
+                    if (onProgress) onProgress(100);
                     resolve();
                 };
 
                 const cleanupAndReject = error => {
+                    this._untrackAll();
+                    // A failed finalization must not leave the indeterminate bar up.
+                    if (onStatus) onStatus({ loader: false });
                     try {
                         // The staged output has a random operation-owned name,
                         // so it is always ours to remove.
@@ -501,6 +631,7 @@ export default class Crypto {
 
                 const readStream = fs.createReadStream(filePath, { start: ctStart, end: ctEnd });
                 const writeStream = fs.createWriteStream(writePath, { flags: "wx" });
+                this._track(readStream, decipher, writeStream);
                 writeStream.on("finish", finalize);
 
                 // A wrong password (or tampered header) fails GCM auth only at stream
@@ -515,12 +646,14 @@ export default class Crypto {
                 decipher.on("error", handleError);
                 writeStream.on("error", handleError);
 
+                // Streaming runs 0->99%; 100% is reserved for the moment the
+                // output is visible at its final path (moved or extracted).
                 let completedSize = 0;
                 readStream
                     .pipe(decipher)
                     .on("data", buffer => {
                         completedSize += buffer.length;
-                        let complete = parseInt((completedSize / cipherLength * 100));
+                        let complete = Math.min(parseInt((completedSize / cipherLength * 100)), 99);
                         if (complete != completeFile.value) {
                             completeFile.value = complete;
                             if (onProgress) onProgress(complete);

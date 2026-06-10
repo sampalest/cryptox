@@ -2,7 +2,7 @@
   "name": "cryptox",
   "productName": "Cryptox",
   "executableName": "Cryptox",
-  "version": "0.3.5-alpha",
+  "version": "0.3.6-alpha",
   "author": {
     "name": "Samuel Palomo Esteban",
     "email": "samuelpe@outlook.com"
@@ -16,6 +16,7 @@
     "build": "vite build",
     "build:electron": "node scripts/build-electron.mjs",
     "test:unit": "jest --runInBand",
+    "test:large": "jest --runInBand --testMatch \"<rootDir>/tests/large/**/*.spec.js\"",
     "test:e2e": "npm run build && npm run build:electron && node tests/e2e/smoke.js",
     "lint": "eslint \"src/**/*.{js,vue}\" \"tests/**/*.js\" \"scripts/**/*.mjs\" \"*.config.{js,cjs}\"",
     "lintfix:js": "eslint 'src/**/*.js' --fix",

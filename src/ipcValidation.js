@@ -44,17 +44,21 @@ export function normalizeCryptoPayload(payload) {
         throw new TypeError("Crypto password must be a non-empty string.");
     }
 
+    return {
+        filePath,
+        password: payload.password,
+        operationId: validateOperationId(payload.operationId)
+    };
+}
+
+export function validateOperationId(value) {
     if (
-        typeof payload.operationId !== "string" ||
-        payload.operationId.trim() === "" ||
-        payload.operationId.length > 1024
+        typeof value !== "string" ||
+        value.trim() === "" ||
+        value.length > 1024
     ) {
         throw new TypeError("Crypto operation id must be a non-empty string under 1025 characters.");
     }
 
-    return {
-        filePath,
-        password: payload.password,
-        operationId: payload.operationId
-    };
+    return value;
 }

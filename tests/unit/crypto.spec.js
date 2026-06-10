@@ -3,6 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import sodium from "libsodium-wrappers-sumo";
+import { CancelledError } from "@/exceptions.js";
 import Crypto from "@/crypto.js";
 import Format from "@/format.js";
 import FileManager from "@/filemanager.js";
@@ -671,17 +672,52 @@ describe("Crypto", () => {
         const plaintext = "x".repeat(256 * 1024);
         await writeCtx1File(encryptedPath, "correct horse", plaintext, { metaOverrides: { name: "payload.txt" } });
 
-        // Progress events fire while ciphertext is still streaming: the final
-        // path must not exist at any of those moments.
-        const observedDuringStream = [];
+        // Streaming progress must stay below 100% while the plaintext is
+        // still staged; 100% may only be reported once the file is visible
+        // at its final path.
+        const observed = [];
         await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 }, {
-            onProgress: () => observedDuringStream.push(fs.existsSync(finalPath))
+            onProgress: value => observed.push({ value, visible: fs.existsSync(finalPath) })
         });
 
-        expect(observedDuringStream.length).toBeGreaterThan(0);
-        expect(observedDuringStream).not.toContain(true);
+        expect(observed.length).toBeGreaterThan(1);
+        observed.slice(0, -1).forEach(event => {
+            expect(event.value).toBeLessThanOrEqual(99);
+            expect(event.visible).toBe(false);
+        });
+        expect(observed[observed.length - 1]).toEqual({ value: 100, visible: true });
         expect(fs.readFileSync(finalPath, "utf-8")).toBe(plaintext);
         expect(leftoverTempNames(tempDir)).toEqual([]);
+    });
+
+    it("creates the final .ctx only after encryption completes and reports 100% only then", async () => {
+        const sourcePath = path.join(tempDir, "sample.bin");
+        const encryptedPath = path.join(tempDir, "sample.ctx");
+        fs.writeFileSync(sourcePath, crypto.randomBytes(1024 * 1024));
+
+        // Streaming progress must stay below 100% while the output is still
+        // the hidden staged file; 100% may only be reported once the .ctx is
+        // visible at its final path, after a "Saving file..." status.
+        const observed = [];
+        const statuses = [];
+        await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {}, {
+            onProgress: value => observed.push({ value, visible: fs.existsSync(encryptedPath) }),
+            onStatus: status => statuses.push(status)
+        });
+
+        expect(observed.length).toBeGreaterThan(1);
+        observed.slice(0, -1).forEach(event => {
+            expect(event.value).toBeLessThanOrEqual(99);
+            expect(event.visible).toBe(false);
+        });
+        expect(observed[observed.length - 1]).toEqual({ value: 100, visible: true });
+        expect(statuses).toContainEqual({ loader: true, msg: "Saving file..." });
+        expect(statuses[statuses.length - 1]).toEqual({ loader: false });
+        expect(leftoverTempNames(tempDir)).toEqual([]);
+
+        fs.unlinkSync(sourcePath);
+        await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
+        expect(fs.existsSync(sourcePath)).toBe(true);
     });
 
     it("leaves no extracted output when directory decryption fails", async () => {
@@ -719,5 +755,106 @@ describe("Crypto", () => {
         // must be gone as well.
         expect(acquiredDirs).toHaveLength(1);
         expect(fs.existsSync(acquiredDirs[0])).toBe(false);
+    });
+
+    describe("cancellation", () => {
+        it("stops encryption mid-stream and removes the partial output", async () => {
+            const sourcePath = path.join(tempDir, "sample.bin");
+            const encryptedPath = path.join(tempDir, "sample.ctx");
+            fs.writeFileSync(sourcePath, crypto.randomBytes(4 * 1024 * 1024));
+
+            const cryptoOp = new Crypto("correct horse");
+            // The first progress event proves ciphertext is already streaming
+            // to disk, making this a true mid-operation cancel.
+            const operation = cryptoOp.encrypt(new FileManager(sourcePath), { value: 0 }, {}, {
+                onProgress: () => cryptoOp.cancel()
+            });
+
+            await expect(operation).rejects.toThrow(CancelledError);
+            expect(fs.existsSync(encryptedPath)).toBe(false);
+            expect(leftoverTempNames(tempDir)).toEqual([]);
+        });
+
+        it("stops decryption mid-stream and removes the staged output", async () => {
+            const encryptedPath = path.join(tempDir, "payload.ctx");
+            const finalPath = path.join(tempDir, "payload.txt");
+            await writeCtx1File(encryptedPath, "correct horse", "x".repeat(4 * 1024 * 1024), { metaOverrides: { name: "payload.txt" } });
+
+            const cryptoOp = new Crypto("correct horse");
+            const operation = cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 }, {
+                onProgress: () => cryptoOp.cancel()
+            });
+
+            await expect(operation).rejects.toThrow(CancelledError);
+            expect(fs.existsSync(finalPath)).toBe(false);
+            expect(leftoverTempNames(tempDir)).toEqual([]);
+        });
+
+        it("aborts an encryption cancelled before it starts", async () => {
+            const sourcePath = path.join(tempDir, "sample.txt");
+            const encryptedPath = path.join(tempDir, "sample.ctx");
+            fs.writeFileSync(sourcePath, "hello cryptox");
+
+            // Proxy for a cancel arriving during an uninterruptible step (the
+            // synchronous KDF): the next checkpoint must abort the operation.
+            const cryptoOp = new Crypto("correct horse");
+            cryptoOp.cancel();
+
+            await expect(
+                cryptoOp.encrypt(new FileManager(sourcePath), { value: 0 }, {})
+            ).rejects.toThrow(CancelledError);
+            expect(fs.existsSync(encryptedPath)).toBe(false);
+        });
+
+        it("aborts a decryption cancelled before it starts", async () => {
+            const encryptedPath = path.join(tempDir, "payload.ctx");
+            await writeCtx1File(encryptedPath, "correct horse", "payload", { metaOverrides: { name: "payload.txt" } });
+
+            const cryptoOp = new Crypto("correct horse");
+            cryptoOp.cancel();
+
+            await expect(
+                cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 })
+            ).rejects.toThrow(CancelledError);
+            expect(fs.existsSync(path.join(tempDir, "payload.txt"))).toBe(false);
+            expect(leftoverTempNames(tempDir)).toEqual([]);
+        });
+
+        it("is idempotent and a no-op after the operation completed", async () => {
+            const sourcePath = path.join(tempDir, "sample.txt");
+            const encryptedPath = path.join(tempDir, "sample.ctx");
+            fs.writeFileSync(sourcePath, "hello cryptox");
+
+            const cryptoOp = new Crypto("correct horse");
+            await cryptoOp.encrypt(new FileManager(sourcePath), { value: 0 }, {});
+
+            // Late cancel of a finished operation must not throw and must not
+            // touch the completed output.
+            expect(() => {
+                cryptoOp.cancel();
+                cryptoOp.cancel();
+            }).not.toThrow();
+            expect(fs.existsSync(encryptedPath)).toBe(true);
+
+            fs.unlinkSync(sourcePath);
+            await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("hello cryptox");
+        });
+
+        it("releases the operation temp directory when a directory encrypt is cancelled", async () => {
+            const sourceDir = path.join(tempDir, "folder");
+            fs.mkdirSync(sourceDir);
+            fs.writeFileSync(path.join(sourceDir, "data.bin"), crypto.randomBytes(4 * 1024 * 1024));
+
+            const cryptoOp = new Crypto("correct horse");
+            const operation = cryptoOp.encrypt(new FileManager(sourceDir), { value: 0 }, {}, {
+                onProgress: () => cryptoOp.cancel()
+            });
+
+            await expect(operation).rejects.toThrow(CancelledError);
+            expect(fs.existsSync(path.join(tempDir, "folder.ctx"))).toBe(false);
+            expect(acquiredDirs).toHaveLength(1);
+            expect(fs.existsSync(acquiredDirs[0])).toBe(false);
+        });
     });
 });

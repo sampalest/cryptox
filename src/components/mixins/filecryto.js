@@ -2,12 +2,24 @@ export default {
     name: "file-crypto",
     data: () => {
         return {
-            finish: false
+            finish: false,
+            activeOperations: []
         };
     },
     methods: {
         operationId(file) {
             return `${Date.now()}-${file.path}`;
+        },
+        trackOperation(operationId) {
+            this.activeOperations.push(operationId);
+        },
+        untrackOperation(operationId) {
+            this.activeOperations = this.activeOperations.filter(id => id !== operationId);
+        },
+        cancelOperations() {
+            this.activeOperations.forEach(operationId => {
+                window.cryptox.crypto.cancel(operationId).catch(err => window.cryptox.log.error(err));
+            });
         },
         encryptFile(file) {
             const operationId = this.operationId(file);
@@ -18,11 +30,15 @@ export default {
                 if (payload.operationId === operationId) Object.assign(this.fileEvent, payload.status);
             });
 
-            window.cryptox.crypto.encrypt({ path: file.path }, this.password, operationId).then(() => {
+            this.trackOperation(operationId);
+            window.cryptox.crypto.encrypt({ path: file.path }, this.password, operationId).then(result => {
+                // A cancelled operation must never count as a success.
+                if (result && result.cancelled) return;
                 this.fileEvent.counter++;
-                
+
                 if (this.fileEvent.counter == this.files.length) this.finish = true;
             }).finally(() => {
+                this.untrackOperation(operationId);
                 offProgress();
                 offStatus();
             });
@@ -36,8 +52,11 @@ export default {
                 if (payload.operationId === operationId) Object.assign(this.fileEvent, payload.status);
             });
 
+            this.trackOperation(operationId);
             window.cryptox.crypto.decrypt({ path: file.path }, this.password, operationId)
-                .then(async () => {
+                .then(async result => {
+                    // A cancelled operation must never count as a success.
+                    if (result && result.cancelled) return;
                     // Decryption already succeeded; a failed delete prompt must not be reported
                     // as a decrypt error, so keep it isolated from the catch below.
                     try {
@@ -53,6 +72,7 @@ export default {
                     this.cancel();
                 })
                 .finally(() => {
+                    this.untrackOperation(operationId);
                     offProgress();
                     offStatus();
                 });
