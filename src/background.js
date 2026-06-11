@@ -9,7 +9,15 @@ import Crypto from "./crypto.js";
 import FileManager from "./filemanager.js";
 import OperationRegistry from "./operations.js";
 import TempManager from "./temp.js";
-import { normalizeCryptoPayload, validateDeletePath, validateExternalUrl, validateOperationId } from "./ipcValidation.js";
+import {
+    assertDecryptSource,
+    assertEncryptSource,
+    isTrustedSender,
+    normalizeCryptoPayload,
+    validateDeletePath,
+    validateExternalUrl,
+    validateOperationId
+} from "./ipcValidation.js";
 const isDevelopment = process.env.NODE_ENV !== "production";
 import logger from "electron-log";
 
@@ -188,57 +196,108 @@ ipcMain.handle("dialog:open-files", async () => {
 
 ipcMain.handle("shell:open-external", (_, url) => shell.openExternal(validateExternalUrl(url)));
 
-// Resolve with a structured result instead of throwing for cancellation:
-// ipcMain.handle rejection serialization strips custom error fields, and the
-// renderer must distinguish "cancelled" from success and from real errors.
-async function runRegisteredOperation(operationId, run) {
+// Crypto channels always resolve with a structured result instead of
+// rejecting: ipcMain.handle rejection serialization strips custom error
+// fields, and the renderer must distinguish success, "cancelled" and typed
+// failures. Failure messages are fixed strings; user-controlled payload
+// content (paths, passwords, operation ids) never goes into them or the log.
+const Codes = Constants.CRYPTO_ERROR_CODES;
+
+function failure(code, message) {
+    return { ok: false, code, message };
+}
+
+function toCryptoFailure(error, fallbackMessage) {
+    if (error && error.name === "IpcValidationError") {
+        return failure(error.code, error.message);
+    }
+    if (error && error.name === "PathBusyError") {
+        return failure(Codes.OPERATION_FAILED, "Another operation is already running on this file.");
+    }
+    logger.error(`crypto request rejected: ${error && error.name}`);
+    return failure(Codes.OPERATION_FAILED, fallbackMessage);
+}
+
+async function runRegisteredOperation(operationId, run, fallbackMessage) {
     try {
         await run();
-        return { cancelled: false };
+        return { ok: true, cancelled: false };
     } catch (error) {
-        if (error && error.name === "CancelledError") return { cancelled: true };
-        throw error;
+        if (error && error.name === "CancelledError") return { ok: true, cancelled: true };
+        logger.error(`crypto operation failed: ${error && error.name}`);
+        return failure(Codes.OPERATION_FAILED, fallbackMessage);
     } finally {
         OperationRegistry.finish(operationId);
     }
 }
 
 ipcMain.handle("crypto:encrypt", async (event, payload) => {
-    const { filePath, password, operationId } = normalizeCryptoPayload(payload);
+    if (!isTrustedSender(event, win)) return failure(Codes.SENDER_REJECTED, "Request was rejected.");
+    const fallbackMessage = "Encryption failed.";
+    let filePath, password, operationId;
+    try {
+        ({ filePath, password, operationId } = normalizeCryptoPayload(payload));
+        await assertEncryptSource(filePath);
+    } catch (error) {
+        return toCryptoFailure(error, fallbackMessage);
+    }
     const crypto = new Crypto(password, operationId);
     const normalizedFile = new FileManager(filePath);
     // Lock the source and the predicted primary output. uniquePath/"wx" already
     // make output collisions non-destructive; the lock keeps a second operation
     // from racing the same file at all.
     const parsed = path.parse(filePath);
-    OperationRegistry.register(operationId, crypto, [
-        filePath,
-        path.join(parsed.dir, parsed.name + Constants.POINT_EXT)
-    ]);
+    try {
+        OperationRegistry.register(operationId, crypto, [
+            filePath,
+            path.join(parsed.dir, parsed.name + Constants.POINT_EXT)
+        ]);
+    } catch (error) {
+        return toCryptoFailure(error, fallbackMessage);
+    }
     return runRegisteredOperation(operationId, () =>
         crypto.encrypt(normalizedFile, { value: 0 }, {}, {
             onProgress: value => event.sender.send("crypto:progress", { operationId, value }),
             onStatus: status => event.sender.send("crypto:status", { operationId, status })
-        })
+        }), fallbackMessage
     );
 });
 
 ipcMain.handle("crypto:decrypt", async (event, payload) => {
-    const { filePath, password, operationId } = normalizeCryptoPayload(payload);
+    if (!isTrustedSender(event, win)) return failure(Codes.SENDER_REJECTED, "Request was rejected.");
+    const fallbackMessage = "Incorrect password or the file is corrupted.";
+    let filePath, password, operationId;
+    try {
+        ({ filePath, password, operationId } = normalizeCryptoPayload(payload));
+        await assertDecryptSource(filePath);
+    } catch (error) {
+        return toCryptoFailure(error, fallbackMessage);
+    }
     const crypto = new Crypto(password, operationId);
     const normalizedFile = new FileManager(filePath);
     // The output name is only known after the header parse, and the plaintext
     // is staged then moved atomically, so locking the input is enough.
-    OperationRegistry.register(operationId, crypto, [filePath]);
+    try {
+        OperationRegistry.register(operationId, crypto, [filePath]);
+    } catch (error) {
+        return toCryptoFailure(error, fallbackMessage);
+    }
     return runRegisteredOperation(operationId, () =>
         crypto.decrypt(normalizedFile, { value: 0 }, {
             onProgress: value => event.sender.send("crypto:progress", { operationId, value }),
             onStatus: status => event.sender.send("crypto:status", { operationId, status })
-        })
+        }), fallbackMessage
     );
 });
 
-ipcMain.handle("crypto:cancel", (_, payload) => OperationRegistry.cancel(validateOperationId(payload)));
+ipcMain.handle("crypto:cancel", (event, payload) => {
+    if (!isTrustedSender(event, win)) return failure(Codes.SENDER_REJECTED, "Request was rejected.");
+    try {
+        return { ok: true, cancelled: Boolean(OperationRegistry.cancel(validateOperationId(payload))) };
+    } catch (error) {
+        return toCryptoFailure(error, "Cancel failed.");
+    }
+});
 
 ipcMain.handle("files:confirm-delete-encrypted", async (_, filePath) => {
     const target = validateDeletePath(filePath);
