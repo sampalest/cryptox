@@ -5,6 +5,34 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.7-alpha] - 2026-06-11
+
+### Security
+
+- Crypto IPC handlers (`crypto:encrypt`, `crypto:decrypt`, `crypto:cancel`)
+  now reject requests from any WebContents other than the app window
+  ([CTX-11]).
+- Source paths are validated before any operation starts ([CTX-11]): the path
+  must exist on disk, decrypt only accepts regular `.ctx` files, and encrypt
+  rejects `.ctx` inputs (files or folders) to prevent accidental double
+  encryption. Invalid inputs fail before anything is locked or any crypto
+  begins.
+- Operation ids are restricted to 1-64 characters from `[A-Za-z0-9_-]`
+  ([CTX-11]). The renderer now generates random UUIDs instead of ids derived
+  from file paths.
+- Crypto error messages and logs no longer include user-controlled payload
+  content such as file paths, passwords or operation ids ([CTX-11]). The main
+  process logs only stable error codes and error names.
+
+### Changed
+
+- Crypto IPC channels return structured results instead of throwing
+  ([CTX-11]): `{ ok: true, cancelled }` on success and `{ ok: false, code,
+  message }` with stable error codes (`SENDER_REJECTED`, `INVALID_PAYLOAD`,
+  `FILE_NOT_FOUND`, `INVALID_FILE_TYPE`, `OPERATION_FAILED`) on failure. The
+  renderer maps codes to user-facing messages, and encryption failures now
+  surface an alert instead of failing silently.
+
 ## [0.3.6-alpha] - 2026-06-10
 
 ### Added
