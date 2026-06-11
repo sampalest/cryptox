@@ -1,4 +1,9 @@
+import fs from "fs";
 import Constants from "./constants.js";
+import { IpcValidationError } from "./exceptions.js";
+
+const Codes = Constants.CRYPTO_ERROR_CODES;
+const OPERATION_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 const ALLOWED_EXTERNAL_URLS = new Set([
     "https://github.com/Samuelpe/cryptox",
@@ -30,18 +35,29 @@ export function validateExternalUrl(value) {
     return url.href.replace(/\/$/, "");
 }
 
+// Only the app window may drive crypto operations. Any other WebContents
+// (devtools, a compromised webview, a second window) is rejected.
+export function isTrustedSender(event, win) {
+    return Boolean(
+        win &&
+        !win.isDestroyed() &&
+        event &&
+        event.sender === win.webContents
+    );
+}
+
 export function normalizeCryptoPayload(payload) {
     if (!payload || typeof payload !== "object") {
-        throw new TypeError("Crypto payload must be an object.");
+        throw new IpcValidationError(Codes.INVALID_PAYLOAD, "Crypto payload must be an object.");
     }
 
     const filePath = payload.file && payload.file.path;
     if (typeof filePath !== "string" || filePath.trim() === "") {
-        throw new TypeError("Crypto file path must be a non-empty string.");
+        throw new IpcValidationError(Codes.INVALID_PAYLOAD, "Crypto file path must be a non-empty string.");
     }
 
     if (typeof payload.password !== "string" || payload.password.length === 0) {
-        throw new TypeError("Crypto password must be a non-empty string.");
+        throw new IpcValidationError(Codes.INVALID_PAYLOAD, "Crypto password must be a non-empty string.");
     }
 
     return {
@@ -52,13 +68,42 @@ export function normalizeCryptoPayload(payload) {
 }
 
 export function validateOperationId(value) {
-    if (
-        typeof value !== "string" ||
-        value.trim() === "" ||
-        value.length > 1024
-    ) {
-        throw new TypeError("Crypto operation id must be a non-empty string under 1025 characters.");
+    if (typeof value !== "string" || !OPERATION_ID_PATTERN.test(value)) {
+        throw new IpcValidationError(
+            Codes.INVALID_PAYLOAD,
+            "Crypto operation id must be 1-64 characters from [A-Za-z0-9_-]."
+        );
     }
 
     return value;
+}
+
+// Stat the source before anything is locked or started. Messages stay fixed
+// strings: the user-supplied path must not leak into errors or logs.
+async function statSource(filePath) {
+    try {
+        return await fs.promises.stat(filePath);
+    } catch (error) {
+        if (error && (error.code === "ENOENT" || error.code === "ENOTDIR")) {
+            throw new IpcValidationError(Codes.FILE_NOT_FOUND, "Source file was not found.");
+        }
+        throw new IpcValidationError(Codes.OPERATION_FAILED, "Source file could not be read.");
+    }
+}
+
+export async function assertEncryptSource(filePath) {
+    const stats = await statSource(filePath);
+    if (!stats.isFile() && !stats.isDirectory()) {
+        throw new IpcValidationError(Codes.INVALID_FILE_TYPE, "Only regular files and folders can be encrypted.");
+    }
+    if (filePath.endsWith(Constants.POINT_EXT)) {
+        throw new IpcValidationError(Codes.INVALID_FILE_TYPE, `${Constants.POINT_EXT} files are already encrypted.`);
+    }
+}
+
+export async function assertDecryptSource(filePath) {
+    const stats = await statSource(filePath);
+    if (!stats.isFile() || !filePath.endsWith(Constants.POINT_EXT)) {
+        throw new IpcValidationError(Codes.INVALID_FILE_TYPE, `Only ${Constants.POINT_EXT} files can be decrypted.`);
+    }
 }
