@@ -8,6 +8,14 @@ export function DecryptError(message) {
     this.name = "DecryptError";
 }
 
+export class IpcValidationError extends Error {
+    constructor(code, message) {
+        super(message);
+        this.name = "IpcValidationError";
+        this.code = code;
+    }
+}
+
 export class CancelledError extends Error {
     constructor(message = "Operation cancelled") {
         super(message);
