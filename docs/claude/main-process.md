@@ -1,8 +1,8 @@
 # Main process reference
 
-Everything in this document runs in the Electron main process. The renderer can only reach it through the IPC channels registered in `background.js`.
+Everything in this document runs in the Electron main process. The renderer can only reach it through the IPC channels registered in `src/main/index.js`.
 
-## src/background.js
+## src/main/index.js
 
 Entry point of the main process (bundled to `dist-electron/background.cjs`, the `main` field of package.json).
 
@@ -18,11 +18,11 @@ Entry point of the main process (bundled to `dist-electron/background.cjs`, the 
 - `flushPendingOpenFiles()`: replays queued `files:open-file` events once `rendererReady` is true.
 - `openFile(file)`: queues or sends a macOS file-association open. Queues when the app/window/renderer is not ready yet.
 - `buildApplicationMenu()`: builds the app menu (macOS app menu with About, File > Open File with Cmd/Ctrl+O) and the macOS dock menu. Menu clicks are forwarded to the renderer as `menu:open-file` / `menu:about` events.
-- `createWindow()`: creates the 700x600 fixed-size window with `contextIsolation: true`, `nodeIntegration: false` and the bundled preload. Loads `VITE_DEV_SERVER_URL` in dev (opens devtools unless `IS_TEST`), otherwise `dist/index.html`.
+- `createWindow()`: creates the 700x600 fixed-size window with `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `webSecurity: true` and the bundled preload. Registers `setWindowOpenHandler` (denies every renderer-initiated window) and a `will-navigate` guard that only allows the dev server origin (dev) or the bundled `dist/index.html` file URL (prod); blocked navigations log a fixed string. Loads `VITE_DEV_SERVER_URL` in dev (opens devtools unless `IS_TEST`), otherwise `dist/index.html`. The renderer CSP lives as a meta tag in `index.html` (CTX-12).
 - `failure(code, message)`: builds the structured failure result `{ ok: false, code, message }` returned over IPC.
 - `toCryptoFailure(error, fallbackMessage)`: maps a thrown error to a structured failure. `IpcValidationError` keeps its code/message; `PathBusyError` becomes `OPERATION_FAILED` with a fixed string; anything else logs only the error name and returns the fallback message.
 - `runRegisteredOperation(operationId, run, fallbackMessage)`: wraps an operation already registered in `OperationRegistry`. Resolves `{ ok: true, cancelled: false }` on success, `{ ok: true, cancelled: true }` on `CancelledError`, a structured failure otherwise, and always calls `OperationRegistry.finish(operationId)` in `finally`.
-- `runSmokeTest()`: only under `CRYPTOX_SMOKE_TEST`. Verifies `window.cryptox` exists in the renderer and exits 0/1; used by `tests/e2e/smoke.js`.
+- `runSmokeTest()`: only under `CRYPTOX_SMOKE_TEST`. Verifies `window.cryptox` exists in the renderer (which proves the preload bridge works under `sandbox: true`) and that `window.open` does not create a second window, then exits 0/1; used by `tests/e2e/smoke.js`.
 
 ### App lifecycle handlers
 
@@ -45,7 +45,7 @@ All handlers live at module scope. The crypto ones resolve with structured resul
 - `files:confirm-delete-encrypted`: `validateDeletePath` (must end in `.ctx`), native confirm dialog defaulting to Keep, unlinks only on explicit Delete. Returns whether the file was deleted.
 - `log:error`: writes a renderer-supplied message to electron-log.
 
-## src/ipcValidation.js
+## src/main/ipcValidation.js
 
 Pure validation helpers shared by the IPC handlers. All throw on invalid input; crypto-payload failures throw `IpcValidationError` with a stable code from `Constants.CRYPTO_ERROR_CODES`.
 
@@ -58,7 +58,7 @@ Pure validation helpers shared by the IPC handlers. All throw on invalid input; 
 - `assertEncryptSource(filePath)`: must stat as regular file or directory and must not already end in `.ctx`.
 - `assertDecryptSource(filePath)`: must stat as a regular file and end in `.ctx`.
 
-## src/operations.js
+## src/main/operations.js
 
 `OperationRegistry` (default export) plus `PathBusyError`. Static registry of in-flight operations in the main process.
 
@@ -67,7 +67,7 @@ Pure validation helpers shared by the IPC handlers. All throw on invalid input; 
 - `finish(operationId)`: releases path claims and removes the entry. Must be called from `finally` so success, failure and cancellation all free the paths (`runRegisteredOperation` does this).
 - `cancelAll()`: cancels everything; used by `will-quit`.
 
-## src/temp.js
+## src/main/temp.js
 
 `TempManager` (default export). Static map of per-operation temp directories.
 
@@ -75,7 +75,7 @@ Pure validation helpers shared by the IPC handlers. All throw on invalid input; 
 - `release(operationId)`: best-effort recursive removal; safe to call unconditionally in `finally` (no-op for unknown ids, swallows removal errors so cleanup never masks the operation's own result).
 - `releaseAll()`: removes everything; used by `will-quit`.
 
-## src/constants.js
+## src/shared/constants.js
 
 Shared constants (default export object):
 
@@ -85,16 +85,12 @@ Shared constants (default export object):
 - `CRYPTO_ERROR_CODES`: frozen map of the stable codes crossing IPC: `SENDER_REJECTED`, `INVALID_PAYLOAD`, `FILE_NOT_FOUND`, `INVALID_FILE_TYPE`, `OPERATION_FAILED`.
 - `KEY_LEN` (32): AES-256 key length. Argon2id ops/mem limits are resolved at runtime from libsodium presets and stored per-file, not here.
 
-## src/exceptions.js
+## src/shared/exceptions.js
 
 - `IpcValidationError(code, message)`: validation failure with a stable `code`; the IPC layer forwards both verbatim.
 - `CancelledError(message?)`: thrown at cancellation checkpoints and used to destroy streams; carries `cancelled: true`. Mapped to `{ ok: true, cancelled: true }` by the handlers.
 - `NoValidPassword(message)`, `DecryptError(message)`: legacy function-style errors still used by the renderer's password form.
 
-## src/messages.js
-
-Tiny i18n table (en/es) for renderer strings, keyed by message id. The language is picked in `App.vue` from `app:info`'s locale.
-
-## src/filemanager.js
+## src/shared/filemanager.js
 
 `FileManager`: minimal wrapper created from a path string; exposes `path`, `name` (last path segment, split on "/") and `extension()` (text after the last dot). Used by both processes to pass "file-like" objects around. Note the renderer also receives DOM `File` objects; `Home.vue` converts them to `FileManager` via the preload's `getPathForFile`.

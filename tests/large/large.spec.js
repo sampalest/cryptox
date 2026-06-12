@@ -2,9 +2,9 @@ import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import Crypto from "@/crypto.js";
-import FileManager from "@/filemanager.js";
-import TempManager from "@/temp.js";
+import Crypto from "@main/crypto.js";
+import FileManager from "@shared/filemanager.js";
+import TempManager from "@main/temp.js";
 
 // Large-payload suite: generates ~1 GB inputs and verifies the UI contract
 // (progress/status event stream) against real output visibility on disk.

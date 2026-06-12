@@ -4,11 +4,11 @@
 
 ### scripts/build-electron.mjs
 
-Bundles the main process (`src/background.js` -> `dist-electron/background.cjs`) and preload (`src/preload.js` -> `dist-electron/preload.cjs`) as two separate Vite library builds targeting node24/CommonJS. Everything in package.json `dependencies` plus all Node builtins (both bare and `node:` forms) and `electron` stays external, so runtime deps must be declared in `dependencies`, not `devDependencies`, or the packaged app will fail to resolve them. Dev mode (NODE_ENV=development) enables sourcemaps. The first build empties `dist-electron/`, the second does not.
+Bundles the main process (`src/main/index.js` -> `dist-electron/background.cjs`) and preload (`src/preload/index.js` -> `dist-electron/preload.cjs`) as two separate Vite library builds targeting node24/CommonJS. Everything in package.json `dependencies` plus all Node builtins (both bare and `node:` forms) and `electron` stays external, so runtime deps must be declared in `dependencies`, not `devDependencies`, or the packaged app will fail to resolve them. Dev mode (NODE_ENV=development) enables sourcemaps. The first build empties `dist-electron/`, the second does not.
 
 ### scripts/electron-dev.mjs
 
-Dev orchestrator behind `npm run electron:serve`: starts the Vite dev server on 127.0.0.1:5173 (non-strict port), runs the electron bundles build, then spawns Electron with `VITE_DEV_SERVER_URL` pointing at the dev server. `background.js` loads that URL instead of `dist/index.html` and opens devtools. Forwards SIGINT/SIGTERM to Electron and closes the Vite server when Electron exits.
+Dev orchestrator behind `npm run electron:serve`: starts the Vite dev server on 127.0.0.1:5173 (non-strict port), runs the electron bundles build, then spawns Electron with `VITE_DEV_SERVER_URL` pointing at the dev server. The main process (`src/main/index.js`) loads that URL instead of `dist/index.html` and opens devtools. Forwards SIGINT/SIGTERM to Electron and closes the Vite server when Electron exits.
 
 ### scripts/setup-electron.mjs
 
@@ -26,7 +26,7 @@ CI release publisher. `master` -> release `v<version>` (updated in place if the 
 
 ### tests/unit/ (npm run test:unit)
 
-Jest, node environment, `runInBand`, `@/` mapped to `src/`. One spec per main-process module: `crypto.spec.js`, `format.spec.js`, `ipcValidation.spec.js`, `operations.spec.js`, `temp.spec.js`, `utils.spec.js`, `filemanager.spec.js`, plus `files-store.spec.js` for the Pinia store. New main-process behavior (especially anything in the Security invariants list) belongs here; `format.js` tests need no fs or sodium because the module is pure.
+Jest, node environment, `runInBand`, aliases `@main` -> `src/main`, `@shared` -> `src/shared`, `@/` -> `src/renderer` (same `@`/`@shared` as Vite). One spec per main-process module: `crypto.spec.js`, `format.spec.js`, `ipcValidation.spec.js`, `operations.spec.js`, `temp.spec.js`, `utils.spec.js`, `filemanager.spec.js`, plus `files-store.spec.js` for the Pinia store. New main-process behavior (especially anything in the Security invariants list) belongs here; `format.js` tests need no fs or sodium because the module is pure.
 
 ### tests/large/ (npm run test:large)
 

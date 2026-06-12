@@ -22,30 +22,32 @@ npm run electron:build   # full package: dmg/zip artifacts via electron-builder
 Run a single test file: `npx jest tests/unit/crypto.spec.js --runInBand`
 Run a single test by name: `npx jest tests/unit/crypto.spec.js --runInBand -t "test name"`
 
-Jest maps `@/` to `src/` (same alias as Vite).
+Jest and Vite share the aliases `@` -> `src/renderer` and `@shared` -> `src/shared`; Jest additionally maps `@main` -> `src/main` for unit tests of main-process modules.
 
 ## Detailed code reference
 
-Per-file, per-function documentation lives in [docs/claude/](docs/claude/README.md): [main-process.md](docs/claude/main-process.md) (background.js, IPC validation, registries), [crypto.md](docs/claude/crypto.md) (crypto.js, format.js, utils.js, vector.js), [renderer.md](docs/claude/renderer.md) (preload bridge, Vue views/components/mixins, store), [build-test-release.md](docs/claude/build-test-release.md) (scripts, test suites, CI, packaging). Consult these before reading a module end to end; update the matching section in the same commit when changing a documented function's contract.
+Per-file, per-function documentation lives in [docs/claude/](docs/claude/README.md): [main-process.md](docs/claude/main-process.md) (main process index.js, IPC validation, registries), [crypto.md](docs/claude/crypto.md) (crypto.js, format.js, utils.js, vector.js), [renderer.md](docs/claude/renderer.md) (preload bridge, Vue views/components/mixins, store), [build-test-release.md](docs/claude/build-test-release.md) (scripts, test suites, CI, packaging). Consult these before reading a module end to end; update the matching section in the same commit when changing a documented function's contract.
 
 ## Architecture
 
-Standard Electron three-context split with context isolation on and node integration off:
+`src/` is split by Electron process, mirroring the security boundary (the electron-vite convention). Context isolation is on, node integration off:
 
-- **Main process: [src/background.js](src/background.js)** - window lifecycle, app menu, and all `ipcMain.handle` endpoints (`crypto:encrypt`, `crypto:decrypt`, `crypto:cancel`, `dialog:open-files`, `files:confirm-delete-encrypted`, `shell:open-external`, `app:info`, `log:error`, `files:renderer-ready`). Every handler validates its sender and payload via [src/ipcValidation.js](src/ipcValidation.js) before touching the filesystem.
-- **Preload: [src/preload.js](src/preload.js)** - exposes the whole IPC surface to the renderer as `window.cryptox` via `contextBridge`. Event subscriptions (`onProgress`, `onStatus`, menu events) return an unsubscribe function.
-- **Renderer: Vue 3 + Pinia + vue-router** - entry [src/main.js](src/main.js), views in `src/views/`, components in `src/components/`, shared behavior in `src/components/mixins/` (`filecryto.js` drives encrypt/decrypt through `window.cryptox`). Selected files live in the Pinia store [src/store/files.js](src/store/files.js). Styling is Sass with a vendored Materialize 1.0 under `src/sass/materialize/` (kept on `@import` deliberately; see vite.config.js comment).
+- `src/main/` - the Electron main process. `src/preload/` - the context bridge. `src/renderer/` - the Vue app. `src/shared/` - the few modules both processes import ([constants.js](src/shared/constants.js), [exceptions.js](src/shared/exceptions.js), [filemanager.js](src/shared/filemanager.js)).
+- Aliases (same in vite.config.js, jest.config.js and scripts/build-electron.mjs): `@` -> `src/renderer`, `@shared` -> `src/shared`, and in Jest `@main` -> `src/main`. Main-process files use relative imports.
+- **Main process: [src/main/index.js](src/main/index.js)** - window lifecycle, app menu, and all `ipcMain.handle` endpoints (`crypto:encrypt`, `crypto:decrypt`, `crypto:cancel`, `dialog:open-files`, `files:confirm-delete-encrypted`, `shell:open-external`, `app:info`, `log:error`, `files:renderer-ready`). Every handler validates its sender and payload via [src/main/ipcValidation.js](src/main/ipcValidation.js) before touching the filesystem.
+- **Preload: [src/preload/index.js](src/preload/index.js)** - exposes the whole IPC surface to the renderer as `window.cryptox` via `contextBridge`. Event subscriptions (`onProgress`, `onStatus`, menu events) return an unsubscribe function.
+- **Renderer: Vue 3 + Pinia + vue-router** - entry [src/renderer/main.js](src/renderer/main.js), views in `src/renderer/views/`, components in `src/renderer/components/`, shared behavior in `src/renderer/components/mixins/` (`filecryto.js` drives encrypt/decrypt through `window.cryptox`). Selected files live in the Pinia store [src/renderer/store/files.js](src/renderer/store/files.js). Styling is Sass with a vendored Materialize 1.0 under `src/renderer/sass/materialize/` (kept on `@import` deliberately; see vite.config.js comment).
 
 ### Crypto pipeline (main process)
 
 One operation = one `Crypto` instance keyed by an `operationId` (validated, client-supplied):
 
-- **[src/crypto.js](src/crypto.js)** - streaming AES-256-GCM with an Argon2id KDF (libsodium-sumo). Directories are tar'd (tar-fs) before encryption. Owns cancellation: `cancel()` destroys in-flight streams and later checkpoints throw `CancelledError`.
-- **[src/format.js](src/format.js)** - the versioned `CTX1` container format (magic, version, flags, JSON header used as GCM associated data). Deliberately pure (no fs/sodium) so it is unit-testable; keep it that way.
-- **[src/operations.js](src/operations.js)** - `OperationRegistry`, a static map of in-flight operations that rejects two operations touching the same normalized path (`PathBusyError`).
-- **[src/temp.js](src/temp.js)** - `TempManager`, per-operation `mkdtemp` directories; release unconditionally in `finally`.
-- **[src/ipcValidation.js](src/ipcValidation.js)** - sender trust check, payload normalization, operation-id pattern, delete-path and external-URL allowlists.
-- Errors cross IPC as structured results rather than rejections because Electron strips custom error fields (see comment near the crypto handlers in background.js). Error codes live in [src/constants.js](src/constants.js), user-facing strings in [src/messages.js](src/messages.js).
+- **[src/main/crypto.js](src/main/crypto.js)** - streaming AES-256-GCM with an Argon2id KDF (libsodium-sumo). Directories are tar'd (tar-fs) before encryption. Owns cancellation: `cancel()` destroys in-flight streams and later checkpoints throw `CancelledError`.
+- **[src/main/format.js](src/main/format.js)** - the versioned `CTX1` container format (magic, version, flags, JSON header used as GCM associated data). Deliberately pure (no fs/sodium) so it is unit-testable; keep it that way.
+- **[src/main/operations.js](src/main/operations.js)** - `OperationRegistry`, a static map of in-flight operations that rejects two operations touching the same normalized path (`PathBusyError`).
+- **[src/main/temp.js](src/main/temp.js)** - `TempManager`, per-operation `mkdtemp` directories; release unconditionally in `finally`.
+- **[src/main/ipcValidation.js](src/main/ipcValidation.js)** - sender trust check, payload normalization, operation-id pattern, delete-path and external-URL allowlists.
+- Errors cross IPC as structured results rather than rejections because Electron strips custom error fields (see comment near the crypto handlers in src/main/index.js). Error codes live in [src/shared/constants.js](src/shared/constants.js), user-facing strings in [src/renderer/messages.js](src/renderer/messages.js).
 
 ### Operation flow
 
@@ -62,9 +64,10 @@ The renderer builds with Vite into `dist/`; [scripts/build-electron.mjs](scripts
 
 ## Security invariants
 
-These behaviors are deliberate hardening (the CTX-N work) and must survive any refactor. When changing [background.js](src/background.js), [preload.js](src/preload.js), [ipcValidation.js](src/ipcValidation.js), [crypto.js](src/crypto.js), [format.js](src/format.js), or [utils.js](src/utils.js), check the change against this list; run `/security-review` for anything that alters the IPC surface or the file format.
+These behaviors are deliberate hardening (the CTX-N work) and must survive any refactor. When changing [src/main/index.js](src/main/index.js), [src/preload/index.js](src/preload/index.js), [src/main/ipcValidation.js](src/main/ipcValidation.js), [src/main/crypto.js](src/main/crypto.js), [src/main/format.js](src/main/format.js), or [src/main/utils.js](src/main/utils.js), check the change against this list; run `/security-review` for anything that alters the IPC surface or the file format.
 
-- Renderer isolation: `contextIsolation: true`, `nodeIntegration: false`. The renderer reaches the system only through the `window.cryptox` bridge; never widen what preload exposes beyond specific validated channels.
+- Renderer isolation: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `webSecurity: true` (explicit). The renderer reaches the system only through the `window.cryptox` bridge; never widen what preload exposes beyond specific validated channels. Preload must stay sandbox-compatible: imports from `electron` only.
+- Renderer containment (CTX-12): `setWindowOpenHandler` denies all renderer-initiated windows; a `will-navigate` guard allows only the dev server origin (dev) or the bundled `dist/index.html` (prod); `index.html` carries a CSP meta tag (`script-src 'self'`, no remote origins; the `ws://localhost` connect-src entries exist only for Vite HMR). DevTools opens only in dev (`VITE_DEV_SERVER_URL` set and not `IS_TEST`).
 - Every crypto IPC handler first checks `isTrustedSender` (only the app window's own `webContents`; devtools, other windows and webviews are rejected) and validates the payload before touching the filesystem: `normalizeCryptoPayload`, operation id matching `[A-Za-z0-9_-]{1,64}`, `assertEncryptSource`/`assertDecryptSource` stat checks.
 - Failure messages are fixed strings. User-controlled content (paths, passwords, operation ids) never goes into error messages or logs.
 - `files:confirm-delete-encrypted` deletes only paths ending in the `.ctx` extension and always behind a native confirm dialog. `shell:open-external` opens only https URLs from the hardcoded allowlist in ipcValidation.js.

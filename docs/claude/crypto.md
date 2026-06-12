@@ -2,7 +2,7 @@
 
 The cryptographic core, all main-process code. The on-disk format rules in [CLAUDE.md](../../CLAUDE.md) (Security invariants) apply to every function here.
 
-## src/crypto.js
+## src/main/crypto.js
 
 `Crypto` (default export): one instance per operation, constructed with `(password, operationId)`. Owns the operation's streams, cancellation state and temp directory.
 
@@ -46,7 +46,7 @@ The cryptographic core, all main-process code. The on-disk format rules in [CLAU
 - `_decryptTrailingExt(file, size, completeFile, events, cipherKey, ivStart)`: shared interim/legacy tail. Reads the 8-byte `*`-padded extension before the tag, rebuilds the output name (keeping multi-dot stems), and runs `Format.sanitizeName` on it because this field is NOT covered by the auth tag (path-steering defense). `ext === "tar"` means a directory payload: archive goes to the temp dir and extracts next to the source.
 - `_streamDecrypt(job)`: common core for all three formats. Creates the decipher with IV + auth tag (+ AAD when given), streams the ciphertext slice into a staged `wx` file, progress 0-99 against the ciphertext length. Special-cases empty plaintext (GCM still authenticates on `final()`, but fs read streams cannot express a zero-length range). On finish: cancellation re-check, then either safe tar extraction (`Utils.unzipDirectory`) or fsync + `_moveIntoPlace`; 100% only after that. On any error (including wrong password, which only fails GCM auth at stream end after partial garbage is written): destroy streams, remove the staged output, reject.
 
-## src/format.js
+## src/main/format.js
 
 The pure CTX1 container module: no fs, no sodium, no node:crypto, so it is unit-testable and parsing never triggers KDF work. Keep it pure. Default export is an object of constants + functions.
 
@@ -72,7 +72,7 @@ The raw header bytes (offset 0 through end of JSON) are the GCM associated data.
 - `parsePrefixV1(buf)`: validates magic, version, flag bits, and bounds headerLen; returns `{ version, flags, headerLen }`.
 - `parseHeaderV1(headerBuf, fileSize)`: full parse: prefix, truncation checks against fileSize (header + IV + tag must fit), JSON parse, `_validateMeta`. Returns `{ flags, headerLen, meta, headerBytes }` where `headerBytes` is exactly the AAD slice.
 
-## src/utils.js
+## src/main/utils.js
 
 `Utils` (default export), static helpers. The tar functions are security-sensitive.
 
@@ -86,6 +86,6 @@ The raw header bytes (offset 0 through end of JSON) are the GCM associated data.
 - `fillExtension(extension, bytenum)`: pads an extension to 8 bytes with leading `*` (legacy/interim formats only; the CTX1 path does not use it).
 - `textToBuffer(text)`: debugging leftover; logs a byte array, returns nothing. Candidate for removal.
 
-## src/vector.js
+## src/main/vector.js
 
 `IVector`: a Transform stream that emits the 16-byte IV before the first cipher chunk, used in the encrypt pipeline between the cipher and the write stream. `_flush` also emits the IV when the plaintext was empty (no chunks ever pass `_transform`), so the file always contains its IV.
