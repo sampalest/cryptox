@@ -28,6 +28,8 @@ CI release publisher. `master` -> release `v<version>` (updated in place if the 
 
 Jest, node environment, `runInBand`, aliases `@main` -> `src/main`, `@shared` -> `src/shared`, `@/` -> `src/renderer` (same `@`/`@shared` as Vite). One spec per main-process module: `crypto.spec.js`, `format.spec.js`, `ipcValidation.spec.js`, `operations.spec.js`, `temp.spec.js`, `utils.spec.js`, `filemanager.spec.js`, plus `files-store.spec.js` for the Pinia store. New main-process behavior (especially anything in the Security invariants list) belongs here; `format.js` tests need no fs or sodium because the module is pure.
 
+`crypto.spec.js` (with `utils.spec.js` for tar handling) doubles as the security regression suite for the CLAUDE.md Security invariants list (CTX-13): round-trips (binary, empty, odd filenames), wrong-password and tamper rejection (header, IV, ciphertext, auth tag, truncation) with no output or staged files left behind, never-overwrite naming, tar extraction hardening, cancellation cleanup, per-operation temp isolation, and legacy/CTXBOX decrypt-only compatibility (including path steering via their unauthenticated extension field). A change that breaks one of these tests is breaking a security property, not just a test.
+
 ### tests/large/ (npm run test:large)
 
 Generates ~1 GB incompressible payloads (a file and a folder), encrypts and decrypts them through the real `Crypto` class, and verifies the UI event contract: progress monotonicity, the 0-99 streaming range with 100 fired only when output is actually visible on disk, loader phases, and content hashes round-tripping. 30-minute Jest timeout; size overridable via `CRYPTOX_LARGE_SIZE_MB` (e.g. 128 for local runs). Excluded from the unit testMatch.
