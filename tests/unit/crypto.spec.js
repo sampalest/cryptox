@@ -166,6 +166,21 @@ describe("Crypto", () => {
         expect(fs.readFileSync(sourcePath, "utf-8")).toBe("hello cryptox");
     });
 
+    it("round-trips binary content byte for byte", async () => {
+        const sourcePath = path.join(tempDir, "payload.bin");
+        const encryptedPath = path.join(tempDir, "payload.ctx");
+        // Spans many 64 KB stream chunks and contains NUL plus high bytes,
+        // so any encoding or chunk-boundary corruption shows up.
+        const payload = crypto.randomBytes(3 * 1024 * 1024);
+        fs.writeFileSync(sourcePath, payload);
+
+        await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
+        fs.unlinkSync(sourcePath);
+        await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
+
+        expect(fs.readFileSync(sourcePath).equals(payload)).toBe(true);
+    });
+
     it("rejects when decrypting with the wrong password", async () => {
         const sourcePath = path.join(tempDir, "sample.txt");
         const encryptedPath = path.join(tempDir, "sample.ctx");
@@ -501,6 +516,38 @@ describe("Crypto", () => {
         expect(fs.readFileSync(path.join(tempDir, "архив.tar.gz.verylongextension"), "utf-8")).toBe("weird payload");
     });
 
+    it("round-trips a filename containing spaces and parentheses", async () => {
+        // The parentheses also have to survive the "name (n)" collision
+        // counter parsing in Utils.uniquePath.
+        const sourcePath = path.join(tempDir, "my report (final) v2.txt");
+        const encryptedPath = path.join(tempDir, "my report (final) v2.ctx");
+        fs.writeFileSync(sourcePath, "spaced payload");
+
+        await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
+
+        expect(readCtx1Header(encryptedPath).meta.name).toBe("my report (final) v2.txt");
+
+        fs.unlinkSync(sourcePath);
+        await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
+
+        expect(fs.readFileSync(sourcePath, "utf-8")).toBe("spaced payload");
+    });
+
+    it("round-trips a filename with no extension", async () => {
+        const sourcePath = path.join(tempDir, "README");
+        const encryptedPath = path.join(tempDir, "README.ctx");
+        fs.writeFileSync(sourcePath, "extensionless payload");
+
+        await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
+
+        expect(readCtx1Header(encryptedPath).meta.name).toBe("README");
+
+        fs.unlinkSync(sourcePath);
+        await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
+
+        expect(fs.readFileSync(sourcePath, "utf-8")).toBe("extensionless payload");
+    });
+
     it("does not overwrite an existing file when encrypting", async () => {
         const sourcePath = path.join(tempDir, "sample.txt");
         const takenPath = path.join(tempDir, "sample.ctx");
@@ -603,6 +650,19 @@ describe("Crypto", () => {
         expect(fs.existsSync(path.join(tempDir, "x"))).toBe(false);
     });
 
+    it("rejects an interim extension that smuggles path separators", async () => {
+        const encryptedPath = path.join(tempDir, "evil.ctx");
+        // The CTXBOX trailing ext field is just as unauthenticated as the
+        // legacy one, so it gets the same sanitizeName treatment.
+        await writeInterimCtx(encryptedPath, "correct horse", "evil payload", "../../x");
+
+        await expect(
+            new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 })
+        ).rejects.toThrow(/illegal characters/);
+
+        expect(fs.existsSync(path.join(tempDir, "x"))).toBe(false);
+    });
+
     it("leaves no output when the auth tag is tampered", async () => {
         const encryptedPath = path.join(tempDir, "payload.ctx");
         await writeCtx1File(encryptedPath, "correct horse", "tagged payload", { metaOverrides: { name: "payload.txt" } });
@@ -610,6 +670,26 @@ describe("Crypto", () => {
         // Flip a byte inside the trailing 16-byte GCM tag.
         const buf = fs.readFileSync(encryptedPath);
         buf[buf.length - 1] ^= 0xff;
+        fs.writeFileSync(encryptedPath, buf);
+
+        await expect(
+            new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 })
+        ).rejects.toThrow();
+
+        expect(fs.existsSync(path.join(tempDir, "payload.txt"))).toBe(false);
+        expect(leftoverTempNames(tempDir)).toEqual([]);
+    });
+
+    it("leaves no output when the IV is tampered", async () => {
+        const encryptedPath = path.join(tempDir, "payload.ctx");
+        await writeCtx1File(encryptedPath, "correct horse", "shifted payload", { metaOverrides: { name: "payload.txt" } });
+
+        // Flip a byte inside the 16-byte IV that follows the header:
+        // [8 + headerLen header][16 IV][ciphertext][16 tag]. A swapped IV
+        // must fail GCM authentication, not silently decrypt to garbage.
+        const buf = fs.readFileSync(encryptedPath);
+        const ivStart = 8 + buf.readUInt16BE(6);
+        buf[ivStart + 7] ^= 0xff;
         fs.writeFileSync(encryptedPath, buf);
 
         await expect(

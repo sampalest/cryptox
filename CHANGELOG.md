@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Security regression coverage completed ([CTX-13]): the unit suite now also
+  covers byte-for-byte binary round-trips across stream chunk boundaries,
+  tampered-IV rejection (alongside the existing header, ciphertext and auth
+  tag cases), filenames with spaces/parentheses and with no extension, and
+  path-separator smuggling through the unauthenticated CTXBOX extension
+  field (the legacy field was already covered). Together with the tests
+  added during CTX-5..CTX-12, `npm run test:unit` now locks down every
+  invariant on the CTX-13 checklist; the suite's role is documented in
+  README and docs/claude/build-test-release.md.
+
 ## [0.3.8-alpha] - 2026-06-12
 
 ### Security
