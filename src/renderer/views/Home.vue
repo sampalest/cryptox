@@ -22,11 +22,11 @@
     </div>
 </template>
 <script>
-import Constants from "@/constants.js";
+import Constants from "@shared/constants.js";
 import animation from "@/components/mixins/animation.js";
 import sysevents from "@/components/mixins/sysevents.js";
 import FileLoader from "@/components/FileLoader.vue";
-import FileManager from "@/filemanager.js";
+import FileManager from "@shared/filemanager.js";
 import PasswordScreen from "@/components/PasswordScreen.vue";
 import EncryptLoader from "@/components/EncryptLoader.vue";
 import { useFilesStore } from "@/store/files.js";

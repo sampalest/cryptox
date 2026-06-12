@@ -1,6 +1,6 @@
 import fs from "fs";
-import Constants from "./constants.js";
-import { IpcValidationError } from "./exceptions.js";
+import Constants from "../shared/constants.js";
+import { IpcValidationError } from "../shared/exceptions.js";
 
 const Codes = Constants.CRYPTO_ERROR_CODES;
 const OPERATION_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;

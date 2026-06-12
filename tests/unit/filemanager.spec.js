@@ -1,4 +1,4 @@
-import FileManager from "@/filemanager.js";
+import FileManager from "@shared/filemanager.js";
 
 describe("FileManager", () => {
     it("derives names and extensions from a file path", () => {
