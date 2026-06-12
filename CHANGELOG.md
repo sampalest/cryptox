@@ -5,6 +5,36 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8-alpha] - 2026-06-12
+
+### Security
+
+- Renderer hardening completed ([CTX-12]): the window now runs with
+  `sandbox: true` and an explicit `webSecurity: true`;
+  `setWindowOpenHandler` denies every renderer-initiated window; a
+  `will-navigate` guard restricts navigation to the dev server origin (dev)
+  or the bundled `dist/index.html` (prod); `index.html` ships a Content
+  Security Policy meta tag (`script-src 'self'`, no remote origins). The
+  Electron smoke test now also asserts the preload bridge works under the
+  sandbox and that `window.open` cannot create windows. DevTools gating
+  (dev only) and the `shell:open-external` https allowlist are unchanged.
+
+### Changed
+
+- `src/` reorganized by Electron process ([CTX-12]): `src/main/` (main
+  process, entry `index.js`, formerly `background.js`), `src/preload/`,
+  `src/renderer/` (the Vue app) and `src/shared/` (modules imported by both
+  processes). Import aliases updated accordingly: `@` -> `src/renderer`,
+  `@shared` -> `src/shared`, `@main` -> `src/main` (Jest). Bundle names
+  (`dist-electron/background.cjs`, `preload.cjs`) and all runtime behavior
+  are unchanged.
+
+### Removed
+
+- Dead root files ([CTX-12]): `yarn.lock` (npm is the package manager),
+  `.browserslistrc` (unused by Babel and Vite) and `entitlements.mac.plist`
+  (referenced by no build configuration).
+
 ## [0.3.7-alpha] - 2026-06-11
 
 ### Security

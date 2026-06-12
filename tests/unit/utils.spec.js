@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { pack } from "tar-stream";
-import Utils from "@/utils.js";
+import Utils from "@main/utils.js";
 
 /**
  * Write a tar archive with arbitrary (possibly malicious) entries.

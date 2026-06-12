@@ -7,7 +7,9 @@ module.exports = {
         "^.+\\.js$": "babel-jest"
     },
     moduleNameMapper: {
-        "^@/(.*)$": "<rootDir>/src/$1"
+        "^@main/(.*)$": "<rootDir>/src/main/$1",
+        "^@shared/(.*)$": "<rootDir>/src/shared/$1",
+        "^@/(.*)$": "<rootDir>/src/renderer/$1"
     },
     modulePathIgnorePatterns: [
         "<rootDir>/dist",

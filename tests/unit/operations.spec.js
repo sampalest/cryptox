@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import OperationRegistry, { PathBusyError } from "@/operations.js";
+import OperationRegistry, { PathBusyError } from "@main/operations.js";
 
 describe("OperationRegistry", () => {
     let tempDir;
