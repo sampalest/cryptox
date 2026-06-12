@@ -3,10 +3,10 @@
 import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from "electron";
 import path from "path";
 import fs from "fs";
-import { fileURLToPath } from "url";
-import Constants from "./constants.js";
+import { fileURLToPath, pathToFileURL } from "url";
+import Constants from "../shared/constants.js";
 import Crypto from "./crypto.js";
-import FileManager from "./filemanager.js";
+import FileManager from "../shared/filemanager.js";
 import OperationRegistry from "./operations.js";
 import TempManager from "./temp.js";
 import {
@@ -113,7 +113,25 @@ function createWindow () {
         webPreferences: {
             contextIsolation: true,
             nodeIntegration: false,
+            sandbox: true,
+            webSecurity: true,
             preload: path.join(runtimeDir, "preload.cjs")
+        }
+    });
+
+    // The app never opens child windows; external links go through the
+    // shell:open-external allowlist instead.
+    win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+
+    // Only the dev server (dev) or the bundled index.html (prod) may load.
+    const allowedNavigationUrl = process.env.VITE_DEV_SERVER_URL
+        ? new URL(process.env.VITE_DEV_SERVER_URL).origin
+        : pathToFileURL(path.join(runtimeDir, "..", "dist", "index.html")).href;
+    win.webContents.on("will-navigate", (event, url) => {
+        const target = process.env.VITE_DEV_SERVER_URL ? new URL(url).origin : url;
+        if (target !== allowedNavigationUrl) {
+            logger.error("Blocked unexpected renderer navigation.");
+            event.preventDefault();
         }
     });
 
@@ -328,6 +346,11 @@ async function runSmokeTest() {
         );
         if (!hasBridge) {
             throw new Error("Preload bridge is unavailable.");
+        }
+        // setWindowOpenHandler must deny renderer-initiated windows.
+        await win.webContents.executeJavaScript("window.open(\"https://example.com\"); 0");
+        if (BrowserWindow.getAllWindows().length !== 1) {
+            throw new Error("Renderer was able to open a new window.");
         }
         logger.info("Cryptox smoke test passed.");
         app.exit(0);

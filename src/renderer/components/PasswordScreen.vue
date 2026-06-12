@@ -34,7 +34,7 @@
     </form>
 </template>
 <script>
-import * as e from "../exceptions.js";
+import * as e from "@shared/exceptions.js";
 import animation from "@/components/mixins/animation.js";
 
 export default {

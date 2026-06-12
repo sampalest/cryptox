@@ -1,4 +1,4 @@
-import FileManager from "@/filemanager.js";
+import FileManager from "@shared/filemanager.js";
 import { useFilesStore } from "@/store/files.js";
 
 export default {

@@ -8,7 +8,7 @@ import {
     normalizeCryptoPayload,
     validateExternalUrl,
     validateOperationId
-} from "@/ipcValidation.js";
+} from "@main/ipcValidation.js";
 
 async function expectCode(promise, code) {
     await expect(promise).rejects.toMatchObject({ name: "IpcValidationError", code });
