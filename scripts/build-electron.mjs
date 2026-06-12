@@ -41,20 +41,20 @@ async function buildElectronEntry({ entry, fileName, emptyOutDir }) {
         },
         resolve: {
             alias: {
-                "@": path.resolve(rootDir, "src")
+                "@shared": path.resolve(rootDir, "src/shared")
             }
         }
     });
 }
 
 await buildElectronEntry({
-    entry: "src/background.js",
+    entry: "src/main/index.js",
     fileName: "background.cjs",
     emptyOutDir: true
 });
 
 await buildElectronEntry({
-    entry: "src/preload.js",
+    entry: "src/preload/index.js",
     fileName: "preload.cjs",
     emptyOutDir: false
 });

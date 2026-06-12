@@ -3,12 +3,12 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import sodium from "libsodium-wrappers-sumo";
-import { CancelledError } from "@/exceptions.js";
-import Crypto from "@/crypto.js";
-import Format from "@/format.js";
-import FileManager from "@/filemanager.js";
-import TempManager from "@/temp.js";
-import Utils from "@/utils.js";
+import { CancelledError } from "@shared/exceptions.js";
+import Crypto from "@main/crypto.js";
+import Format from "@main/format.js";
+import FileManager from "@shared/filemanager.js";
+import TempManager from "@main/temp.js";
+import Utils from "@main/utils.js";
 
 // Argon2id (MODERATE) is intentionally CPU/memory heavy; give the KDF room to run.
 jest.setTimeout(30000);

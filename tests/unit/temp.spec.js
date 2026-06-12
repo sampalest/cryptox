@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import TempManager from "@/temp.js";
+import TempManager from "@main/temp.js";
 
 describe("TempManager", () => {
     afterEach(() => {
