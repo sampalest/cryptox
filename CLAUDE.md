@@ -32,7 +32,7 @@ Per-file, per-function documentation lives in `docs/claude/`. It goes one level 
 |---|---|
 | [main-process.md](docs/claude/main-process.md) | `main/index.js`, `main/ipcValidation.js`, `main/operations.js`, `main/temp.js`, `shared/constants.js`, `shared/exceptions.js`, `shared/filemanager.js` |
 | [crypto.md](docs/claude/crypto.md) | `main/crypto.js`, `main/format.js`, `main/utils.js`, `main/vector.js` |
-| [renderer.md](docs/claude/renderer.md) | `preload/index.js`, `renderer/main.js`, `App.vue`, `messages.js`, router, Pinia store, views, components, mixins |
+| [renderer.md](docs/claude/renderer.md) | `preload/index.js`, `renderer/main.js`, `App.vue`, router, Pinia store, views, components, mixins |
 | [build-test-release.md](docs/claude/build-test-release.md) | `scripts/`, test suites, CI and release flow |
 
 ## Architecture
@@ -60,7 +60,7 @@ Per-file, per-function documentation lives in `docs/claude/`. It goes one level 
 - `views/`, `components/`: screens and reusable UI pieces.
 - `components/mixins/`: shared component behavior; `filecryto.js` drives encrypt/decrypt through `window.cryptox`.
 - [store/files.js](src/renderer/store/files.js): the Pinia store holding the selected files.
-- [messages.js](src/renderer/messages.js): user-facing strings, keyed by the error codes in shared/constants.js.
+- User-facing failure strings live in `FAILURE_MESSAGES` in `components/mixins/filecryto.js`, keyed by the error codes in shared/constants.js (one deliberate string per code, for both encrypt and decrypt).
 - `sass/`: styling, with a vendored Materialize 1.0 under `sass/materialize/` (kept on `@import` deliberately; see the vite.config.js comment).
 
 ### `src/shared/` (imported by both processes)
@@ -71,7 +71,7 @@ Per-file, per-function documentation lives in `docs/claude/`. It goes one level 
 
 ### Crypto pipeline
 
-Each crypto IPC call resolves to a structured result (`{ ok, code, message }`) rather than throwing, because Electron strips custom fields off errors that cross the process boundary (see the comment near the crypto handlers in index.js). Error codes live in [src/shared/constants.js](src/shared/constants.js); the renderer maps them to user-facing text in [src/renderer/messages.js](src/renderer/messages.js).
+Each crypto IPC call resolves to a structured result (`{ ok, code, message }`) rather than throwing, because Electron strips custom fields off errors that cross the process boundary (see the comment near the crypto handlers in index.js). Error codes live in [src/shared/constants.js](src/shared/constants.js); the renderer maps them to user-facing text via `FAILURE_MESSAGES` in [src/renderer/components/mixins/filecryto.js](src/renderer/components/mixins/filecryto.js).
 
 ### Operation flow
 

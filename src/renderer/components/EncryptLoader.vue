@@ -2,7 +2,7 @@
     <div class="template-container">
         <div class="title-block">
             <div class="app-title">
-                <span v-text="!isEncrypt ? 'Encrypting' : 'Decrypting'"></span>
+                <span v-text="isDecrypt ? 'Decrypting' : 'Encrypting'"></span>
             </div>
             <p>{{fileEvent.msg}} {{fileEvent.filename}}</p>
         </div>
@@ -15,7 +15,7 @@
         </div>
         <p v-if="!fileEvent.loader" class="progress-perc">{{percent.value}}%</p>
         <div class="cancel-button">
-            <a @click="cancel">Cancel</a>
+            <a role="button" tabindex="0" @click="cancel" @keydown.enter.prevent="cancel" @keydown.space.prevent="cancel">Cancel</a>
         </div>
     </div>
 </template>
@@ -40,7 +40,7 @@ export default {
                 msg: "",
                 filename: ""
             },
-            STOcancel: null
+            finishSTO: null
         };
     },
     mixins: [animation, fileCrypto],
@@ -54,14 +54,14 @@ export default {
             type: String,
             default: ""
         },
-        isEncrypt: {
+        isDecrypt: {
             type: Boolean,
             default: true
         }
     },
     watch: {
         finish() {
-            setTimeout(()=> {
+            this.finishSTO = setTimeout(()=> {
                 this.$emit("finish", this.finish);
             }, 500);
         },
@@ -91,19 +91,21 @@ export default {
         this.$nextTick(function () {
             if (!this.files.length) this.destroy();
             this.files.forEach(file => {
-                if (this.isEncrypt) {
+                if (this.isDecrypt) {
                     this.decryptFile(file);
                 } else {
                     this.encryptFile(file);
                 }
             });
         });
-
-        this.STOcancel = setTimeout(() => {
-            if (this.percent.value === 0 && !this.fileEvent.loader) {
-                this.cancel();
-            }
-        }, 5000);
+    },
+    beforeUnmount() {
+        // The component can unmount before in-flight operations settle (cancel,
+        // navigate, fast finish). Clear the pending finish emit and release any
+        // crypto:progress/crypto:status listeners so they never write to a
+        // torn-down instance.
+        clearTimeout(this.finishSTO);
+        this.releaseAllHandlers();
     }
 };
 </script>
