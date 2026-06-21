@@ -1,0 +1,52 @@
+# Build, test and release reference
+
+## Build scripts
+
+### scripts/build-electron.mjs
+
+Bundles the main process (`src/main/index.js` -> `dist-electron/background.cjs`) and preload (`src/preload/index.js` -> `dist-electron/preload.cjs`) as two separate Vite library builds targeting node24/CommonJS. Everything in package.json `dependencies` plus all Node builtins (both bare and `node:` forms) and `electron` stays external, so runtime deps must be declared in `dependencies`, not `devDependencies`, or the packaged app will fail to resolve them. Dev mode (NODE_ENV=development) enables sourcemaps. The first build empties `dist-electron/`, the second does not.
+
+### scripts/electron-dev.mjs
+
+Dev orchestrator behind `npm run electron:serve`: starts the Vite dev server on 127.0.0.1:5173 (non-strict port), runs the electron bundles build, then spawns Electron with `VITE_DEV_SERVER_URL` pointing at the dev server. The main process (`src/main/index.js`) loads that URL instead of `dist/index.html` and opens devtools. Forwards SIGINT/SIGTERM to Electron and closes the Vite server when Electron exits.
+
+### scripts/setup-electron.mjs
+
+CI-only workaround for flaky Electron binary installation on macOS runners: retries `install.js` up to 5 times just to populate the download cache, then discards Electron's own extraction and re-extracts the cached zip with `ditto`, writing `path.txt` itself and asserting the binary is executable.
+
+### Code signing and notarization
+
+Deliberately not configured (APP-01): macOS code signing and notarization are deferred for the alpha. CI sets `CSC_IDENTITY_AUTO_DISCOVERY: "false"` so artifacts ship unsigned. The `mac` block already carries `hardenedRuntime: true` and `build/entitlements.mac.plist`, so signing/notarization can be enabled later (add `@electron/notarize` + an `afterSign` hook) without restructuring; those settings only take effect once signing is on.
+
+### scripts/publish-release.mjs
+
+CI release publisher. `master` -> release `v<version>` (updated in place if the tag exists); `develop` -> prerelease `v<version>.<shortsha>`, replacing only the previous prerelease of the same version. Uploads the `dist_electron/` dmg/zip assets with `--clobber`. Never deletes or recreates releases, so other versions are untouched.
+
+## Tests
+
+### tests/unit/ (npm run test:unit)
+
+Jest, node environment, `runInBand`, aliases `@main` -> `src/main`, `@shared` -> `src/shared`, `@/` -> `src/renderer` (same `@`/`@shared` as Vite). One spec per main-process module: `crypto.spec.js`, `format.spec.js`, `ipcValidation.spec.js`, `operations.spec.js`, `temp.spec.js`, `utils.spec.js`, `filemanager.spec.js`, plus `files-store.spec.js` for the Pinia store. New main-process behavior (especially anything in the Security invariants list) belongs here; `format.js` tests need no fs or sodium because the module is pure.
+
+`crypto.spec.js` (with `utils.spec.js` for tar handling) doubles as the security regression suite for the CLAUDE.md Security invariants list (CTX-13): round-trips (binary, empty, odd filenames), wrong-password and tamper rejection (header, IV, ciphertext, auth tag, truncation) with no output or staged files left behind, never-overwrite naming, tar extraction hardening, cancellation cleanup, per-operation temp isolation, and legacy/CTXBOX decrypt-only compatibility (including path steering via their unauthenticated extension field). A change that breaks one of these tests is breaking a security property, not just a test.
+
+### tests/large/ (npm run test:large)
+
+Generates ~1 GB incompressible payloads (a file and a folder), encrypts and decrypts them through the real `Crypto` class, and verifies the UI event contract: progress monotonicity, the 0-99 streaming range with 100 fired only when output is actually visible on disk, loader phases, and content hashes round-tripping. 30-minute Jest timeout; size overridable via `CRYPTOX_LARGE_SIZE_MB` (e.g. 128 for local runs). Excluded from the unit testMatch.
+
+### tests/e2e/smoke.js (npm run test:e2e)
+
+Spawns the real packaged-layout Electron app (after `build` + `build:electron`) with `CRYPTOX_SMOKE_TEST=true`. The main process then verifies `window.cryptox` exists in the renderer (startup + renderer load + preload bridge) and exits 0/1; the script enforces a 30s timeout. The rest of `tests/e2e/` (custom-assertions, custom-commands, page-objects, specs) is leftover Nightwatch scaffolding that nothing currently runs.
+
+## CI (.github/workflows)
+
+- `ci.yml`: on PRs and pushes to develop/master: lint, unit tests, and `npm audit --omit=dev --audit-level=high` on ubuntu (the audit gates on the production dependency tree, the only deps that ship in the packaged app; dev/build tooling vulns do not fail the build). Jobs that do not run Electron set `ELECTRON_SKIP_BINARY_DOWNLOAD=1` because the binary download is flaky on runners.
+- `large-tests.yml`: manual dispatch only; runs the large suite on ubuntu/macos/windows with a `size_mb` input (default 1024) and publishes timing metrics to the job summary.
+
+## Packaging
+
+`npm run electron:build` = renderer build + electron bundles + `electron-builder --config electron-builder.config.cjs --publish never`, producing macOS dmg/zip artifacts in `dist_electron/`. Note the three output directories: `dist/` (renderer), `dist-electron/` (main/preload bundles, the app's `main` entry), `dist_electron/` (packaged artifacts).
+
+`electron-builder.config.cjs` hardening (APP-02/03): `electronFuses` disables `runAsNode`, `enableNodeOptionsEnvironmentVariable` and `enableNodeCliInspectArguments` (so the packaged binary cannot be relaunched as a generic Node interpreter and bypass the renderer sandbox) and enables `onlyLoadAppFromAsar` + `enableEmbeddedAsarIntegrityValidation`; the `mac` block sets `hardenedRuntime` with `build/entitlements.mac.plist`. The single committed lockfile is `package-lock.json`; `yarn.lock` is gitignored (APP-05).
+
+The production CSP (`index.html`) is `connect-src 'self'` with `frame-ancestors 'none'` / `frame-src 'none'` (APP-06/07). The Vite HMR websocket origins are injected into `connect-src` only under `vite serve`, by the `cryptox-dev-csp-hmr` plugin in `vite.config.js`, so the bundled `dist/index.html` never carries them.

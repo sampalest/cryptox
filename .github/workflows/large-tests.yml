@@ -1,0 +1,45 @@
+name: 🐘 Large payload tests
+
+# Heavy suite (1 GB generated file + 1 GB generated folder): run on demand,
+# not on every push. Verifies the UI event contract and output visibility on
+# all supported platforms and publishes timing metrics to the job summary.
+on:
+  workflow_dispatch:
+    inputs:
+      size_mb:
+        description: Payload size in MB
+        required: false
+        default: "1024"
+
+jobs:
+  large:
+    name: 🐘 ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      # Skip electron's binary download: this job doesn't run electron, and the
+      # download is flaky from CI runners (504s from GitHub) and would fail npm ci.
+      - name: 📦 Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: 🐘 Run large payload tests
+        run: npm run test:large
+        env:
+          CRYPTOX_LARGE_SIZE_MB: ${{ inputs.size_mb || '1024' }}
+          CRYPTOX_METRICS_FILE: large-metrics.md
+      - name: 📊 Publish metrics to job summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f large-metrics.md ]; then
+            cat large-metrics.md >> "$GITHUB_STEP_SUMMARY"
+          fi

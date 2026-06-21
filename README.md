@@ -5,15 +5,57 @@
 </div>
 <hr>
 
-## Version 0.2.1-alpha
+## Version 1.0.0-beta
 
 ## Description
-* Simple app for encrypt files
-* Support macOS
+* Simple app to encrypt files and folders with a password
+* Supports macOS
 * Windows and Linux coming soon...
 
 ## Install
 - Download latest release from https://github.com/sampalest/cryptox/releases
+
+## Development
+
+Cryptox uses npm with a committed `package-lock.json`. Use Node.js 24 LTS for local development:
+
+```bash
+nvm use
+npm install
+```
+
+Run the app in development mode:
+
+```bash
+npm run electron:serve
+```
+
+### Tests and linting
+
+```bash
+npm run lint
+npm run test:unit
+npm run test:e2e
+npm run test:large
+```
+
+`test:unit` includes the security regression suite for the crypto format and file handling invariants (tamper rejection, no-overwrite output, tar extraction hardening, cancellation cleanup, legacy format compatibility).
+
+`test:e2e` runs a real Electron smoke test for startup, renderer load, and preload bridge availability.
+
+`test:large` generates a 1 GB file and a 1 GB folder and verifies the UI progress/status contract against real output visibility, printing timing metrics. Override the payload size with `CRYPTOX_LARGE_SIZE_MB` (e.g. `CRYPTOX_LARGE_SIZE_MB=128 npm run test:large`). The "Large payload tests" GitHub Actions workflow runs this suite on Linux, macOS and Windows via manual dispatch.
+
+### Build and packaging
+
+```bash
+npm run build
+npm run build:electron
+npm run electron:build
+```
+
+The renderer is built with Vite into `dist/`. Electron main and preload bundles are built into `dist-electron/` before local app startup or packaging. `npm run electron:build` produces macOS `dmg` and `zip` artifacts in `dist_electron/`. Local notarization is skipped unless the required notarization environment is configured.
+
+See [CHANGELOG.md](CHANGELOG.md) for release history and upgrade notes.
 
 ## Use this app
 Just drag file or folder you want to encrypt, set a password and that's it. Easy!
@@ -25,16 +67,16 @@ Support all files.
 
 ## Special thanks and credits
 ### Libs
-- Vue.js
-- Materialize
 - Electron
-- Node libs
-- Archiver
+- Vue.js (Pinia, Vue Router)
+- libsodium (Argon2id, AES-256-GCM)
+- tar-fs
+- Materialize
 - Animate.css
-- ...
+- Node libs
 
 ## Author
-Samuel Palomo Esteban
+Samuel P.E.
 
 ## License
 **Cryptox** is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
