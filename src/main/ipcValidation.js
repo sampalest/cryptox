@@ -6,7 +6,6 @@ const Codes = Constants.CRYPTO_ERROR_CODES;
 const OPERATION_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 const ALLOWED_EXTERNAL_URLS = new Set([
-    "https://github.com/Samuelpe/cryptox",
     "https://github.com/sampalest/cryptox"
 ]);
 

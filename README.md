@@ -5,11 +5,11 @@
 </div>
 <hr>
 
-## Version 0.3.7-alpha
+## Version 1.0.0-beta
 
 ## Description
-* Simple app for encrypt files
-* Support macOS
+* Simple app to encrypt files and folders with a password
+* Supports macOS
 * Windows and Linux coming soon...
 
 ## Install
@@ -67,13 +67,13 @@ Support all files.
 
 ## Special thanks and credits
 ### Libs
-- Vue.js
-- Materialize
 - Electron
-- Node libs
-- Archiver
+- Vue.js (Pinia, Vue Router)
+- libsodium (Argon2id, AES-256-GCM)
+- tar-fs
+- Materialize
 - Animate.css
-- ...
+- Node libs
 
 ## Author
 Samuel P.E.
