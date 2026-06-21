@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.10-alpha] - 2026-06-21
 
 ### Security
 
@@ -29,12 +29,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     origins are injected into `connect-src` only under `vite serve`, so the
     bundled `dist/index.html` no longer ships dev-only `ws://` origins.
 
-### Removed
+### Fixed
 
-- APP-01: dead `scripts/notarize.js` (never wired, wrong package, malformed
-  bundle id). macOS code signing and notarization remain deliberately deferred
-  for the alpha; the `mac` block keeps the Hardened Runtime and entitlements so
-  they can be enabled later without restructuring.
+- Renderer security and UX audit remediation ([CTX-26], Batch C of the June
+  2026 UI audit):
+  - UI-UX-02: the `isEncrypt` prop, whose value was the literal opposite of its
+    name, is renamed to `isDecrypt` across `Home.vue`, `PasswordScreen.vue` and
+    `EncryptLoader.vue`, and the compensating `!` negations in the labels are
+    dropped. The value is unchanged, so encrypt and decrypt behave exactly as
+    before, with no latent swap waiting for the next edit.
+  - UI-UX-03: multi-file decryption now finishes only once every selected file
+    has completed (mirroring encryption), instead of tearing the loader down
+    after the first file while others were still in flight.
+  - UI-UX-04: removed the 5-second auto-cancel watchdog that could abort a
+    legitimate operation still at 0% (slow disk, large file, or the Argon2id
+    key derivation) before its first progress tick.
+  - UI-UX-05: `EncryptLoader` now clears its pending finish timer and releases
+    in-flight progress/status listeners in `beforeUnmount`, and `Home` clears
+    its logo-animation timer, so a torn-down component no longer fires timers
+    or writes to dead state.
+  - UI-UX-06: Select Files, the logo, Cancel, the GitHub link and the back
+    button are keyboard and screen-reader operable (`role`/`tabindex`/keydown,
+    `aria-label`, image `alt`), and decorative icons are `aria-hidden`.
+  - UI-UX-08: the mixed-selection guard resets the staged selection before
+    alerting, and its message reads "Cannot mix encrypted and unencrypted
+    files."
+  - UI-SEC-01: the encrypt/decrypt button label uses interpolation instead of
+    `v-html`.
+  - UI-SEC-02: `PasswordScreen` clears the password on the success path too
+    (best-effort; JS string immutability prevents real zeroing).
+  - UI-SEC-03: password inputs set `autocomplete`/`autocapitalize`/
+    `autocorrect`/`spellcheck` so autofill and autocorrect cannot silently
+    alter a typed password.
 
 ### Changed
 
@@ -43,6 +69,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - APP-05: removed a regenerated `yarn.lock` from the working tree;
   `package-lock.json` stays the single committed lockfile (`yarn.lock` is
   gitignored).
+- UI-UX-01: every renderer failure code now maps to a deliberate string. The
+  `FAILURE_MESSAGES` table in `filecryto.js` gained `SENDER_REJECTED` and
+  `INVALID_PAYLOAD` (previously unmapped, falling through to a generic
+  message) for both encrypt and decrypt.
+
+### Removed
+
+- APP-01: dead `scripts/notarize.js` (never wired, wrong package, malformed
+  bundle id). macOS code signing and notarization remain deliberately deferred
+  for the alpha; the `mac` block keeps the Hardened Runtime and entitlements so
+  they can be enabled later without restructuring.
+- UI-UX-01: the disconnected `messages.js` locale table and its `App.vue`
+  plumbing (and the now-unused `PASSWORD_ERROR` constant), which gave a false
+  impression of i18n while the real strings were hardcoded elsewhere.
 
 ## [0.3.9-alpha] - 2026-06-21
 
