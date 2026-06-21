@@ -40,7 +40,7 @@ Spawns the real packaged-layout Electron app (after `build` + `build:electron`) 
 
 ## CI (.github/workflows)
 
-- `ci.yml`: on PRs and pushes to develop/master: lint, unit tests, and `npm audit --audit-level=high` on ubuntu. Jobs that do not run Electron set `ELECTRON_SKIP_BINARY_DOWNLOAD=1` because the binary download is flaky on runners.
+- `ci.yml`: on PRs and pushes to develop/master: lint, unit tests, and `npm audit --omit=dev --audit-level=high` on ubuntu (the audit gates on the production dependency tree, the only deps that ship in the packaged app; dev/build tooling vulns do not fail the build). Jobs that do not run Electron set `ELECTRON_SKIP_BINARY_DOWNLOAD=1` because the binary download is flaky on runners.
 - `large-tests.yml`: manual dispatch only; runs the large suite on ubuntu/macos/windows with a `size_mb` input (default 1024) and publishes timing metrics to the job summary.
 
 ## Packaging

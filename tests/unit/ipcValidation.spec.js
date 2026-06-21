@@ -151,6 +151,25 @@ describe("IPC validation", () => {
             await expectCode(assertDecryptSource(ctxDir), "INVALID_FILE_TYPE");
         });
 
+        it("rejects symlinked sources so a link target is never silently processed (CODE-03)", async () => {
+            const realFile = path.join(tempDir, "real.txt");
+            fs.writeFileSync(realFile, "hello");
+            const realDir = path.join(tempDir, "realdir");
+            fs.mkdirSync(realDir);
+            const linkToFile = path.join(tempDir, "link.txt");
+            const linkToDir = path.join(tempDir, "linkdir");
+            fs.symlinkSync(realFile, linkToFile);
+            fs.symlinkSync(realDir, linkToDir);
+            await expectCode(assertEncryptSource(linkToFile), "INVALID_FILE_TYPE");
+            await expectCode(assertEncryptSource(linkToDir), "INVALID_FILE_TYPE");
+
+            const realCtx = path.join(tempDir, "secret.ctx");
+            fs.writeFileSync(realCtx, "ciphertext");
+            const linkToCtx = path.join(tempDir, "link.ctx");
+            fs.symlinkSync(realCtx, linkToCtx);
+            await expectCode(assertDecryptSource(linkToCtx), "INVALID_FILE_TYPE");
+        });
+
         it("keeps the user-supplied path out of validation errors", async () => {
             const missing = path.join(tempDir, "missing.txt");
             const error = await assertEncryptSource(missing).then(() => null, e => e);

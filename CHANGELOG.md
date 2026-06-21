@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.9-alpha] - 2026-06-21
 
 ### Added
 
@@ -18,6 +18,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   added during CTX-5..CTX-12, `npm run test:unit` now locks down every
   invariant on the CTX-13 checklist; the suite's role is documented in
   README and docs/claude/build-test-release.md.
+
+### Security
+
+- Main process and crypto core audit remediation ([CTX-24], Batch A of the
+  June 2026 code security audit):
+  - CODE-01: the Argon2id `memlimit` clamp ceiling drops from 1 GiB to the
+    MODERATE preset (256 MiB), exactly what the encrypt path writes. A
+    tampered `.ctx` header can no longer request a per-decrypt allocation
+    larger than the app itself produces (KDF denial of service).
+  - CODE-03: source validation now uses `lstat` and rejects symlinks, closing
+    the stat/lstat divergence with `Utils.isDirectory` so a symlinked source
+    is never processed as its link target.
+  - CODE-04: all non-crypto IPC handlers (`app:info`, `dialog:open-files`,
+    `shell:open-external`, `files:confirm-delete-encrypted`, `log:error`,
+    `files:renderer-ready`) now gate on `isTrustedSender`, matching the crypto
+    channels (defense in depth).
+
+### Changed
+
+- CODE-02: `FileManager` derives the file name by splitting on both path
+  separators, so Windows paths resolve correctly (`sanitizeName` stays the
+  security backstop).
+
+### Removed
+
+- CODE-05: dead helpers `Utils.getFilesDir` and `Utils.textToBuffer`, and a
+  raw `console.error` in `Utils.zipDirectory`, restoring the fixed-strings
+  logging discipline.
 
 ## [0.3.8-alpha] - 2026-06-12
 
