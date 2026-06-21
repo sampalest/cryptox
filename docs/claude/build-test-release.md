@@ -14,9 +14,9 @@ Dev orchestrator behind `npm run electron:serve`: starts the Vite dev server on 
 
 CI-only workaround for flaky Electron binary installation on macOS runners: retries `install.js` up to 5 times just to populate the download cache, then discards Electron's own extraction and re-extracts the cached zip with `ditto`, writing `path.txt` itself and asserting the binary is executable.
 
-### scripts/notarize.js
+### Code signing and notarization
 
-electron-builder afterSign hook: notarizes the macOS app via electron-notarize using `APPLEID`/`APPLEIDPASS` from the environment (dotenv-loaded). No-op for non-darwin builds; local builds without the env are skipped.
+Deliberately not configured (APP-01): macOS code signing and notarization are deferred for the alpha. CI sets `CSC_IDENTITY_AUTO_DISCOVERY: "false"` so artifacts ship unsigned. The `mac` block already carries `hardenedRuntime: true` and `build/entitlements.mac.plist`, so signing/notarization can be enabled later (add `@electron/notarize` + an `afterSign` hook) without restructuring; those settings only take effect once signing is on.
 
 ### scripts/publish-release.mjs
 
@@ -46,3 +46,7 @@ Spawns the real packaged-layout Electron app (after `build` + `build:electron`) 
 ## Packaging
 
 `npm run electron:build` = renderer build + electron bundles + `electron-builder --config electron-builder.config.cjs --publish never`, producing macOS dmg/zip artifacts in `dist_electron/`. Note the three output directories: `dist/` (renderer), `dist-electron/` (main/preload bundles, the app's `main` entry), `dist_electron/` (packaged artifacts).
+
+`electron-builder.config.cjs` hardening (APP-02/03): `electronFuses` disables `runAsNode`, `enableNodeOptionsEnvironmentVariable` and `enableNodeCliInspectArguments` (so the packaged binary cannot be relaunched as a generic Node interpreter and bypass the renderer sandbox) and enables `onlyLoadAppFromAsar` + `enableEmbeddedAsarIntegrityValidation`; the `mac` block sets `hardenedRuntime` with `build/entitlements.mac.plist`. The single committed lockfile is `package-lock.json`; `yarn.lock` is gitignored (APP-05).
+
+The production CSP (`index.html`) is `connect-src 'self'` with `frame-ancestors 'none'` / `frame-src 'none'` (APP-06/07). The Vite HMR websocket origins are injected into `connect-src` only under `vite serve`, by the `cryptox-dev-csp-hmr` plugin in `vite.config.js`, so the bundled `dist/index.html` never carries them.
