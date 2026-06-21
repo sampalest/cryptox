@@ -13,11 +13,8 @@ const AES256 = "aes-256-gcm";
 export default class Crypto {
     constructor(password, operationId = crypto.randomUUID()) {
         this.password = password;
-        // Owns this operation's temp directory (see TempManager); one Crypto
-        // instance per operation, as the IPC handlers already do.
         this.operationId = operationId;
         this._cancelled = false;
-        // Streams of the in-flight pipeline, destroyed on cancel().
         this._destroyables = new Set();
     }
 
@@ -25,7 +22,7 @@ export default class Crypto {
      * Cancel this operation: destroy any in-flight streams and make every
      * later checkpoint abort with CancelledError. The synchronous Argon2id
      * KDF and tar/untar steps cannot be interrupted mid-call, so a cancel
-     * issued during them takes effect at the next checkpoint. Idempotent.
+     * issued during them takes effect at the next checkpoint.
      * @function cancel
      */
     cancel() {
@@ -37,14 +34,28 @@ export default class Crypto {
         }
     }
 
+    /**
+     * Check if this operation has been cancelled and throw if so.
+     * @function _checkCancelled
+     * @throws {CancelledError}
+     */
     _checkCancelled() {
         if (this._cancelled) throw new CancelledError();
     }
 
+    /**
+     * Track streams that must be destroyed on cancel.
+     * @function _track
+     * @param  {...any} streams
+     */
     _track(...streams) {
         streams.forEach(stream => this._destroyables.add(stream));
     }
 
+    /**
+     * Untrack all streams.
+     * @function _untrackAll
+     */
     _untrackAll() {
         this._destroyables.clear();
     }
@@ -164,8 +175,6 @@ export default class Crypto {
         if (onStatus) onStatus({ filename: fileEvent.filename });
         let completedSize = 0;
         let size = fs.statSync(file.path).size;
-        // Replace only the last extension, so multi-dot names keep their stem
-        // ("document.backup.txt" -> "document.backup.ctx").
         const parsedSource = path.parse(file.path);
         let endfile = path.join(parsedSource.dir, parsedSource.name + Constants.POINT_EXT);
         let isDirectory = Utils.isDirectory(file.path);
@@ -188,6 +197,7 @@ export default class Crypto {
         const CIPHER_KEY = this._deriveKeyArgon2id(salt, opslimit, memlimit, Constants.KEY_LEN);
         if (onStatus) onStatus({ loader: false });
         this._checkCancelled();
+
         // CTX1 header: the original name travels in the (authenticated) header
         // instead of a trailing padded-extension field, and a flag bit marks
         // directory payloads instead of the old magic "tar" extension.
@@ -606,8 +616,6 @@ export default class Crypto {
                     // A failed finalization must not leave the indeterminate bar up.
                     if (onStatus) onStatus({ loader: false });
                     try {
-                        // The staged output has a random operation-owned name,
-                        // so it is always ours to remove.
                         if (fs.existsSync(writePath)) fs.unlinkSync(writePath);
                     } catch (cleanupError) {
                         // Best-effort cleanup; surface the original decrypt error.

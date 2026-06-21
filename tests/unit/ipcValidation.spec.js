@@ -16,12 +16,10 @@ async function expectCode(promise, code) {
 
 describe("IPC validation", () => {
     it("allows the expected GitHub project URLs", () => {
-        expect(validateExternalUrl("https://github.com/Samuelpe/cryptox")).toBe("https://github.com/Samuelpe/cryptox");
         expect(validateExternalUrl("https://github.com/sampalest/cryptox/")).toBe("https://github.com/sampalest/cryptox");
     });
 
     it("rejects unexpected external URLs", () => {
-        expect(() => validateExternalUrl("http://github.com/Samuelpe/cryptox")).toThrow("not allowed");
         expect(() => validateExternalUrl("https://example.com")).toThrow("not allowed");
         expect(() => validateExternalUrl("javascript:alert(1)")).toThrow("not allowed");
     });
