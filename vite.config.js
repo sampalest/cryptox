@@ -5,8 +5,25 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
+// index.html ships a production CSP with connect-src 'self' only. Vite HMR needs
+// a websocket back to the dev server, so add ws:// origins to connect-src in dev
+// only; this transform runs solely under `vite serve`, so the bundled
+// dist/index.html never carries the dev websocket origins (APP-06).
+function devCspHmr() {
+    return {
+        name: "cryptox-dev-csp-hmr",
+        apply: "serve",
+        transformIndexHtml(html) {
+            return html.replace(
+                "connect-src 'self';",
+                "connect-src 'self' ws://localhost:* ws://127.0.0.1:*;"
+            );
+        }
+    };
+}
+
 export default defineConfig({
-    plugins: [vue()],
+    plugins: [vue(), devCspHmr()],
     base: "./",
     css: {
         preprocessorOptions: {
