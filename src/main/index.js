@@ -186,22 +186,25 @@ app.on("ready", async () => {
 });
 
 ipcMain.handle("files:renderer-ready", event => {
-    if (win && event.sender === win.webContents) {
-        rendererReady = true;
-        flushPendingOpenFiles();
-        if (process.env.CRYPTOX_SMOKE_TEST) {
-            runSmokeTest();
-        }
+    if (!isTrustedSender(event, win)) return;
+    rendererReady = true;
+    flushPendingOpenFiles();
+    if (process.env.CRYPTOX_SMOKE_TEST) {
+        runSmokeTest();
     }
 });
 
-ipcMain.handle("app:info", () => ({
-    locale: app.getLocale(),
-    name: app.name,
-    platform: process.platform
-}));
+ipcMain.handle("app:info", event => {
+    if (!isTrustedSender(event, win)) return undefined;
+    return {
+        locale: app.getLocale(),
+        name: app.name,
+        platform: process.platform
+    };
+});
 
-ipcMain.handle("dialog:open-files", async () => {
+ipcMain.handle("dialog:open-files", async event => {
+    if (!isTrustedSender(event, win)) return [];
     const files = await dialog.showOpenDialog(win, {
         properties: ["openFile", "openDirectory"],
         filters: [{
@@ -212,7 +215,10 @@ ipcMain.handle("dialog:open-files", async () => {
     return files.filePaths;
 });
 
-ipcMain.handle("shell:open-external", (_, url) => shell.openExternal(validateExternalUrl(url)));
+ipcMain.handle("shell:open-external", (event, url) => {
+    if (!isTrustedSender(event, win)) return undefined;
+    return shell.openExternal(validateExternalUrl(url));
+});
 
 // Crypto channels always resolve with a structured result instead of
 // rejecting: ipcMain.handle rejection serialization strips custom error
@@ -317,7 +323,8 @@ ipcMain.handle("crypto:cancel", (event, payload) => {
     }
 });
 
-ipcMain.handle("files:confirm-delete-encrypted", async (_, filePath) => {
+ipcMain.handle("files:confirm-delete-encrypted", async (event, filePath) => {
+    if (!isTrustedSender(event, win)) return false;
     const target = validateDeletePath(filePath);
     const { response } = await dialog.showMessageBox(win, {
         type: "question",
@@ -335,7 +342,8 @@ ipcMain.handle("files:confirm-delete-encrypted", async (_, filePath) => {
     return true;
 });
 
-ipcMain.handle("log:error", (_, error) => {
+ipcMain.handle("log:error", (event, error) => {
+    if (!isTrustedSender(event, win)) return;
     logger.error(error);
 });
 
