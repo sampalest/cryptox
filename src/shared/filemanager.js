@@ -1,6 +1,9 @@
 class FileManager {
     constructor(path) {
-        let pathSplit = path.split("/");
+        // Split on both separators so Windows paths resolve correctly too. This
+        // module is shared with the sandboxed renderer, so node:path.basename is
+        // unavailable here; sanitizeName in format.js stays the security backstop.
+        let pathSplit = path.split(/[\\/]/);
         this.path = path;
         this.name = pathSplit[pathSplit.length - 1];
     }

@@ -82,7 +82,12 @@ export function validateOperationId(value) {
 // strings: the user-supplied path must not leak into errors or logs.
 async function statSource(filePath) {
     try {
-        return await fs.promises.stat(filePath);
+        // lstat, not stat: do not follow symlinks. The encrypt path later uses
+        // Utils.isDirectory (also lstat), so validating with stat would diverge,
+        // a symlinked directory passing here then being stream-encrypted as its
+        // link target. A symlink reports neither isFile nor isDirectory, so the
+        // type checks below reject it instead.
+        return await fs.promises.lstat(filePath);
     } catch (error) {
         if (error && (error.code === "ENOENT" || error.code === "ENOTDIR")) {
             throw new IpcValidationError(Codes.FILE_NOT_FOUND, "Source file was not found.");
@@ -93,7 +98,7 @@ async function statSource(filePath) {
 
 export async function assertEncryptSource(filePath) {
     const stats = await statSource(filePath);
-    if (!stats.isFile() && !stats.isDirectory()) {
+    if (stats.isSymbolicLink() || (!stats.isFile() && !stats.isDirectory())) {
         throw new IpcValidationError(Codes.INVALID_FILE_TYPE, "Only regular files and folders can be encrypted.");
     }
     if (filePath.endsWith(Constants.POINT_EXT)) {
@@ -103,6 +108,7 @@ export async function assertEncryptSource(filePath) {
 
 export async function assertDecryptSource(filePath) {
     const stats = await statSource(filePath);
+    // isFile is false for a symlink under lstat, so symlinked sources are rejected.
     if (!stats.isFile() || !filePath.endsWith(Constants.POINT_EXT)) {
         throw new IpcValidationError(Codes.INVALID_FILE_TYPE, `Only ${Constants.POINT_EXT} files can be decrypted.`);
     }

@@ -33,14 +33,16 @@ const ALG_AES_256_GCM = "aes-256-gcm";
 const KDF_ARGON2ID = "argon2id";
 const KEY_LEN = 32;
 
-// Argon2id parameter bounds: libsodium's OPSLIMIT/MEMLIMIT MIN..SENSITIVE
-// presets, hardcoded because sodium constants are only available after its
-// async init and this module must stay pure. A header demanding more memory
-// than MEMLIMIT_MAX is rejected instead of letting a crafted file pin gigabytes.
+// Argon2id parameter bounds, hardcoded because sodium constants are only
+// available after its async init and this module must stay pure. The ceiling is
+// libsodium's MODERATE memory preset (256 MiB), which is exactly what the
+// encrypt path writes; a tampered header demanding more is rejected before the
+// KDF runs, since AES-256-GCM cannot authenticate the header until stream end so
+// a crafted file would otherwise pin that much memory per decrypt (DoS).
 const OPSLIMIT_MIN = 1;
 const OPSLIMIT_MAX = 4;
 const MEMLIMIT_MIN = 8192;
-const MEMLIMIT_MAX = 1073741824;
+const MEMLIMIT_MAX = 268435456;
 
 const MAX_NAME_LEN = 255;
 

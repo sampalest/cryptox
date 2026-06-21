@@ -3,19 +3,6 @@ import Path from "node:path";
 import tar from "tar-fs";
 
 export default class Utils {
-    static getFilesDir(dir) {
-        return new Promise((resolve, reject) => {
-            fs.readdir(dir, (err, filenames) => {
-                if (err) {
-                    console.error(err);
-                    reject();
-                }
-
-                resolve(filenames);
-            });
-        });
-    }
-
     static zipDirectory(args) {
         const output = fs.createWriteStream(args.output);
         return new Promise((resolve, reject) => {
@@ -24,7 +11,6 @@ export default class Utils {
                 tar.pack(args.path).pipe(output);
 
             } catch (error) {
-                console.error(error);
                 reject(error);
             }
         });
@@ -143,16 +129,6 @@ export default class Utils {
             if (!fs.existsSync(candidate)) return candidate;
         }
         throw new Error(`could not find a free output name for ${desiredPath}`);
-    }
-
-    static textToBuffer(text) {
-        var bufferText = [];
-        var buffer = Buffer.from(text, "utf16le");
-        for (var i = 0; i < buffer.length; i++) {
-            bufferText.push(buffer[i]);
-        }
-
-        console.log(bufferText);
     }
 
     static rmRf(path) {
