@@ -5,17 +5,17 @@ const mac = {
     target: [
         "dmg",
         "zip"
-    ]
+    ],
+    hardenedRuntime: true,
+    entitlements: "build/entitlements.mac.plist",
+    entitlementsInherit: "build/entitlements.mac.plist",
+    gatekeeperAssess: false
 };
-
-if (process.env.CSC_IDENTITY_AUTO_DISCOVERY !== "false") {
-    mac.identity = "sampalest@icloud.com";
-}
 
 module.exports = {
     appId: "com.sampalest.cryptox",
     productName: "Cryptox",
-    copyright: "Copyright © 2020 Samuel Palomo Esteban",
+    copyright: "Copyright © 2026 Samuel P.E.",
     directories: {
         output: "dist_electron"
     },
@@ -30,6 +30,13 @@ module.exports = {
         name: "CTX",
         role: "Editor",
         description: "Cryptox file encrypted"
+    },
+    electronFuses: {
+        runAsNode: false,
+        enableNodeOptionsEnvironmentVariable: false,
+        enableNodeCliInspectArguments: false,
+        onlyLoadAppFromAsar: true,
+        enableEmbeddedAsarIntegrityValidation: true
     },
     mac
 };

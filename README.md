@@ -76,7 +76,7 @@ Support all files.
 - ...
 
 ## Author
-Samuel Palomo Esteban
+Samuel P.E.
 
 ## License
 **Cryptox** is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
