@@ -1,0 +1,20 @@
+name: Setup Electron binary
+description: Reliably install the Electron binary on macOS runners (works around flaky downloads / partial extraction).
+runs:
+  using: composite
+  steps:
+    # Reuse the downloaded electron zip across runs to avoid re-hitting GitHub.
+    - name: ⚡ Cache Electron binary
+      uses: actions/cache@v5
+      with:
+        path: ~/Library/Caches/electron
+        key: electron-${{ runner.os }}-${{ runner.arch }}-v40.10.2
+
+    # The electron binary install is unreliable on this runner: downloads 504
+    # intermittently, and even when the (checksum-verified) zip downloads,
+    # electron's bundled extract-zip only partially unpacks it. The script
+    # downloads with retries, re-extracts the cached zip with ditto, writes
+    # path.txt, and verifies the executable exists. See scripts/setup-electron.mjs.
+    - name: ⚡ Ensure Electron binary is installed
+      shell: bash
+      run: node scripts/setup-electron.mjs

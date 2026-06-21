@@ -1,0 +1,114 @@
+name: 🔐 CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+      - master
+
+jobs:
+  lint:
+    name: 🧹 Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      # Skip electron's binary download: this job doesn't run electron, and the
+      # download is flaky from CI runners (504s from GitHub) and would fail npm ci.
+      - name: 📦 Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: 🧹 Lint
+        run: npm run lint
+
+  unit:
+    name: 🧪 Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: 📦 Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: 🧪 Run unit tests
+        run: npm run test:unit
+
+  audit:
+    name: 🛡️ Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: 📦 Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: 🛡️ Audit dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  e2e:
+    name: 🖥️ E2E smoke
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: 📦 Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: ⚡ Set up Electron
+        uses: ./.github/actions/setup-electron
+      # test:e2e builds the app + electron bundle internally before running smoke.
+      - name: 🖥️ Run E2E smoke test
+        run: npm run test:e2e
+
+  package:
+    name: 🚀 Package & release
+    runs-on: macos-15
+    needs: [lint, unit, e2e]
+    # Only package on pushes to develop/master (set by the workflow triggers),
+    # never on pull requests.
+    if: github.event_name == 'push'
+    permissions:
+      contents: write # create releases / tags
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: 📦 Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: ⚡ Set up Electron
+        uses: ./.github/actions/setup-electron
+      # electron:build builds the app + electron bundle internally, then packages.
+      - name: 🏗️ Build & package app
+        run: npm run electron:build
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      # Release strategy per branch (see scripts/publish-release.mjs):
+      #   master  -> release "v<version>", updated in place if it already exists.
+      #   develop -> prerelease "v<version>.<shortsha>"; only this version's prior
+      #              prerelease is replaced — other versions' releases are untouched.
+      - name: 🚀 Publish releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/publish-release.mjs
