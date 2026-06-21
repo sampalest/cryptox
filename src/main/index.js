@@ -119,6 +119,14 @@ function createWindow () {
         }
     });
 
+    // Deny by default: this app needs no web permissions (geolocation, media,
+    // notifications, devices). Electron would otherwise auto-grant some of these
+    // for trusted content, so a future renderer regression cannot acquire them.
+    const { session } = win.webContents;
+    session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+    session.setPermissionCheckHandler(() => false);
+    session.setDevicePermissionHandler(() => false);
+
     // The app never opens child windows; external links go through the
     // shell:open-external allowlist instead.
     win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));

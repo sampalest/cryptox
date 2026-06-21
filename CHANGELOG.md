@@ -5,6 +5,45 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- App hardening and build/release audit remediation ([CTX-25], Batch B of the
+  June 2026 app security audit):
+  - APP-02: Electron Fuses are now configured in `electron-builder.config.cjs`.
+    `runAsNode`, the Node inspect arguments and the `NODE_OPTIONS` environment
+    variable are disabled, so the packaged binary can no longer be relaunched
+    as a generic Node interpreter to inject code into the main process and
+    bypass the renderer sandbox; `onlyLoadAppFromAsar` and embedded asar
+    integrity validation are enabled.
+  - APP-03: the macOS target now sets `hardenedRuntime: true` with a minimal
+    `build/entitlements.mac.plist` (JIT and unsigned executable memory for V8).
+    These are a prerequisite for notarization and take full effect once signing
+    is enabled.
+  - APP-04: the window session denies all web permissions by default
+    (`setPermissionRequestHandler`, `setPermissionCheckHandler`,
+    `setDevicePermissionHandler`).
+  - APP-06/07: the production Content Security Policy is now `connect-src 'self'`
+    with `frame-ancestors 'none'` and `frame-src 'none'`. The Vite HMR websocket
+    origins are injected into `connect-src` only under `vite serve`, so the
+    bundled `dist/index.html` no longer ships dev-only `ws://` origins.
+
+### Removed
+
+- APP-01: dead `scripts/notarize.js` (never wired, wrong package, malformed
+  bundle id). macOS code signing and notarization remain deliberately deferred
+  for the alpha; the `mac` block keeps the Hardened Runtime and entitlements so
+  they can be enabled later without restructuring.
+
+### Changed
+
+- APP-09: refreshed the copyright year to 2026 in `package.json` and
+  `electron-builder.config.cjs`.
+- APP-05: removed a regenerated `yarn.lock` from the working tree;
+  `package-lock.json` stays the single committed lockfile (`yarn.lock` is
+  gitignored).
+
 ## [0.3.9-alpha] - 2026-06-21
 
 ### Added
