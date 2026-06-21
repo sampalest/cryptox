@@ -33,11 +33,11 @@ Entry point of the main process (bundled to `dist-electron/background.cjs`, the 
 
 ### IPC handlers
 
-All handlers live at module scope. The crypto ones resolve with structured results, never reject (Electron strips custom error fields from rejections), and never put user content (paths, passwords, ids) into messages or logs.
+All handlers live at module scope and gate on `isTrustedSender(event, win)` as their first line, rejecting devtools/other-window/webview senders before any side effect (the non-crypto handlers return an inert value: `[]`, `false`, or `undefined`). The crypto ones resolve with structured results, never reject (Electron strips custom error fields from rejections), and never put user content (paths, passwords, ids) into messages or logs.
 
-- `files:renderer-ready`: marks the renderer ready (only if the sender is the app window), flushes queued open-file events, triggers the smoke test when enabled.
-- `app:info`: returns `{ locale, name, platform }`.
-- `dialog:open-files`: native open dialog (files and directories), returns the selected paths.
+- `files:renderer-ready`: `isTrustedSender`, then marks the renderer ready, flushes queued open-file events, triggers the smoke test when enabled.
+- `app:info`: returns `{ locale, name, platform }` (or `undefined` for an untrusted sender).
+- `dialog:open-files`: native open dialog (files and directories), returns the selected paths (or `[]` for an untrusted sender).
 - `shell:open-external`: opens a URL after `validateExternalUrl` (https + hardcoded allowlist only).
 - `crypto:encrypt`: trust check, `normalizeCryptoPayload`, `assertEncryptSource`, then registers the operation locking the source path and the predicted `<name>.ctx` output path, and runs `Crypto.encrypt`. Progress and status are pushed back on `crypto:progress` / `crypto:status` with the operationId attached.
 - `crypto:decrypt`: same shape with `assertDecryptSource`; only the input path is locked (the output name is unknown until the header is parsed, and output placement is atomic). Fallback failure message is the fixed wrong-password string.
@@ -54,9 +54,9 @@ Pure validation helpers shared by the IPC handlers. All throw on invalid input; 
 - `isTrustedSender(event, win)`: true only when the event sender is exactly the app window's own `webContents` and the window is alive. Rejects devtools, other windows, webviews.
 - `normalizeCryptoPayload(payload)`: requires `{ file: { path }, password, operationId }` with non-empty string path and password; returns `{ filePath, password, operationId }` with the id validated.
 - `validateOperationId(value)`: must match `/^[A-Za-z0-9_-]{1,64}$/`; returns it.
-- `statSource(filePath)` (internal): stats with fixed-string errors (`FILE_NOT_FOUND` for ENOENT/ENOTDIR, `OPERATION_FAILED` otherwise). The path never appears in the message.
-- `assertEncryptSource(filePath)`: must stat as regular file or directory and must not already end in `.ctx`.
-- `assertDecryptSource(filePath)`: must stat as a regular file and end in `.ctx`.
+- `statSource(filePath)` (internal): lstats (does NOT follow symlinks, matching `Utils.isDirectory`) with fixed-string errors (`FILE_NOT_FOUND` for ENOENT/ENOTDIR, `OPERATION_FAILED` otherwise). The path never appears in the message.
+- `assertEncryptSource(filePath)`: must be a regular file or directory and must not already end in `.ctx`. Symlinks are rejected (lstat), so a symlinked source can never be encrypted as its link target.
+- `assertDecryptSource(filePath)`: must be a regular file (lstat, so symlinks are rejected) and end in `.ctx`.
 
 ## src/main/operations.js
 
