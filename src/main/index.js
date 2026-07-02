@@ -107,7 +107,10 @@ function createWindow () {
         width: 700,
         height: 600,
         title: "Cryptox",
-        titleBarStyle: "hiddenInset",
+        // "hiddenInset" is a macOS-only style paired with the custom navbar; on
+        // Windows/Linux the native title bar is used (the option is ignored there
+        // anyway, this is just explicit).
+        titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
         resizable: false,
         maximizable: false,
         webPreferences: {

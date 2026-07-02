@@ -1,7 +1,7 @@
 <template>
     <div>
-		<encrypt-loader v-if="loader" :files="files" :password="password" :is-decrypt="encrypted" @finish="finishOperation" @cancel="finishOperation"></encrypt-loader>
-        <password-screen v-else-if="showPassword" :is-decrypt="encrypted" @password="setPassword" @cancel="cancelPassword" @setDecrypt="setDecrypt"></password-screen>
+		<encrypt-loader v-if="loader" :files="files" :password="password" :is-encrypt="encrypted" @finish="finishOperation" @cancel="finishOperation"></encrypt-loader>
+        <password-screen v-else-if="showPassword" :is-encrypt="encrypted" @password="setPassword" @cancel="cancelPassword" @setEncrypt="setEncrypt"></password-screen>
         <transition-group v-else id="animation-transition" appear @before-enter="beforeEnter" @enter="enter($event, 'fadeInUp')" tag="div">
             <div class="title-block" :key="0" :data-index="0">
                 <div class="app-title">Cryptox</div>
@@ -123,9 +123,6 @@ export default {
         const path = filesStore.files;
         if (path) this.selectFile([new FileManager(path)]);
         filesStore.clearFiles();
-    },
-    beforeUnmount() {
-        clearTimeout(this.animationSTO);
     }
 };
 </script>

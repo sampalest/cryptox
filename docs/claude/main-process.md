@@ -18,7 +18,7 @@ Entry point of the main process (bundled to `dist-electron/background.cjs`, the 
 - `flushPendingOpenFiles()`: replays queued `files:open-file` events once `rendererReady` is true.
 - `openFile(file)`: queues or sends a macOS file-association open. Queues when the app/window/renderer is not ready yet.
 - `buildApplicationMenu()`: builds the app menu (macOS app menu with About, File > Open File with Cmd/Ctrl+O) and the macOS dock menu. Menu clicks are forwarded to the renderer as `menu:open-file` / `menu:about` events.
-- `createWindow()`: creates the 700x600 fixed-size window with `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `webSecurity: true` and the bundled preload. Registers `setWindowOpenHandler` (denies every renderer-initiated window) and a `will-navigate` guard that only allows the dev server origin (dev) or the bundled `dist/index.html` file URL (prod); blocked navigations log a fixed string. Loads `VITE_DEV_SERVER_URL` in dev (opens devtools unless `IS_TEST`), otherwise `dist/index.html`. The renderer CSP lives as a meta tag in `index.html` (CTX-12).
+- `createWindow()`: creates the 700x600 fixed-size window with `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `webSecurity: true` and the bundled preload. `titleBarStyle` is `hiddenInset` on macOS (paired with App.vue's custom navbar) and the native frame elsewhere. Registers `setWindowOpenHandler` (denies every renderer-initiated window) and a `will-navigate` guard that only allows the dev server origin (dev) or the bundled `dist/index.html` file URL (prod); blocked navigations log a fixed string. Loads `VITE_DEV_SERVER_URL` in dev (opens devtools unless `IS_TEST`), otherwise `dist/index.html`. The renderer CSP lives as a meta tag in `index.html` (CTX-12).
 - `failure(code, message)`: builds the structured failure result `{ ok: false, code, message }` returned over IPC.
 - `toCryptoFailure(error, fallbackMessage)`: maps a thrown error to a structured failure. `IpcValidationError` keeps its code/message; `PathBusyError` becomes `OPERATION_FAILED` with a fixed string; anything else logs only the error name and returns the fallback message.
 - `runRegisteredOperation(operationId, run, fallbackMessage)`: wraps an operation already registered in `OperationRegistry`. Resolves `{ ok: true, cancelled: false }` on success, `{ ok: true, cancelled: true }` on `CancelledError`, a structured failure otherwise, and always calls `OperationRegistry.finish(operationId)` in `finally`.
@@ -80,6 +80,7 @@ Pure validation helpers shared by the IPC handlers. All throw on invalid input; 
 Shared constants (default export object):
 
 - `EXT` / `POINT_EXT`: `"ctx"` / `".ctx"`, the encrypted-file extension.
+- `PASSWORD_ERROR`: message key used by the renderer's `messages.js`.
 - `CTX_MAGIC` ("CTXBOX") / `CTX_FORMAT_VERSION` (1): the interim 0.3.x alpha format; read-only support, never written.
 - `CRYPTO_ERROR_CODES`: frozen map of the stable codes crossing IPC: `SENDER_REJECTED`, `INVALID_PAYLOAD`, `FILE_NOT_FOUND`, `INVALID_FILE_TYPE`, `OPERATION_FAILED`.
 - `KEY_LEN` (32): AES-256 key length. Argon2id ops/mem limits are resolved at runtime from libsodium presets and stored per-file, not here.

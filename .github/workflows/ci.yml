@@ -27,8 +27,15 @@ jobs:
         run: npm run lint
 
   unit:
-    name: 🧪 Unit tests
-    runs-on: ubuntu-latest
+    name: 🧪 Unit tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # Run across OSes and both arches so the Windows filesystem exercises the tar
+    # reserved-name sanitizer and the crypto core (WASM libsodium) is confirmed on
+    # x64 and arm64.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-15]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -78,11 +85,65 @@ jobs:
         run: npm run test:e2e
 
   package:
-    name: 🚀 Package & release
-    runs-on: macos-15
+    name: 📦 Package (${{ matrix.os }} ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     needs: [lint, unit, e2e]
     # Only package on pushes to develop/master (set by the workflow triggers),
     # never on pull requests.
+    if: github.event_name == 'push'
+    # One native-architecture runner per (OS, arch): every artifact is built on
+    # its own hardware, no cross-compilation. macos-13 is the Intel macOS runner;
+    # if GitHub retires it, build mac x64 by cross-compiling on macos-15 (set the
+    # mac target arch to ["arm64", "x64"]) instead.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-15, os: macos, arch: arm64 }
+          - { runner: macos-13, os: macos, arch: x64 }
+          - { runner: windows-latest, os: windows, arch: x64 }
+          - { runner: windows-11-arm, os: windows, arch: arm64 }
+          - { runner: ubuntu-latest, os: linux, arch: x64 }
+          - { runner: ubuntu-24.04-arm, os: linux, arch: arm64 }
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      # macOS uses the setup-electron workaround (below), so it skips the flaky
+      # download during npm ci; Windows/Linux download the binary normally here.
+      - name: 📦 Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: ${{ runner.os == 'macOS' && '1' || '' }}
+      - name: ⚡ Set up Electron
+        if: runner.os == 'macOS'
+        uses: ./.github/actions/setup-electron
+      # electron:build builds the app + electron bundle internally, then packages
+      # the runner's native arch (mac dmg/zip, Windows nsis+portable, Linux AppImage/deb).
+      - name: 🏗️ Build & package app
+        run: npm run electron:build
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      # Each runner produces only its own arch's artifacts; upload them for the
+      # release job to aggregate. Foreign globs match nothing (if-no-files-found).
+      - name: ⬆️ Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}-${{ matrix.arch }}
+          if-no-files-found: ignore
+          path: |
+            dist_electron/*.dmg
+            dist_electron/*.zip
+            dist_electron/*.exe
+            dist_electron/*.AppImage
+            dist_electron/*.deb
+
+  release:
+    name: 🚀 Publish release
+    runs-on: ubuntu-latest
+    needs: [package]
     if: github.event_name == 'push'
     permissions:
       contents: write # create releases / tags
@@ -92,22 +153,18 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - name: 📦 Install dependencies
-        run: npm ci
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
-      - name: ⚡ Set up Electron
-        uses: ./.github/actions/setup-electron
-      # electron:build builds the app + electron bundle internally, then packages.
-      - name: 🏗️ Build & package app
-        run: npm run electron:build
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-
+      # Aggregate every OS's artifacts into dist_electron so one release carries
+      # dmg/zip/exe/AppImage/deb together.
+      - name: ⬇️ Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist_electron
+          pattern: dist-*
+          merge-multiple: true
       # Release strategy per branch (see scripts/publish-release.mjs):
       #   master  -> release "v<version>", updated in place if it already exists.
       #   develop -> prerelease "v<version>.<shortsha>"; only this version's prior
-      #              prerelease is replaced — other versions' releases are untouched.
+      #              prerelease is replaced; other versions' releases are untouched.
       - name: 🚀 Publish releases
         env:
           GH_TOKEN: ${{ github.token }}

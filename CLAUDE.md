@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Cryptox is an Electron + Vue 3 desktop app for encrypting files and folders with a password (macOS, Windows/Linux planned). Node 24 LTS (`nvm use`), npm with committed `package-lock.json`.
+Cryptox is an Electron + Vue 3 desktop app for encrypting files and folders with a password (macOS, Windows, Linux; x64 and arm64). Node 24 LTS (`nvm use`), npm with committed `package-lock.json`.
 
 ## Commands
 
@@ -32,7 +32,7 @@ Per-file, per-function documentation lives in `docs/claude/`. It goes one level 
 |---|---|
 | [main-process.md](docs/claude/main-process.md) | `main/index.js`, `main/ipcValidation.js`, `main/operations.js`, `main/temp.js`, `shared/constants.js`, `shared/exceptions.js`, `shared/filemanager.js` |
 | [crypto.md](docs/claude/crypto.md) | `main/crypto.js`, `main/format.js`, `main/utils.js`, `main/vector.js` |
-| [renderer.md](docs/claude/renderer.md) | `preload/index.js`, `renderer/main.js`, `App.vue`, router, Pinia store, views, components, mixins |
+| [renderer.md](docs/claude/renderer.md) | `preload/index.js`, `renderer/main.js`, `App.vue`, `messages.js`, router, Pinia store, views, components, mixins |
 | [build-test-release.md](docs/claude/build-test-release.md) | `scripts/`, test suites, CI and release flow |
 
 ## Architecture
@@ -60,7 +60,7 @@ Per-file, per-function documentation lives in `docs/claude/`. It goes one level 
 - `views/`, `components/`: screens and reusable UI pieces.
 - `components/mixins/`: shared component behavior; `filecryto.js` drives encrypt/decrypt through `window.cryptox`.
 - [store/files.js](src/renderer/store/files.js): the Pinia store holding the selected files.
-- User-facing failure strings live in `FAILURE_MESSAGES` in `components/mixins/filecryto.js`, keyed by the error codes in shared/constants.js (one deliberate string per code, for both encrypt and decrypt).
+- [messages.js](src/renderer/messages.js): user-facing strings, keyed by the error codes in shared/constants.js.
 - `sass/`: styling, with a vendored Materialize 1.0 under `sass/materialize/` (kept on `@import` deliberately; see the vite.config.js comment).
 
 ### `src/shared/` (imported by both processes)
@@ -71,7 +71,7 @@ Per-file, per-function documentation lives in `docs/claude/`. It goes one level 
 
 ### Crypto pipeline
 
-Each crypto IPC call resolves to a structured result (`{ ok, code, message }`) rather than throwing, because Electron strips custom fields off errors that cross the process boundary (see the comment near the crypto handlers in index.js). Error codes live in [src/shared/constants.js](src/shared/constants.js); the renderer maps them to user-facing text via `FAILURE_MESSAGES` in [src/renderer/components/mixins/filecryto.js](src/renderer/components/mixins/filecryto.js).
+Each crypto IPC call resolves to a structured result (`{ ok, code, message }`) rather than throwing, because Electron strips custom fields off errors that cross the process boundary (see the comment near the crypto handlers in index.js). Error codes live in [src/shared/constants.js](src/shared/constants.js); the renderer maps them to user-facing text in [src/renderer/messages.js](src/renderer/messages.js).
 
 ### Operation flow
 
@@ -92,7 +92,7 @@ These are deliberate security properties of the app, written here so new code pr
 
 - Renderer isolation: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `webSecurity: true` (explicit). The renderer reaches the system only through the `window.cryptox` bridge; never widen what preload exposes beyond specific validated channels. Preload must stay sandbox-compatible: imports from `electron` only. The window session denies all web permissions by default (`setPermissionRequestHandler`, `setPermissionCheckHandler`, `setDevicePermissionHandler`); this app needs none.
 - Renderer containment: `setWindowOpenHandler` denies all renderer-initiated windows; a `will-navigate` guard allows only the dev server origin (dev) or the bundled `dist/index.html` (prod); `index.html` carries a CSP meta tag with `script-src 'self'` and `connect-src 'self'` (no remote origins) plus `frame-ancestors 'none'` / `frame-src 'none'`. The Vite HMR `ws://` connect-src is injected at dev-server time only (the `cryptox-dev-csp-hmr` plugin in vite.config.js), so the production CSP never carries it. DevTools opens only in dev (`VITE_DEV_SERVER_URL` set and not `IS_TEST`).
-- Packaging hardening: Electron Fuses disable `RunAsNode` / Node-inspect / `NODE_OPTIONS` and require loading from a verified asar (`onlyLoadAppFromAsar`, `EmbeddedAsarIntegrityValidation`); macOS uses Hardened Runtime with the minimal `build/entitlements.mac.plist`. These live in `electron-builder.config.cjs` and must survive build-config changes. Code signing and notarization are deliberately deferred for the alpha (artifacts ship unsigned). `package-lock.json` is the single committed lockfile; never reintroduce `yarn.lock`.
+- Packaging hardening: Electron Fuses disable `RunAsNode` / Node-inspect / `NODE_OPTIONS` and require loading from a verified asar (`onlyLoadAppFromAsar`, `EmbeddedAsarIntegrityValidation`); macOS uses Hardened Runtime with the minimal `build/entitlements.mac.plist`. One shared `electronFuses` block covers all three platforms: `onlyLoadAppFromAsar` and the Node fuses are enforced everywhere, but `EmbeddedAsarIntegrityValidation` is enforced only on macOS (Mach-O) and Windows (PE); on Linux (ELF) it is a harmless no-op while `onlyLoadAppFromAsar` still holds. These live in `electron-builder.config.cjs` and must survive build-config changes. Code signing and notarization are deliberately deferred for the alpha on every platform (artifacts ship unsigned; Windows shows a SmartScreen prompt). `package-lock.json` is the single committed lockfile; never reintroduce `yarn.lock`.
 - Every IPC handler (crypto and non-crypto alike) checks `isTrustedSender` first (only the app window's own `webContents`; devtools, other windows and webviews are rejected); non-crypto handlers return an inert value on rejection. The crypto handlers then validate the payload before touching the filesystem: `normalizeCryptoPayload`, operation id matching `[A-Za-z0-9_-]{1,64}`, `assertEncryptSource`/`assertDecryptSource`. Source validation uses `lstat` and rejects symlinks, so a symlinked source is never processed as its link target (the divergence with `Utils.isDirectory`, which also uses lstat, is closed).
 - Failure messages are fixed strings. User-controlled content (paths, passwords, operation ids) never goes into error messages or logs.
 - `files:confirm-delete-encrypted` deletes only paths ending in the `.ctx` extension and always behind a native confirm dialog. `shell:open-external` opens only https URLs from the hardcoded allowlist in ipcValidation.js.
