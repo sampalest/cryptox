@@ -367,8 +367,11 @@ describe("Crypto", () => {
         fs.writeFileSync(path.join(dirPath, "a.txt"), "alpha");
         fs.writeFileSync(path.join(dirPath, "nested", "b.txt"), "beta");
         // Snapshot, not bare non-existence: a stale dir left by old versions
-        // on the host must not fail the test — only (re)creating it should.
-        const hadLegacyGlobalTmp = fs.existsSync("/tmp/cryptox");
+        // on the host must not fail the test, only (re)creating it should. The
+        // legacy fixed dir lived at <tmp>/cryptox; the current code only ever
+        // makes per-operation mkdtemp "cryptox-<random>" dirs, so this stays free.
+        const legacyGlobalTmp = path.join(os.tmpdir(), "cryptox");
+        const hadLegacyGlobalTmp = fs.existsSync(legacyGlobalTmp);
 
         await new Crypto("correct horse").encrypt(new FileManager(dirPath), { value: 0 }, {});
         expect(fs.existsSync(`${dirPath}.ctx`)).toBe(true);
@@ -394,7 +397,7 @@ describe("Crypto", () => {
         // temp directory is never created.
         expect(acquiredDirs).toHaveLength(2);
         expect(fs.existsSync(acquiredDirs[1])).toBe(false);
-        expect(fs.existsSync("/tmp/cryptox")).toBe(hadLegacyGlobalTmp);
+        expect(fs.existsSync(legacyGlobalTmp)).toBe(hadLegacyGlobalTmp);
     });
 
     it("gives concurrent directory operations distinct temp paths", async () => {

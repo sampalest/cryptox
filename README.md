@@ -5,12 +5,11 @@
 </div>
 <hr>
 
-## Version 1.0.0-beta
+## Version 1.1.0-beta
 
 ## Description
 * Simple app to encrypt files and folders with a password
-* Supports macOS
-* Windows and Linux coming soon...
+* Runs on macOS, Windows, and Linux
 
 ## Install
 - Download latest release from https://github.com/sampalest/cryptox/releases
@@ -53,7 +52,7 @@ npm run build:electron
 npm run electron:build
 ```
 
-The renderer is built with Vite into `dist/`. Electron main and preload bundles are built into `dist-electron/` before local app startup or packaging. `npm run electron:build` produces macOS `dmg` and `zip` artifacts in `dist_electron/`. Local notarization is skipped unless the required notarization environment is configured.
+The renderer is built with Vite into `dist/`. Electron main and preload bundles are built into `dist-electron/` before local app startup or packaging. `npm run electron:build` packages the host operating system into `dist_electron/`: macOS `dmg` and `zip`, Windows `nsis` installer and portable `exe`, or Linux `AppImage` and `deb`. Release builds cover both x64 and arm64 for each platform (built on native-architecture CI runners). Artifacts ship unsigned for the beta, so Windows shows a SmartScreen notice ("Windows protected your PC", then "More info" and "Run anyway"); macOS notarization is skipped unless the required environment is configured.
 
 See [CHANGELOG.md](CHANGELOG.md) for release history and upgrade notes.
 

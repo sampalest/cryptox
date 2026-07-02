@@ -32,6 +32,33 @@ describe("Utils", () => {
         expect(Utils.fillExtension("longextension")).toBe("longe...");
     });
 
+    describe("sanitizeReservedPath", () => {
+        it("prefixes reserved DOS device names, with or without an extension", () => {
+            expect(Utils.sanitizeReservedPath("CON")).toBe("_CON");
+            expect(Utils.sanitizeReservedPath("aux")).toBe("_aux");
+            expect(Utils.sanitizeReservedPath("com1")).toBe("_com1");
+            expect(Utils.sanitizeReservedPath("LPT9.log")).toBe("_LPT9.log");
+            expect(Utils.sanitizeReservedPath("nul.tar.gz")).toBe("_nul.tar.gz");
+        });
+
+        it("strips trailing dots and spaces", () => {
+            expect(Utils.sanitizeReservedPath("report. ")).toBe("report");
+            expect(Utils.sanitizeReservedPath("dots...")).toBe("dots");
+            expect(Utils.sanitizeReservedPath("CON.")).toBe("_CON");
+        });
+
+        it("leaves safe names and reserved-name prefixes untouched", () => {
+            expect(Utils.sanitizeReservedPath("report.txt")).toBe("report.txt");
+            expect(Utils.sanitizeReservedPath("console")).toBe("console");
+            expect(Utils.sanitizeReservedPath("com10")).toBe("com10");
+        });
+
+        it("rewrites each path segment and preserves the separators", () => {
+            expect(Utils.sanitizeReservedPath("nested/CON/file.txt")).toBe("nested/_CON/file.txt");
+            expect(Utils.sanitizeReservedPath("a/aux.txt")).toBe("a/_aux.txt");
+        });
+    });
+
     describe("uniquePath", () => {
         let tempDir;
 
@@ -108,6 +135,28 @@ describe("Utils", () => {
             expect(leftoverTempDirs()).toEqual([]);
         });
 
+        it("sanitizes Windows reserved names on win32 and leaves them intact elsewhere", async () => {
+            await writeTar(tarPath, [
+                { header: { name: "CON", type: "file" }, body: "device" },
+                { header: { name: "sub", type: "directory" } },
+                { header: { name: "sub/aux.txt", type: "file" }, body: "auxbody" }
+            ]);
+
+            await Utils.unzipDirectory(tarPath, outputDir);
+
+            if (process.platform === "win32") {
+                // Reserved names cannot be written on Windows, so they are renamed
+                // rather than failing the whole directory decrypt.
+                expect(fs.readFileSync(path.join(outputDir, "_CON"), "utf-8")).toBe("device");
+                expect(fs.readFileSync(path.join(outputDir, "sub", "_aux.txt"), "utf-8")).toBe("auxbody");
+            } else {
+                // Off Windows the names are perfectly valid and extract unchanged.
+                expect(fs.readFileSync(path.join(outputDir, "CON"), "utf-8")).toBe("device");
+                expect(fs.readFileSync(path.join(outputDir, "sub", "aux.txt"), "utf-8")).toBe("auxbody");
+            }
+            expect(leftoverTempDirs()).toEqual([]);
+        });
+
         it("never merges into an existing output directory, deflecting instead", async () => {
             fs.mkdirSync(outputDir);
             fs.writeFileSync(path.join(outputDir, "existing.txt"), "keep me");
@@ -146,6 +195,21 @@ describe("Utils", () => {
 
             expect(fs.existsSync(path.join(tempDir, "abs-escape.txt"))).toBe(false);
             expect(fs.existsSync(outputDir)).toBe(false);
+        });
+
+        it("rejects Windows drive-letter absolute paths on every platform", async () => {
+            // The gate must see this before tar-fs's win32 normalize rewrites the
+            // drive-letter ":" to "_" and hides that it was ever absolute. The
+            // literal name is caught on all platforms, so the regression is covered
+            // even when the suite runs on Linux/macOS.
+            await writeTar(tarPath, [
+                { header: { name: "C:\\Windows\\System32\\evil.txt", type: "file" }, body: "pwned" }
+            ]);
+
+            await expect(Utils.unzipDirectory(tarPath, outputDir)).rejects.toThrow(/absolute/i);
+
+            expect(fs.existsSync(outputDir)).toBe(false);
+            expect(leftoverTempDirs()).toEqual([]);
         });
 
         it("rejects symlink entries", async () => {

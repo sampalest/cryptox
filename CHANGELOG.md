@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Changes for each release are grouped by type (Added, Changed, Fixed, Security,
 Removed) in the tables below.
 
+## 1.1.0-beta - 2026-07-02
+
+Windows and Linux support (APP-10).
+
+| Type | Change | Ref |
+|---|---|---|
+| Added | Windows (nsis installer plus portable exe) and Linux (AppImage plus deb) packaging targets, with the `.ctx` file association and an `application/x-cryptox` mime type on Linux | APP-10 |
+| Added | x64 and arm64 builds for macOS, Windows, and Linux, each produced on a native-architecture CI runner; the arch is included in every artifact name | APP-10 |
+| Added | Windows and Linux app icons (`build/icon.ico`, `build/icons/*.png`) generated from `public/icon.png` | APP-10 |
+| Changed | The custom draggable title bar renders only on macOS; Windows and Linux use the native title bar | APP-10 |
+| Changed | CI packages on a macOS/Windows/Linux matrix and aggregates all artifacts into one release; unit tests run on all three | APP-10 |
+| Fixed | Directory decryption on Windows renames tar entries whose names are reserved DOS devices (CON, AUX, and similar) or end in a dot/space, instead of failing the extraction | APP-10 |
+| Fixed | Unit temp-directory assertion uses the OS temp directory instead of a hardcoded `/tmp` path | APP-10 |
+
 ## 1.0.0-beta - 2026-06-21
 
 First beta. Consolidates the 0.3.x alpha security hardening work and closes the

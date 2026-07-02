@@ -2,6 +2,9 @@
 const POINT_EXT = ".ctx";
 const EXT =  "ctx";
 
+// Exceptions
+const PASSWORD_ERROR = "password_error";
+
 // Interim file format written by the 0.3.x alphas (read-only support: decrypt
 // still understands it, but new files use the CTX1 format, see src/main/format.js).
 // Raw legacy files have no magic at all (they begin with a raw 16-byte IV).
@@ -25,6 +28,7 @@ const KEY_LEN = 32;
 export default {
     EXT: EXT,
     POINT_EXT: POINT_EXT,
+    PASSWORD_ERROR: PASSWORD_ERROR,
     CTX_MAGIC: CTX_MAGIC,
     CTX_FORMAT_VERSION: CTX_FORMAT_VERSION,
     CRYPTO_ERROR_CODES: CRYPTO_ERROR_CODES,
