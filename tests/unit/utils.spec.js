@@ -197,6 +197,21 @@ describe("Utils", () => {
             expect(fs.existsSync(outputDir)).toBe(false);
         });
 
+        it("rejects Windows drive-letter absolute paths on every platform", async () => {
+            // The gate must see this before tar-fs's win32 normalize rewrites the
+            // drive-letter ":" to "_" and hides that it was ever absolute. The
+            // literal name is caught on all platforms, so the regression is covered
+            // even when the suite runs on Linux/macOS.
+            await writeTar(tarPath, [
+                { header: { name: "C:\\Windows\\System32\\evil.txt", type: "file" }, body: "pwned" }
+            ]);
+
+            await expect(Utils.unzipDirectory(tarPath, outputDir)).rejects.toThrow(/absolute/i);
+
+            expect(fs.existsSync(outputDir)).toBe(false);
+            expect(leftoverTempDirs()).toEqual([]);
+        });
+
         it("rejects symlink entries", async () => {
             await writeTar(tarPath, [
                 { header: { name: "evil-link", type: "symlink", linkname: "/etc" } }

@@ -91,20 +91,23 @@ export default class Utils {
             // from tar-stream's inner entry stream.)
             let entryError = null;
             const extractStream = tar.extract(tempRoot, {
-                ignore: (name, header) => {
-                    if (!entryError) entryError = this._validateTarEntry(tempRoot, header);
-                    return entryError !== null;
-                },
-                // Rename segments that are unwritable on Windows (reserved device
-                // names, trailing dot/space). Off win32 the name is untouched, so
-                // extraction stays byte-for-byte identical. This only ever makes a
-                // name safer, so the _validateTarEntry gate above still holds.
+                // tar-fs runs map, then its own win32 normalize (which rewrites a
+                // drive-letter ":" to "_", erasing the evidence of an absolute
+                // path), then ignore. So the security gate must run here in map on
+                // the ORIGINAL name; validating in ignore would see the normalized
+                // name and let Windows absolute paths (C:\...) slip through.
                 map: header => {
+                    if (!entryError) entryError = this._validateTarEntry(tempRoot, header);
+                    // Then rename segments unwritable on Windows (reserved device
+                    // names, trailing dot/space). Off win32 the name is untouched,
+                    // so extraction stays byte-for-byte identical. This only ever
+                    // makes a name safer, so the gate above still holds.
                     if (process.platform === "win32") {
                         header.name = this.sanitizeReservedPath(header.name);
                     }
                     return header;
-                }
+                },
+                ignore: () => entryError !== null
             });
 
             let settled = false;
