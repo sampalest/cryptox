@@ -2,6 +2,8 @@
 // installer is flaky here (intermittent 504s) and its extraction is unreliable
 // (truncated dist/, no path.txt). Run install.js with retries just to populate
 // the download cache, then re-extract the cached zip ourselves with ditto.
+// macOS-only by design (uses the darwin cache path and `ditto`); the CI step is
+// gated to macOS runners, and Windows/Linux use electron's normal download.
 import { execFileSync, spawnSync } from "node:child_process";
 import { globSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";

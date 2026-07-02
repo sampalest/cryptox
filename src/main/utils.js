@@ -17,6 +17,32 @@ export default class Utils {
     }
 
     /**
+     * Rewrite an entry path so every segment is writable on Windows. Windows
+     * cannot create files named after reserved DOS devices (CON, PRN, AUX, NUL,
+     * COM1-9, LPT1-9, case-insensitive, with or without an extension) or ending
+     * in a dot or space. A directory encrypted on macOS/Linux may hold such
+     * names, so each offending segment is renamed (trailing dots/spaces dropped,
+     * a "_" prefixed to a reserved base) instead of failing the whole extract.
+     * Purely a Windows-writability rewrite, NOT a security control: it never adds
+     * separators or "..", and traversal/absolute/type checks stay hard rejects in
+     * _validateTarEntry. Applied only on win32 (see unzipDirectory), so extraction
+     * on other platforms is unchanged. Kept platform-agnostic here so it is unit
+     * testable everywhere.
+     * @param {String} name tar entry path (segments separated by "/" or "\").
+     * @return {String} A name whose segments are all writable on Windows.
+     */
+    static sanitizeReservedPath(name) {
+        const reserved = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
+        return name.split(/[\\/]/).map(segment => {
+            if (segment === "" || segment === "." || segment === "..") return segment;
+            let safe = segment.replace(/[. ]+$/, "");
+            if (safe === "") safe = "_";
+            if (reserved.test(safe)) safe = `_${safe}`;
+            return safe;
+        }).join("/");
+    }
+
+    /**
      * Validate a tar entry before it is written to disk. Only plain files and
      * directories are allowed; anything else (symlink, hardlink, devices, FIFO,
      * socket) and any name escaping the extraction root is rejected.
@@ -68,6 +94,16 @@ export default class Utils {
                 ignore: (name, header) => {
                     if (!entryError) entryError = this._validateTarEntry(tempRoot, header);
                     return entryError !== null;
+                },
+                // Rename segments that are unwritable on Windows (reserved device
+                // names, trailing dot/space). Off win32 the name is untouched, so
+                // extraction stays byte-for-byte identical. This only ever makes a
+                // name safer, so the _validateTarEntry gate above still holds.
+                map: header => {
+                    if (process.platform === "win32") {
+                        header.name = this.sanitizeReservedPath(header.name);
+                    }
+                    return header;
                 }
             });
 

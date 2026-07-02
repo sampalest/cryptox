@@ -25,7 +25,7 @@ Renderer entry: creates the Vue app with Pinia and the router, imports the Sass 
 
 ## src/renderer/App.vue
 
-Root shell: fake navbar strip, app title, `<router-view>`. On `beforeMount` it fetches `app:info`, derives the two-letter language and loads the matching `messages.js` table into `this.messages`.
+Root shell: fake navbar strip, app title, `<router-view>`. On `beforeMount` it fetches `app:info`, derives the two-letter language and loads the matching `messages.js` table into `this.messages`. The draggable navbar strip (and the `platform-darwin` class on `#app`) renders only when `app:info.platform === "darwin"`, since it pairs with the macOS `hiddenInset` title bar; on Windows/Linux the native title bar stands and neither navbar div renders (APP-10).
 
 ## src/renderer/messages.js
 
