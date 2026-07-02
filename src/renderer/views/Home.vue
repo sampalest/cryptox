@@ -7,7 +7,7 @@
                 <div class="app-title">Cryptox</div>
                 <div class="app-subtitle">Secure Everything</div>
             </div>
-            <div class="logo-block" :key="3" :data-index="3" @click="animateLogo">
+            <div class="logo-block" :key="3" :data-index="3" role="button" tabindex="0" aria-label="Cryptox logo" @click="animateLogo" @keydown.enter.prevent="animateLogo" @keydown.space.prevent="animateLogo">
                 <img ref="logo" class="cryptox-logo" src="@/assets/cryptox_app.svg" alt="Cryptox icon">
                 <fileloader @imageFile="selectFile"></fileloader>
             </div>
@@ -15,7 +15,7 @@
                 <div class="col s12">Please, drag your files here or click in the button.</div>
             </div>
             <div class="button-block" :key="1" :data-index="1">
-                <a ref="select" @click="$refs.fileInput.click()" class="file-button">Select Files</a>
+                <a ref="select" role="button" tabindex="0" @click="$refs.fileInput.click()" @keydown.enter.prevent="$refs.fileInput.click()" @keydown.space.prevent="$refs.fileInput.click()" class="file-button">Select Files</a>
             </div>
         </transition-group>
         <input ref="fileInput" type="file" class="hide" @change="inputFile" multiple>
@@ -87,7 +87,8 @@ export default {
             });
 
             if (ctx > 0 && ctx != this.files.length) {
-                alert("Cannot mixing encrypted and decrypted files.");
+                this.files = null;
+                alert("Cannot mix encrypted and unencrypted files.");
                 return;
             }
 
@@ -102,7 +103,7 @@ export default {
             this.password = "";
             this.files = null;
         },
-        setEncrypt(bool) {
+        setDecrypt(bool) {
             this.encrypted = bool;
         },
         animateLogo() {

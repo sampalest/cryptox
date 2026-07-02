@@ -7,28 +7,31 @@
             </div>
                 <div class="row" :key="1" :data-index="1">
                     <div class="input-field col s10 offset-s1">
-                        <i class="material-icons prefix">lock</i>
-                        <input type="password" name="password" id="password" v-model="password">
+                        <i class="material-icons prefix" aria-hidden="true">lock</i>
+                        <input type="password" name="password" id="password" v-model="password"
+                            :autocomplete="isDecrypt ? 'current-password' : 'new-password'"
+                            autocapitalize="off" autocorrect="off" spellcheck="false">
                         <label for="password">Password</label>
                     </div>
                 </div>
-                <div v-if="!isEncrypt" class="row" :key="2" :data-index="2">
+                <div v-if="!isDecrypt" class="row" :key="2" :data-index="2">
                     <div class="input-field col s10 offset-s1">
-                        <i class="material-icons prefix">lock</i>
-                        <input type="password" name="newpassword" id="newpassword" v-model="newPassword">
+                        <i class="material-icons prefix" aria-hidden="true">lock</i>
+                        <input type="password" name="newpassword" id="newpassword" v-model="newPassword"
+                            autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
                         <label for="newpassword">Retype Password</label>
                     </div>
                 </div>
                 <div class="button-block" :key="3" :data-index="3">
                     <button type="submit" class="waves-effect waves-light file-button">
                         <div class="vertical-align text-button">
-                            <i class="material-icons left" v-text="isEncrypt ? 'lock_outline' : 'lock_open'"></i>
-                            <span v-html="!isEncrypt ? 'Encrypt' : 'Decrypt'"></span>
+                            <i class="material-icons left" aria-hidden="true" v-text="isDecrypt ? 'lock_outline' : 'lock_open'"></i>
+                            <span>{{ isDecrypt ? 'Decrypt' : 'Encrypt' }}</span>
                         </div>
                     </button>
                 </div>
                 <div class="cancel-button" :key="4" :data-index="4">
-                    <a @click="$emit('cancel')">Cancel</a>
+                    <a role="button" tabindex="0" @click="$emit('cancel')" @keydown.enter.prevent="$emit('cancel')" @keydown.space.prevent="$emit('cancel')">Cancel</a>
                 </div>
         </transition-group>
     </form>
@@ -48,7 +51,7 @@ export default {
     mixins: [animation],
     emits: ["password", "cancel", "setEncrypt"],
     props: {
-        isEncrypt: {
+        isDecrypt: {
             type: Boolean,
             default: true
         }
@@ -62,7 +65,7 @@ export default {
                 else if (this.password.length <= 4) {
                     throw new e.NoValidPassword("This password is too short. Please, choose another one.");
                 }
-                else if (this.isEncrypt) {
+                else if (this.isDecrypt) {
                     this.emitObject();
                     return;
                 }
@@ -79,8 +82,13 @@ export default {
             }
         },
         emitObject() {
-            this.$emit("setEncrypt", this.isEncrypt);
+            this.$emit("setDecrypt", this.isDecrypt);
             this.$emit("password", this.password);
+            // Clear the plaintext password on the success path too. JS strings
+            // are immutable, so this is best-effort hygiene (no real zeroing),
+            // matching the error path above.
+            this.password = "";
+            this.newPassword = "";
         }
     }
 };
