@@ -8,23 +8,20 @@
   </div>
 </template>
 <script>
-import Messages from "@/messages.js";
-
 export default {
     data: () => {
         return {
             appTitle: "CRYPTOX",
-            language: "en",
             dockMenu: null,
-            isMac: false,
-            messages: {}
+            isMac: false
         };
     },
     async beforeMount() {
+        // The draggable custom navbar pairs with the macOS "hiddenInset" title
+        // bar; on Windows/Linux the native title bar stands, so render neither
+        // div to avoid a doubled title bar.
         const appInfo = await window.cryptox.app.getInfo();
-        this.language = appInfo.locale.substring(0, 2);
         this.isMac = appInfo.platform === "darwin";
-        this.messages = { ...Messages[this.language] };
     }
 };
 </script>
