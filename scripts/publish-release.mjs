@@ -24,7 +24,14 @@ const SHIPPABLE_EXTENSIONS = [".dmg", ".zip", ".exe", ".AppImage", ".deb"];
 const assets = readdirSync(distDir)
     .filter(name => SHIPPABLE_EXTENSIONS.some(ext => name.endsWith(ext)))
     .map(name => path.join(distDir, name));
-const notes = `Automated build of ${sha}`;
+// Static install notes (APP-11): builds ship unsigned for the beta, and the
+// AppImage has known limitations on Ubuntu 24.04, so every release body carries
+// the two user-facing warnings alongside the build stamp.
+const notes = `Automated build of ${sha}
+
+**Install notes**
+- Builds are not code signed for the beta. On Windows, SmartScreen shows "Windows protected your PC" on first launch: click "More info", then "Run anyway". On macOS, right click the app and choose Open if Gatekeeper blocks it.
+- On Ubuntu, prefer the \`.deb\` package (it installs the AppArmor profile Ubuntu 24.04 needs). The \`.AppImage\` can be blocked by Ubuntu 24.04's user-namespace restriction. Pick the file matching your CPU: \`x64\` or \`arm64\`.`;
 
 const releaseExists = tag => {
     try {

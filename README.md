@@ -14,6 +14,12 @@
 ## Install
 - Download latest release from https://github.com/sampalest/cryptox/releases
 
+Beta builds are not code signed:
+
+- **Windows**: SmartScreen shows "Windows protected your PC" on first launch. Click "More info", then "Run anyway". This is the expected prompt for unsigned apps, not a malware detection.
+- **macOS**: the app is not notarized; if Gatekeeper blocks it, right click the app and choose Open.
+- **Linux (Ubuntu)**: prefer the `.deb` package (`sudo apt install ./Cryptox-<version>-<arch>.deb`); it installs the AppArmor profile Ubuntu 24.04 needs and a working Chromium sandbox. The `.AppImage` runs without installation (it needs `fusermount3`, part of a default Ubuntu install) but Ubuntu 24.04's AppArmor restriction on unprivileged user namespaces can block its sandbox, so the `.deb` is the recommended install there. Make sure the downloaded file's arch matches your machine (`x64` vs `arm64`, check with `uname -m`: `x86_64` vs `aarch64`).
+
 ## Development
 
 Cryptox uses npm with a committed `package-lock.json`. Use Node.js 24 LTS for local development:
@@ -52,7 +58,7 @@ npm run build:electron
 npm run electron:build
 ```
 
-The renderer is built with Vite into `dist/`. Electron main and preload bundles are built into `dist-electron/` before local app startup or packaging. `npm run electron:build` packages the host operating system into `dist_electron/`: macOS `dmg` and `zip`, Windows `nsis` installer and portable `exe`, or Linux `AppImage` and `deb`. Release builds cover both x64 and arm64 for each platform (built on native-architecture CI runners). Artifacts ship unsigned for the beta, so Windows shows a SmartScreen notice ("Windows protected your PC", then "More info" and "Run anyway"); macOS notarization is skipped unless the required environment is configured.
+The renderer is built with Vite into `dist/`. Electron main and preload bundles are built into `dist-electron/` before local app startup or packaging. `npm run electron:build` packages the host operating system into `dist_electron/`: macOS `dmg` and `zip`, Windows `nsis` installer and portable `exe`, or Linux `AppImage` and `deb`. Release builds cover both x64 and arm64 for each platform (built on native-architecture CI runners, except macOS x64, which is cross-compiled on the arm64 runner). Artifacts ship unsigned for the beta (see the Install section for the resulting OS prompts); macOS notarization is skipped unless the required environment is configured.
 
 See [CHANGELOG.md](CHANGELOG.md) for release history and upgrade notes.
 
