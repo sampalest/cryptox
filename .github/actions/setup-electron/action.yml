@@ -1,20 +1,34 @@
 name: Setup Electron binary
 description: Reliably install the Electron binary on macOS runners (works around flaky downloads / partial extraction).
+inputs:
+  extra-arch:
+    description: >
+      Additional darwin arch to prefetch into the electron cache (for
+      cross-packaging, e.g. x64 on the arm64 runner). Ignored when it matches
+      the runner arch.
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
     # Reuse the downloaded electron zip across runs to avoid re-hitting GitHub.
+    # The extra arch is part of the key so the cross-compiling leg keeps its own
+    # cache entry instead of racing the native leg for one shared key.
     - name: ⚡ Cache Electron binary
       uses: actions/cache@v5
       with:
         path: ~/Library/Caches/electron
-        key: electron-${{ runner.os }}-${{ runner.arch }}-v40.10.2
+        key: electron-${{ runner.os }}-${{ runner.arch }}-v40.10.2${{ inputs.extra-arch && format('-{0}', inputs.extra-arch) || '' }}
 
     # The electron binary install is unreliable on this runner: downloads 504
     # intermittently, and even when the (checksum-verified) zip downloads,
     # electron's bundled extract-zip only partially unpacks it. The script
     # downloads with retries, re-extracts the cached zip with ditto, writes
-    # path.txt, and verifies the executable exists. See scripts/setup-electron.mjs.
+    # path.txt, and verifies the executable exists. With ELECTRON_EXTRA_ARCH it
+    # also prefetches the cross-packaging arch's zip (checksum-verified) into
+    # the cache electron-builder consults. See scripts/setup-electron.mjs.
     - name: ⚡ Ensure Electron binary is installed
       shell: bash
+      env:
+        ELECTRON_EXTRA_ARCH: ${{ inputs.extra-arch }}
       run: node scripts/setup-electron.mjs

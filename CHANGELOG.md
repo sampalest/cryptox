@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Changes for each release are grouped by type (Added, Changed, Fixed, Security,
 Removed) in the tables below.
 
+## Unreleased
+
+Post-release fixes for the multi-platform builds (APP-11).
+
+| Type | Change | Ref |
+|---|---|---|
+| Fixed | Reverted renderer regressions that slipped into the APP-10 PR: an `is-encrypt` prop/event rename left every operation running as decrypt (encryption unreachable) and skipped the encrypt password confirmation; the crypto-listener bookkeeping used on unmount was removed while still called; a multi-file decrypt tore the progress screen down after the first file; `SENDER_REJECTED`/`INVALID_PAYLOAD` alerts lost their fixed messages | APP-11 |
+| Fixed | CI: the macOS x64 package job targeted the retired `macos-13` Intel runner and queued forever, blocking the release job; mac x64 is now cross-compiled on `macos-15` with an explicit `--x64`, and every package leg passes its arch explicitly | APP-11 |
+| Fixed | The Linux `.deb` declares the missing `libasound2` dependency; the Electron binary links it at load time, so the installed app failed to start on Ubuntu machines without the desktop audio stack (reproduced on Ubuntu 24.04 arm64) | APP-11 |
+| Fixed | AppImages use electron-builder's static (type2) launcher runtime; the legacy launcher was dynamically linked and its arm64 build required an unversioned `libz.so`, so the arm64 AppImage could not start on stock Ubuntu | APP-11 |
+| Added | Unit tests for the `filecryto` mixin (error-code message coverage, multi-file decrypt completion, listener release idempotency) | APP-11 |
+| Added | Install notes in the README and in every release body: unsigned-build prompts (Windows SmartScreen, macOS Gatekeeper) and Ubuntu guidance (prefer the `.deb`; the AppImage needs `libfuse2t64` and can be blocked by the Ubuntu 24.04 user-namespace restriction) | APP-11 |
+| Added | Manual deploy workflow (`manual-deploy.yml`): a platform dropdown (linux/windows/macos) builds that platform's x64 and arm64 artifacts and publishes them as the `v<version>.<shortsha>` prerelease for the built commit | APP-11 |
+| Removed | Unused `PASSWORD_ERROR` constant introduced by the APP-10 PR | APP-11 |
+
+Known issues:
+
+- Builds are unsigned for the beta: Windows SmartScreen shows "Windows protected your PC" ("More info", then "Run anyway"), and macOS Gatekeeper may require right click and Open.
+- The Linux AppImage on Ubuntu 24.04 can be blocked by the AppArmor restriction on unprivileged user namespaces; the `.deb` package (which installs an AppArmor profile) is the recommended install on Ubuntu.
+
 ## 1.1.0-beta - 2026-07-02
 
 Windows and Linux support (APP-10).

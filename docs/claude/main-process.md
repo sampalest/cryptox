@@ -80,7 +80,6 @@ Pure validation helpers shared by the IPC handlers. All throw on invalid input; 
 Shared constants (default export object):
 
 - `EXT` / `POINT_EXT`: `"ctx"` / `".ctx"`, the encrypted-file extension.
-- `PASSWORD_ERROR`: message key used by the renderer's `messages.js`.
 - `CTX_MAGIC` ("CTXBOX") / `CTX_FORMAT_VERSION` (1): the interim 0.3.x alpha format; read-only support, never written.
 - `CRYPTO_ERROR_CODES`: frozen map of the stable codes crossing IPC: `SENDER_REJECTED`, `INVALID_PAYLOAD`, `FILE_NOT_FOUND`, `INVALID_FILE_TYPE`, `OPERATION_FAILED`.
 - `KEY_LEN` (32): AES-256 key length. Argon2id ops/mem limits are resolved at runtime from libsodium presets and stored per-file, not here.

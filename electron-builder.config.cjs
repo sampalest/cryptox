@@ -43,9 +43,41 @@ const linux = {
     icon: "build/icons"
 };
 
+// APP-11: electron-builder's default deb depends list omits libasound2, but the
+// Electron binary links libasound.so.2 at load time, so the installed app died
+// on any Ubuntu without the desktop audio stack (reproduced on Ubuntu 24.04
+// arm64). Overriding depends replaces the default list, so it is repeated here
+// with libasound2 appended (on Ubuntu 24.04 the libasound2t64 package provides
+// it). Keep this list in sync with FpmTarget.getDefaultDepends when bumping
+// electron-builder.
+const deb = {
+    depends: [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "libasound2"
+    ]
+};
+
 module.exports = {
     appId: "com.sampalest.cryptox",
     productName: "Cryptox",
+    // APP-11: build AppImages with the static (type2, runtime 20251108) launcher
+    // toolset. The default legacy toolset ("0.0.0") embeds a dynamically linked
+    // launcher whose arm64 build links an unversioned libz.so, so the arm64
+    // AppImage could not start on stock Ubuntu (reproduced on 24.04 arm64). The
+    // "1.0.2" toolset's runtimes are static-pie with no dynamic dependencies and
+    // use fusermount3 (a default install on Ubuntu 24.04) instead of libfuse2.
+    // The download is checksum-pinned inside app-builder-lib.
+    toolsets: {
+        appimage: "1.0.2"
+    },
     copyright: "Copyright © 2026 Samuel P.E.",
     // Each platform is built for both x64 and arm64 on native-architecture CI
     // runners; the arch in the name keeps the six artifact sets distinct when a
@@ -84,5 +116,6 @@ module.exports = {
     mac,
     win,
     nsis,
-    linux
+    linux,
+    deb
 };

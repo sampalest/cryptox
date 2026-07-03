@@ -49,7 +49,7 @@ export default {
         };
     },
     mixins: [animation],
-    emits: ["password", "cancel", "setEncrypt"],
+    emits: ["password", "cancel", "setDecrypt"],
     props: {
         isDecrypt: {
             type: Boolean,
