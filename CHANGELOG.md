@@ -21,12 +21,13 @@ Post-release fixes for the multi-platform builds (APP-11).
 | Added | Install notes in the README and in every release body: unsigned-build prompts (Windows SmartScreen, macOS Gatekeeper) and Ubuntu guidance (prefer the `.deb`; the AppImage needs `libfuse2t64` and can be blocked by the Ubuntu 24.04 user-namespace restriction) | APP-11 |
 | Added | Manual deploy workflow (`manual-deploy.yml`): a platform dropdown (linux/windows/macos) builds that platform's x64 and arm64 artifacts and publishes them as the `v<version>.<shortsha>` prerelease for the built commit | APP-11 |
 | Fixed | CI: a `unit-gate` job aggregates the unit matrix under the fixed check name the develop branch protection requires; after the matrix split, PRs hung on "Expected: waiting for status to be reported" | APP-11 |
+| Added | AppImage first-run helper: on Ubuntu 24.04+ (AppArmor userns restriction) the AppImage offers a one-time, pkexec-authorized AppArmor profile install and then starts sandboxed, instead of aborting with a Chromium sandbox FATAL; it never falls back to running unsandboxed | APP-11 |
 | Removed | Unused `PASSWORD_ERROR` constant introduced by the APP-10 PR | APP-11 |
 
 Known issues:
 
 - Builds are unsigned for the beta: Windows SmartScreen shows "Windows protected your PC" ("More info", then "Run anyway"), and macOS Gatekeeper may require right click and Open.
-- The Linux AppImage on Ubuntu 24.04 can be blocked by the AppArmor restriction on unprivileged user namespaces; the `.deb` package (which installs an AppArmor profile) is the recommended install on Ubuntu.
+- On Ubuntu 24.04+ the Linux AppImage needs a one-time AppArmor profile (its first run offers to install it with a password prompt; declining exits with manual instructions). The `.deb` package sets this up automatically and remains the recommended install on Ubuntu. With a custom `TMPDIR` or `--appimage-extract-and-run` the profile does not match and the restriction still applies.
 
 ## 1.1.0-beta - 2026-07-02
 

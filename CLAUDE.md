@@ -102,6 +102,7 @@ These are deliberate security properties of the app, written here so new code pr
 - Staged outputs use random operation-owned names with `wx` open flags; the move into place never overwrites an existing file. A failed, cancelled or wrong-password operation must never leave output (or partial plaintext) visible at the final path.
 - Temp directories are per-operation `mkdtemp` (mode 0700), released unconditionally in `finally`, and torn down on `will-quit`. `OperationRegistry` locks input/output paths so two operations cannot race the same file.
 - The unsalted SHA-256 key derivation (`_getCipherKey`) exists only for legacy decryption. All new encryption uses Argon2id.
+- The AppImage first-run helper (`build/appimage/AppRun.sh`, spliced in by `scripts/harden-appimage.mjs`) may offer a pkexec-authorized AppArmor profile install for the Ubuntu 24.04+ userns restriction, but it must never weaken or disable the Chromium sandbox: no `--no-sandbox` anywhere (wrapper, launchers, docs), and on refusal or failure it exits with instructions. The root-shell command it runs takes the profile file as a positional argument so no user-controlled text is interpolated into it.
 
 ## Comments policy
 
