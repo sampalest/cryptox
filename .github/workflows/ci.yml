@@ -49,6 +49,21 @@ jobs:
       - name: 🧪 Run unit tests
         run: npm run test:unit
 
+  # Aggregates the unit matrix under the exact name the develop branch
+  # protection requires ("🧪 Unit tests"); the matrix legs report as
+  # "🧪 Unit tests (<os>)", which the protection rule does not match, so PRs
+  # hung on "Expected: waiting for status" after the matrix split (APP-11).
+  # always() keeps the gate reporting on failed legs too: a skipped required
+  # check would satisfy branch protection and let a red matrix through.
+  unit-gate:
+    name: 🧪 Unit tests
+    runs-on: ubuntu-latest
+    needs: [unit]
+    if: always()
+    steps:
+      - name: 🧪 Require every unit matrix leg to pass
+        run: test "${{ needs.unit.result }}" = "success"
+
   audit:
     name: 🛡️ Security audit
     runs-on: ubuntu-latest
