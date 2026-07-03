@@ -66,10 +66,14 @@ jobs:
         uses: ./.github/actions/setup-electron
         with:
           extra-arch: ${{ matrix.arch }}
+      - name: 🧰 Install squashfs-tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y squashfs-tools
       - name: 🏗️ Build & package app
         run: npm run electron:build -- --${{ matrix.arch }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          CRYPTOX_REQUIRE_APPIMAGE_HARDEN: ${{ runner.os == 'Linux' && '1' || '' }}
       - name: ⬆️ Upload artifacts
         uses: actions/upload-artifact@v4
         with:

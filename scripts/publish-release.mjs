@@ -36,7 +36,7 @@ const notes = `Automated build of ${sha}
 
 **Install notes**
 - Builds are not code signed for the beta. On Windows, SmartScreen shows "Windows protected your PC" on first launch: click "More info", then "Run anyway". On macOS, right click the app and choose Open if Gatekeeper blocks it.
-- On Ubuntu, prefer the \`.deb\` package (it installs the AppArmor profile Ubuntu 24.04 needs). The \`.AppImage\` can be blocked by Ubuntu 24.04's user-namespace restriction. Pick the file matching your CPU: \`x64\` or \`arm64\`.`;
+- On Ubuntu, prefer the \`.deb\` package (it installs the AppArmor profile Ubuntu 24.04 needs). On Ubuntu 24.04+ the \`.AppImage\`'s first run offers a one-time, password-authorized AppArmor profile install so it can start sandboxed. Pick the file matching your CPU: \`x64\` or \`arm64\`.`;
 
 const releaseExists = tag => {
     try {
