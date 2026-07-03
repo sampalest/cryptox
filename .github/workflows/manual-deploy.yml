@@ -1,0 +1,110 @@
+name: 🚀 Manual deploy
+
+# On-demand build and deploy of a single platform, picked from a dropdown when
+# dispatching the workflow (GitHub renders choice inputs as a selector under
+# the "Run workflow" button). Both arches of the selected platform are built
+# with the same steps as ci.yml's package job, then published as the
+# prerelease "v<version>.<shortsha>" for the built commit. Re-running for
+# another platform on the same commit adds its assets to the same release.
+# GitHub only offers workflow_dispatch for workflows present on the default
+# branch, so this file must reach master before the button appears.
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to build and deploy (x64 and arm64)
+        required: true
+        type: choice
+        options:
+          - linux
+          - windows
+          - macos
+
+jobs:
+  # Matrix rows must be data, not expressions, so a tiny job maps the selected
+  # platform to its two (runner, arch) legs. Keep the rows in sync with the
+  # package matrix in ci.yml (mac x64 cross-compiles on macos-15, APP-11).
+  select:
+    name: 🎛️ Select platform
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - name: 🎛️ Emit the matrix for the selected platform
+        id: pick
+        run: |
+          case "${{ inputs.platform }}" in
+            linux)   m='[{"runner": "ubuntu-latest", "os": "linux", "arch": "x64"}, {"runner": "ubuntu-24.04-arm", "os": "linux", "arch": "arm64"}]' ;;
+            windows) m='[{"runner": "windows-latest", "os": "windows", "arch": "x64"}, {"runner": "windows-11-arm", "os": "windows", "arch": "arm64"}]' ;;
+            macos)   m='[{"runner": "macos-15", "os": "macos", "arch": "arm64"}, {"runner": "macos-15", "os": "macos", "arch": "x64"}]' ;;
+          esac
+          echo "matrix=$m" >> "$GITHUB_OUTPUT"
+
+  # Mirrors ci.yml's package job; see the comments there for the macOS
+  # setup-electron workaround, the extra-arch prefetch and the explicit
+  # --<arch> cross-compile flag.
+  package:
+    name: 📦 Package (${{ matrix.os }} ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    needs: [select]
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.select.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: 📦 Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: ${{ runner.os == 'macOS' && '1' || '' }}
+      - name: ⚡ Set up Electron
+        if: runner.os == 'macOS'
+        uses: ./.github/actions/setup-electron
+        with:
+          extra-arch: ${{ matrix.arch }}
+      - name: 🏗️ Build & package app
+        run: npm run electron:build -- --${{ matrix.arch }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: ⬆️ Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}-${{ matrix.arch }}
+          if-no-files-found: ignore
+          path: |
+            dist_electron/*.dmg
+            dist_electron/*.zip
+            dist_electron/*.exe
+            dist_electron/*.AppImage
+            dist_electron/*.deb
+
+  deploy:
+    name: 🚀 Deploy prerelease
+    runs-on: ubuntu-latest
+    needs: [package]
+    permissions:
+      contents: write # create releases / tags
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: ⬇️ Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist_electron
+          pattern: dist-*
+          merge-multiple: true
+      # CRYPTOX_MANUAL_RELEASE makes publish-release.mjs upsert the prerelease
+      # "v<version>.<shortsha>" for this commit without touching any other
+      # release (see scripts/publish-release.mjs).
+      - name: 🚀 Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CRYPTOX_MANUAL_RELEASE: "true"
+        run: node scripts/publish-release.mjs

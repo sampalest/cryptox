@@ -3,6 +3,11 @@
 //   develop -> prerelease "v<version>.<shortsha>"; only this version's previous
 //              prerelease (same version, any short sha) is replaced. Other
 //              versions' releases are never touched.
+//   manual  -> with CRYPTOX_MANUAL_RELEASE=true (the manual-deploy workflow),
+//              prerelease "v<version>.<shortsha>" for the built commit on any
+//              branch. No other release is deleted or replaced, so re-running
+//              the workflow for another platform on the same commit aggregates
+//              that platform's assets into the same release (APP-11).
 import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -54,11 +59,11 @@ const upsert = (tag, extraArgs = []) => {
     }
 };
 
-if (process.env.GITHUB_REF_NAME === "master") {
+if (process.env.CRYPTOX_MANUAL_RELEASE === "true") {
+    upsert(`v${version}.${sha}`, ["--prerelease"]);
+} else if (process.env.GITHUB_REF_NAME === "master") {
     upsert(`v${version}`);
-}
-
-if (process.env.GITHUB_REF_NAME === "develop") {
+} else if (process.env.GITHUB_REF_NAME === "develop") {
     const tag = `v${version}.${sha}`;
     const prefix = `v${version}.`;
     const stale = gh(["release", "list", "--limit", "200", "--json", "tagName,isPrerelease", "--jq", ".[] | select(.isPrerelease) | .tagName"])
