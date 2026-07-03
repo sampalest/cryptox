@@ -3,6 +3,11 @@
 //   develop -> prerelease "v<version>.<shortsha>"; only this version's previous
 //              prerelease (same version, any short sha) is replaced. Other
 //              versions' releases are never touched.
+//   manual  -> with CRYPTOX_MANUAL_RELEASE=true (the manual-deploy workflow),
+//              prerelease "v<version>.<shortsha>" for the built commit on any
+//              branch. No other release is deleted or replaced, so re-running
+//              the workflow for another platform on the same commit aggregates
+//              that platform's assets into the same release (APP-11).
 import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -24,7 +29,14 @@ const SHIPPABLE_EXTENSIONS = [".dmg", ".zip", ".exe", ".AppImage", ".deb"];
 const assets = readdirSync(distDir)
     .filter(name => SHIPPABLE_EXTENSIONS.some(ext => name.endsWith(ext)))
     .map(name => path.join(distDir, name));
-const notes = `Automated build of ${sha}`;
+// Static install notes (APP-11): builds ship unsigned for the beta, and the
+// AppImage has known limitations on Ubuntu 24.04, so every release body carries
+// the two user-facing warnings alongside the build stamp.
+const notes = `Automated build of ${sha}
+
+**Install notes**
+- Builds are not code signed for the beta. On Windows, SmartScreen shows "Windows protected your PC" on first launch: click "More info", then "Run anyway". On macOS, right click the app and choose Open if Gatekeeper blocks it.
+- On Ubuntu, prefer the \`.deb\` package (it installs the AppArmor profile Ubuntu 24.04 needs). The \`.AppImage\` can be blocked by Ubuntu 24.04's user-namespace restriction. Pick the file matching your CPU: \`x64\` or \`arm64\`.`;
 
 const releaseExists = tag => {
     try {
@@ -47,11 +59,11 @@ const upsert = (tag, extraArgs = []) => {
     }
 };
 
-if (process.env.GITHUB_REF_NAME === "master") {
+if (process.env.CRYPTOX_MANUAL_RELEASE === "true") {
+    upsert(`v${version}.${sha}`, ["--prerelease"]);
+} else if (process.env.GITHUB_REF_NAME === "master") {
     upsert(`v${version}`);
-}
-
-if (process.env.GITHUB_REF_NAME === "develop") {
+} else if (process.env.GITHUB_REF_NAME === "develop") {
     const tag = `v${version}.${sha}`;
     const prefix = `v${version}.`;
     const stale = gh(["release", "list", "--limit", "200", "--json", "tagName,isPrerelease", "--jq", ".[] | select(.isPrerelease) | .tagName"])

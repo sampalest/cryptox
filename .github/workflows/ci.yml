@@ -91,16 +91,16 @@ jobs:
     # Only package on pushes to develop/master (set by the workflow triggers),
     # never on pull requests.
     if: github.event_name == 'push'
-    # One native-architecture runner per (OS, arch): every artifact is built on
-    # its own hardware, no cross-compilation. macos-13 is the Intel macOS runner;
-    # if GitHub retires it, build mac x64 by cross-compiling on macos-15 (set the
-    # mac target arch to ["arm64", "x64"]) instead.
+    # One runner per (OS, arch), with the target arch passed explicitly to
+    # electron-builder. Windows and Linux build on native-architecture runners;
+    # mac x64 is cross-compiled on macos-15 (arm64) because GitHub retired the
+    # macos-13 Intel runners (jobs targeting that label queue forever).
     strategy:
       fail-fast: false
       matrix:
         include:
           - { runner: macos-15, os: macos, arch: arm64 }
-          - { runner: macos-13, os: macos, arch: x64 }
+          - { runner: macos-15, os: macos, arch: x64 }
           - { runner: windows-latest, os: windows, arch: x64 }
           - { runner: windows-11-arm, os: windows, arch: arm64 }
           - { runner: ubuntu-latest, os: linux, arch: x64 }
@@ -117,13 +117,21 @@ jobs:
         run: npm ci
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: ${{ runner.os == 'macOS' && '1' || '' }}
+      # extra-arch prefetches the matrix arch's darwin zip when it differs from
+      # the runner arch (the cross-compiled mac x64 leg), so app-builder's
+      # retry-less download never runs.
       - name: ⚡ Set up Electron
         if: runner.os == 'macOS'
         uses: ./.github/actions/setup-electron
+        with:
+          extra-arch: ${{ matrix.arch }}
       # electron:build builds the app + electron bundle internally, then packages
-      # the runner's native arch (mac dmg/zip, Windows nsis+portable, Linux AppImage/deb).
+      # the matrix arch (mac dmg/zip, Windows nsis+portable, Linux AppImage/deb).
+      # The explicit --<arch> flag reaches electron-builder; it is a no-op on the
+      # native runners and makes the mac x64 leg cross-compile on macos-15
+      # (electron-builder downloads the darwin-x64 Electron dist itself).
       - name: 🏗️ Build & package app
-        run: npm run electron:build
+        run: npm run electron:build -- --${{ matrix.arch }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       # Each runner produces only its own arch's artifacts; upload them for the
