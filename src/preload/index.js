@@ -4,6 +4,10 @@ contextBridge.exposeInMainWorld("cryptox", {
     app: {
         getInfo: () => ipcRenderer.invoke("app:info")
     },
+    window: {
+        minimize: () => ipcRenderer.invoke("window:minimize"),
+        close: () => ipcRenderer.invoke("window:close")
+    },
     crypto: {
         encrypt: (file, password, operationId) => ipcRenderer.invoke("crypto:encrypt", { file: { path: file?.path }, password, operationId }),
         decrypt: (file, password, operationId) => ipcRenderer.invoke("crypto:decrypt", { file: { path: file?.path }, password, operationId }),

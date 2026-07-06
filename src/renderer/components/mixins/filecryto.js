@@ -13,7 +13,7 @@ const FAILURE_MESSAGES = {
         SENDER_REJECTED: "The request was rejected.",
         INVALID_PAYLOAD: "The request was invalid.",
         FILE_NOT_FOUND: "The file could not be found.",
-        INVALID_FILE_TYPE: "Only .ctx files can be decrypted.",
+        INVALID_FILE_TYPE: "Only .dino and .ctx files can be decrypted.",
         OPERATION_FAILED: "Incorrect password or the file is corrupted."
     }
 };

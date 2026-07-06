@@ -53,25 +53,28 @@ function openFile(file) {
 }
 
 function buildApplicationMenu() {
+    if (process.platform !== "darwin") {
+        Menu.setApplicationMenu(null);
+        return;
+    }
+
     const template = [];
 
-    if (process.platform === "darwin") {
-        template.push({
-            label: app.name,
-            submenu: [
-                {
-                    label: "About Cryptox",
-                    click: () => sendToRenderer("menu:about")
-                },
-                { type: "separator" },
-                { role: "hide" },
-                { role: "hideothers" },
-                { role: "unhide" },
-                { type: "separator" },
-                { role: "quit" }
-            ]
-        });
-    }
+    template.push({
+        label: app.name,
+        submenu: [
+            {
+                label: "About Lockasaur",
+                click: () => sendToRenderer("menu:about")
+            },
+            { type: "separator" },
+            { role: "hide" },
+            { role: "hideothers" },
+            { role: "unhide" },
+            { type: "separator" },
+            { role: "quit" }
+        ]
+    });
 
     template.push({
         label: "File",
@@ -103,14 +106,23 @@ function buildApplicationMenu() {
 
 function createWindow () {
     rendererReady = false;
+    const useCustomFrame = process.platform === "win32" || process.platform === "linux";
+    // APP-12: every platform runs a transparent window whose visible frame is
+    // the CSS-rounded #app. macOS keeps its native traffic lights ("hidden"
+    // titlebar style, repositioned into the 42px chrome bar); Win/Linux are
+    // fully frameless with custom controls in the renderer titlebar.
     win = new BrowserWindow({
         width: 700,
-        height: 600,
-        title: "Cryptox",
-        // "hiddenInset" is a macOS-only style paired with the custom navbar; on
-        // Windows/Linux the native title bar is used (the option is ignored there
-        // anyway, this is just explicit).
-        titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+        // 660 = the design's 618px content area + the 42px in-app titlebar, so
+        // the tallest screen (home) keeps top/bottom margin without clipping
+        // (the window is fixed-size, so content must fit; APP-12).
+        height: 660,
+        title: "Lockasaur",
+        frame: !useCustomFrame,
+        transparent: true,
+        backgroundColor: "#00000000",
+        titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
+        trafficLightPosition: { x: 14, y: 14 },
         resizable: false,
         maximizable: false,
         webPreferences: {
@@ -158,7 +170,7 @@ function createWindow () {
         rendererReady = false;
     });
 }
-app.name = "Cryptox";
+app.name = "Lockasaur";
 app.on("open-file", (event, file) => {
     logger.info("Opening file from macOS file association");
     openFile(file);
@@ -212,6 +224,16 @@ ipcMain.handle("app:info", event => {
         name: app.name,
         platform: process.platform
     };
+});
+
+ipcMain.handle("window:minimize", event => {
+    if (!isTrustedSender(event, win)) return;
+    win.minimize();
+});
+
+ipcMain.handle("window:close", event => {
+    if (!isTrustedSender(event, win)) return;
+    win.close();
 });
 
 ipcMain.handle("dialog:open-files", async event => {
@@ -344,7 +366,7 @@ ipcMain.handle("files:confirm-delete-encrypted", async (event, filePath) => {
         cancelId: 1,
         title: "Delete encrypted file",
         message: "Decryption successful.",
-        detail: "Do you want to delete the encrypted .ctx file?"
+        detail: "Do you want to delete the encrypted file?"
     });
 
     if (response !== 0) return false;

@@ -5,10 +5,11 @@
 </div>
 <hr>
 
-## Version 1.1.0-beta
+## Version 2.0.0
 
 ## Description
-* Simple app to encrypt files and folders with a password
+* Lockasaur: simple app to encrypt files and folders with a password (encryption with bite)
+* Encrypted files use the `.dino` extension; files from older Cryptox versions (`.ctx`) still decrypt
 * Runs on macOS, Windows, and Linux
 
 ## Install
@@ -18,11 +19,11 @@ Beta builds are not code signed:
 
 - **Windows**: SmartScreen shows "Windows protected your PC" on first launch. Click "More info", then "Run anyway". This is the expected prompt for unsigned apps, not a malware detection.
 - **macOS**: the app is not notarized; if Gatekeeper blocks it, right click the app and choose Open.
-- **Linux (Ubuntu)**: prefer the `.deb` package (`sudo apt install ./Cryptox-<version>-<arch>.deb`); it installs the AppArmor profile Ubuntu 24.04 needs and a working Chromium sandbox. The `.AppImage` runs without installation (it needs `fusermount3`, part of a default Ubuntu install); on Ubuntu 24.04+, where AppArmor restricts unprivileged user namespaces, its first run offers a one-time, password-authorized install of an equivalent AppArmor profile so the app can start sandboxed (decline it and the app exits with manual instructions; it never runs unsandboxed). Make sure the downloaded file's arch matches your machine (`x64` vs `arm64`, check with `uname -m`: `x86_64` vs `aarch64`).
+- **Linux (Ubuntu)**: prefer the `.deb` package (`sudo apt install ./Lockasaur-<version>-<arch>.deb`); it installs the AppArmor profile Ubuntu 24.04 needs and a working Chromium sandbox. The `.AppImage` runs without installation (it needs `fusermount3`, part of a default Ubuntu install); on Ubuntu 24.04+, where AppArmor restricts unprivileged user namespaces, its first run offers a one-time, password-authorized install of an equivalent AppArmor profile so the app can start sandboxed (decline it and the app exits with manual instructions; it never runs unsandboxed). Make sure the downloaded file's arch matches your machine (`x64` vs `arm64`, check with `uname -m`: `x86_64` vs `aarch64`).
 
 ## Development
 
-Cryptox uses npm with a committed `package-lock.json`. Use Node.js 24 LTS for local development:
+Lockasaur uses npm with a committed `package-lock.json`. Use Node.js 24 LTS for local development:
 
 ```bash
 nvm use
@@ -84,6 +85,6 @@ Support all files.
 Samuel P.E.
 
 ## License
-**Cryptox** is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+**Lockasaur** (formerly Cryptox) is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
 
 It is free for personal and noncommercial use: you can use it, modify it, share it, and contribute. Commercial use by companies is not permitted. See the full terms in the [LICENSE](LICENSE) file or at [polyformproject.org](https://polyformproject.org/licenses/noncommercial/1.0.0/).

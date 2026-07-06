@@ -146,7 +146,7 @@ describe(`large payloads (${SIZE_MB} MB) on ${process.platform}`, () => {
 
     it("encrypts and decrypts a large file honoring the UI contract", async () => {
         const sourcePath = path.join(workDir, "big.bin");
-        const encryptedPath = path.join(workDir, "big.ctx");
+        const encryptedPath = path.join(workDir, "big.dino");
         const sourceHash = writeLargeFile(sourcePath, SIZE_MB);
 
         const encryptUi = recordUi(encryptedPath);
@@ -171,7 +171,7 @@ describe(`large payloads (${SIZE_MB} MB) on ${process.platform}`, () => {
 
     it("encrypts and decrypts a large folder honoring the UI contract", async () => {
         const sourceDir = path.join(workDir, "big-folder");
-        const encryptedPath = path.join(workDir, "big-folder.ctx");
+        const encryptedPath = path.join(workDir, "big-folder.dino");
         fs.mkdirSync(path.join(sourceDir, "nested"), { recursive: true });
         const partMb = Math.max(CHUNK_MB, Math.floor(SIZE_MB / 4));
         const hashes = {

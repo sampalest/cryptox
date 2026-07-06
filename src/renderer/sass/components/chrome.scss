@@ -1,0 +1,81 @@
+.lk-titlebar {
+    -webkit-app-region: drag;
+    position: relative;
+    z-index: 10;
+    height: 42px;
+    flex-shrink: 0;
+    background: var(--chrome);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border-bottom: 1px solid transparent;
+    display: grid;
+    grid-template-columns: 80px 1fr 80px;
+    align-items: center;
+    padding: 0 14px;
+}
+
+#app.dark .lk-titlebar {
+    border-bottom-color: var(--chrome-bd);
+}
+
+.lk-titlebar-title {
+    text-align: center;
+    font-family: Montserrat, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    color: var(--dim);
+    user-select: none;
+}
+
+.lk-titlebar-actions {
+    -webkit-app-region: no-drag;
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.lk-titlebar-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: none;
+    background: none;
+    padding: 0;
+    color: var(--faint);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.25s ease, color 0.25s ease;
+
+    &:hover {
+        background: var(--track);
+        color: var(--accent2);
+        transform: scale(1.14);
+    }
+
+    &:focus {
+        outline: none;
+    }
+
+    svg {
+        display: block;
+    }
+}
+
+/* The settings gear spins into place instead of scaling. */
+.lk-titlebar-btn-gear {
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.25s ease, color 0.25s ease;
+
+    &:hover {
+        transform: rotate(90deg);
+    }
+}
+
+/* Window controls (Win/Linux only). */
+.lk-titlebar-btn-close:hover {
+    background: #e35d5d;
+    color: #ffffff;
+}

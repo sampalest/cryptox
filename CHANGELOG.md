@@ -7,12 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Changes for each release are grouped by type (Added, Changed, Fixed, Security,
 Removed) in the tables below.
 
-## Unreleased
+## 2.0.0
 
-Post-release fixes for the multi-platform builds (APP-11).
+Lockasaur 2.0: the redesign and rebrand (APP-12), bundled with the
+post-release fixes for the multi-platform builds (APP-11).
 
 | Type | Change | Ref |
 |---|---|---|
+| Changed | Full rebrand to **Lockasaur**: new name, dino padlock branding and app icons, "Encryption with bite." The app id moved to `com.sampalest.lockasaur`, so the Electron user-data directory starts fresh (only the appearance preference lived there) | APP-12 |
+| Changed | New encrypted files use the `.dino` extension. Legacy `.ctx` files remain fully supported for decryption and for the post-decrypt delete prompt, and the `.ctx` file association is kept so old files still open the app; re-encrypting an already-encrypted file of either extension is rejected | APP-12 |
+| Changed | Complete UI redesign: glassmorphism design system with CSS design tokens, animated blob background, DynaPuff wordmark, bundled Poppins/DynaPuff fonts (OFL), unified 42px in-app titlebar on all platforms with About/Settings buttons, rounded transparent window on macOS/Windows/Linux, custom minimize/close controls on Windows/Linux | APP-12 |
+| Added | Dark mode with a Settings overlay (Light / Dark / System, persisted; System follows the OS live) | APP-12 |
+| Added | Success screen after encrypt/decrypt with the output name; animated padlock on the working screen whose shackle closes while encrypting and springs open ("Lockasaur Open") while decrypting | APP-12 |
+| Changed | About is an in-window overlay (the `/about` route was removed); the app version shown there is injected at build time | APP-12 |
+| Removed | Materialize CSS (vendored copy and npm dependency) and animate.css; all styling is first-party Sass | APP-12 |
 | Fixed | Reverted renderer regressions that slipped into the APP-10 PR: an `is-encrypt` prop/event rename left every operation running as decrypt (encryption unreachable) and skipped the encrypt password confirmation; the crypto-listener bookkeeping used on unmount was removed while still called; a multi-file decrypt tore the progress screen down after the first file; `SENDER_REJECTED`/`INVALID_PAYLOAD` alerts lost their fixed messages | APP-11 |
 | Fixed | CI: the macOS x64 package job targeted the retired `macos-13` Intel runner and queued forever, blocking the release job; mac x64 is now cross-compiled on `macos-15` with an explicit `--x64`, and every package leg passes its arch explicitly | APP-11 |
 | Fixed | The Linux `.deb` declares the missing `libasound2` dependency; the Electron binary links it at load time, so the installed app failed to start on Ubuntu machines without the desktop audio stack (reproduced on Ubuntu 24.04 arm64) | APP-11 |
@@ -26,7 +34,7 @@ Post-release fixes for the multi-platform builds (APP-11).
 
 Known issues:
 
-- Builds are unsigned for the beta: Windows SmartScreen shows "Windows protected your PC" ("More info", then "Run anyway"), and macOS Gatekeeper may require right click and Open.
+- Builds are unsigned for this release: Windows SmartScreen shows "Windows protected your PC" ("More info", then "Run anyway"), and macOS Gatekeeper may require right click and Open.
 - On Ubuntu 24.04+ the Linux AppImage needs a one-time AppArmor profile (its first run offers to install it with a password prompt; declining exits with manual instructions). The `.deb` package sets this up automatically and remains the recommended install on Ubuntu. With a custom `TMPDIR` or `--appimage-extract-and-run` the profile does not match and the restriction still applies.
 
 ## 1.1.0-beta - 2026-07-02

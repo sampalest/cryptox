@@ -17,8 +17,8 @@ Entry point of the main process (bundled to `dist-electron/background.cjs`, the 
 - `sendToRenderer(channel, payload)`: safe send to the window's webContents; no-op if the window is gone or destroyed.
 - `flushPendingOpenFiles()`: replays queued `files:open-file` events once `rendererReady` is true.
 - `openFile(file)`: queues or sends a macOS file-association open. Queues when the app/window/renderer is not ready yet.
-- `buildApplicationMenu()`: builds the app menu (macOS app menu with About, File > Open File with Cmd/Ctrl+O) and the macOS dock menu. Menu clicks are forwarded to the renderer as `menu:open-file` / `menu:about` events.
-- `createWindow()`: creates the 700x600 fixed-size window with `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `webSecurity: true` and the bundled preload. `titleBarStyle` is `hiddenInset` on macOS (paired with App.vue's custom navbar) and the native frame elsewhere. Registers `setWindowOpenHandler` (denies every renderer-initiated window) and a `will-navigate` guard that only allows the dev server origin (dev) or the bundled `dist/index.html` file URL (prod); blocked navigations log a fixed string. Loads `VITE_DEV_SERVER_URL` in dev (opens devtools unless `IS_TEST`), otherwise `dist/index.html`. The renderer CSP lives as a meta tag in `index.html` (CTX-12).
+- `buildApplicationMenu()`: on macOS builds the app menu (About Lockasaur, File > Open File with Cmd/Ctrl+O) and the dock menu; on Windows/Linux it calls `Menu.setApplicationMenu(null)` so no native menu exists (file selection is button/drag only there). Menu clicks are forwarded to the renderer as `menu:open-file` / `menu:about` events.
+- `createWindow()`: creates the 700x660 fixed-size window (660 = the design's 618px content area plus the 42px in-app titlebar, so the tallest screen keeps top/bottom margin without clipping) with `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `webSecurity: true` and the bundled preload. The window is transparent on every platform (APP-12): the visible frame is the CSS-rounded `#app`. macOS keeps native traffic lights via `titleBarStyle: "hidden"` + `trafficLightPosition` (positioned inside the renderer's 42px titlebar); Windows/Linux are fully frameless (`frame: false`) with custom minimize/close controls in the renderer. Registers `setWindowOpenHandler` (denies every renderer-initiated window) and a `will-navigate` guard that only allows the dev server origin (dev) or the bundled `dist/index.html` file URL (prod); blocked navigations log a fixed string. Loads `VITE_DEV_SERVER_URL` in dev (opens devtools unless `IS_TEST`), otherwise `dist/index.html`. The renderer CSP lives as a meta tag in `index.html` (CTX-12).
 - `failure(code, message)`: builds the structured failure result `{ ok: false, code, message }` returned over IPC.
 - `toCryptoFailure(error, fallbackMessage)`: maps a thrown error to a structured failure. `IpcValidationError` keeps its code/message; `PathBusyError` becomes `OPERATION_FAILED` with a fixed string; anything else logs only the error name and returns the fallback message.
 - `runRegisteredOperation(operationId, run, fallbackMessage)`: wraps an operation already registered in `OperationRegistry`. Resolves `{ ok: true, cancelled: false }` on success, `{ ok: true, cancelled: true }` on `CancelledError`, a structured failure otherwise, and always calls `OperationRegistry.finish(operationId)` in `finally`.
@@ -39,24 +39,24 @@ All handlers live at module scope and gate on `isTrustedSender(event, win)` as t
 - `app:info`: returns `{ locale, name, platform }` (or `undefined` for an untrusted sender).
 - `dialog:open-files`: native open dialog (files and directories), returns the selected paths (or `[]` for an untrusted sender).
 - `shell:open-external`: opens a URL after `validateExternalUrl` (https + hardcoded allowlist only).
-- `crypto:encrypt`: trust check, `normalizeCryptoPayload`, `assertEncryptSource`, then registers the operation locking the source path and the predicted `<name>.ctx` output path, and runs `Crypto.encrypt`. Progress and status are pushed back on `crypto:progress` / `crypto:status` with the operationId attached.
+- `crypto:encrypt`: trust check, `normalizeCryptoPayload`, `assertEncryptSource`, then registers the operation locking the source path and the predicted `<name>.dino` output path, and runs `Crypto.encrypt`. Progress and status are pushed back on `crypto:progress` / `crypto:status` with the operationId attached.
 - `crypto:decrypt`: same shape with `assertDecryptSource`; only the input path is locked (the output name is unknown until the header is parsed, and output placement is atomic). Fallback failure message is the fixed wrong-password string.
 - `crypto:cancel`: trust check + `validateOperationId`, then `OperationRegistry.cancel`. Resolves `{ ok: true, cancelled: <bool> }`; a late cancel for a finished id resolves `cancelled: false`.
-- `files:confirm-delete-encrypted`: `validateDeletePath` (must end in `.ctx`), native confirm dialog defaulting to Keep, unlinks only on explicit Delete. Returns whether the file was deleted.
+- `files:confirm-delete-encrypted`: `validateDeletePath` (must end in `.dino` or the legacy `.ctx`), native confirm dialog defaulting to Keep, unlinks only on explicit Delete. Returns whether the file was deleted.
 - `log:error`: writes a renderer-supplied message to electron-log.
 
 ## src/main/ipcValidation.js
 
 Pure validation helpers shared by the IPC handlers. All throw on invalid input; crypto-payload failures throw `IpcValidationError` with a stable code from `Constants.CRYPTO_ERROR_CODES`.
 
-- `validateDeletePath(value)`: non-empty string ending in `.ctx`, otherwise throws. Gate for the delete handler.
+- `validateDeletePath(value)`: non-empty string ending in one of `Constants.ENCRYPTED_POINT_EXTS` (`.dino` or the legacy `.ctx`), otherwise throws a fixed-string error. Gate for the delete handler.
 - `validateExternalUrl(value)`: parses the URL, requires `https:` and membership in `ALLOWED_EXTERNAL_URLS` (the two GitHub repo URLs); returns the normalized href without a trailing slash.
 - `isTrustedSender(event, win)`: true only when the event sender is exactly the app window's own `webContents` and the window is alive. Rejects devtools, other windows, webviews.
 - `normalizeCryptoPayload(payload)`: requires `{ file: { path }, password, operationId }` with non-empty string path and password; returns `{ filePath, password, operationId }` with the id validated.
 - `validateOperationId(value)`: must match `/^[A-Za-z0-9_-]{1,64}$/`; returns it.
 - `statSource(filePath)` (internal): lstats (does NOT follow symlinks, matching `Utils.isDirectory`) with fixed-string errors (`FILE_NOT_FOUND` for ENOENT/ENOTDIR, `OPERATION_FAILED` otherwise). The path never appears in the message.
-- `assertEncryptSource(filePath)`: must be a regular file or directory and must not already end in `.ctx`. Symlinks are rejected (lstat), so a symlinked source can never be encrypted as its link target.
-- `assertDecryptSource(filePath)`: must be a regular file (lstat, so symlinks are rejected) and end in `.ctx`.
+- `assertEncryptSource(filePath)`: must be a regular file or directory and must not already end in `.dino` or `.ctx` (both rejected, or a legacy file could be re-encrypted into a nested `.ctx.dino`). Symlinks are rejected (lstat), so a symlinked source can never be encrypted as its link target.
+- `assertDecryptSource(filePath)`: must be a regular file (lstat, so symlinks are rejected) and end in `.dino` or the legacy `.ctx`.
 
 ## src/main/operations.js
 
@@ -79,7 +79,7 @@ Pure validation helpers shared by the IPC handlers. All throw on invalid input; 
 
 Shared constants (default export object):
 
-- `EXT` / `POINT_EXT`: `"ctx"` / `".ctx"`, the encrypted-file extension.
+- `EXT` / `POINT_EXT`: `"dino"` / `".dino"`, the extension new encryption writes. `LEGACY_POINT_EXT` (`".ctx"`) and `ENCRYPTED_POINT_EXTS` (frozen `[".dino", ".ctx"]`) cover the decrypt/delete compatibility paths. The on-disk CTX1 format identity is unchanged by the rebrand.
 - `CTX_MAGIC` ("CTXBOX") / `CTX_FORMAT_VERSION` (1): the interim 0.3.x alpha format; read-only support, never written.
 - `CRYPTO_ERROR_CODES`: frozen map of the stable codes crossing IPC: `SENDER_REJECTED`, `INVALID_PAYLOAD`, `FILE_NOT_FOUND`, `INVALID_FILE_TYPE`, `OPERATION_FAILED`.
 - `KEY_LEN` (32): AES-256 key length. Argon2id ops/mem limits are resolved at runtime from libsodium presets and stored per-file, not here.

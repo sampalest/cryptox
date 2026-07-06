@@ -15,6 +15,10 @@ module.exports = {
         requireConfigFile: false,
         sourceType: "module"
     },
+    globals: {
+        // Injected at build time by the Vite define in vite.config.js.
+        "__APP_VERSION__": "readonly"
+    },
     rules: {
         "no-console": process.env.NODE_ENV === "production" ? "warn" : "off",
         "no-debugger": process.env.NODE_ENV === "production" ? "warn" : "off",

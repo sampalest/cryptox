@@ -1,13 +1,8 @@
-/* Library */
-@import "materialize/materialize.scss";
-
-/* Vars */
-@import "components/color.scss";
-@import "components/variables.scss";
-
-/* Core */
-@import "components/fx.scss";
-@import "components/master.scss";
-@import "components/home.scss";
-@import "components/about.scss";
-@import "components/file.scss";
+// Lockasaur design system (APP-12). @use (not @import) per Dart Sass 3.0;
+// these modules are independent (no shared Sass variables/mixins), so each is
+// loaded once and its CSS is emitted in this order.
+@use "components/fonts";
+@use "components/tokens";
+@use "components/animations";
+@use "components/chrome";
+@use "components/master";

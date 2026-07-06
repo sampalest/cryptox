@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Cryptox is an Electron + Vue 3 desktop app for encrypting files and folders with a password (macOS, Windows, Linux; x64 and arm64). Node 24 LTS (`nvm use`), npm with committed `package-lock.json`.
+Cryptox (product name: Lockasaur) is an Electron + Vue 3 desktop app for encrypting files and folders with a password (macOS, Windows, Linux; x64 and arm64). Node 24 LTS (`nvm use`), npm with committed `package-lock.json`.
 
 ## Commands
 
@@ -65,7 +65,7 @@ Per-file, per-function documentation lives in `docs/claude/`. It goes one level 
 
 ### `src/shared/` (imported by both processes)
 
-- [constants.js](src/shared/constants.js): IPC error codes (`CRYPTO_ERROR_CODES`), the `.ctx` extension, format constants and the AES key length.
+- [constants.js](src/shared/constants.js): IPC error codes (`CRYPTO_ERROR_CODES`), the `.dino` extension plus the legacy `.ctx`, format constants and the AES key length.
 - [exceptions.js](src/shared/exceptions.js): custom error types (`IpcValidationError`, `CancelledError`, plus the legacy `NoValidPassword` and `DecryptError`).
 - [filemanager.js](src/shared/filemanager.js): a small helper that wraps a path with its name and extension.
 
@@ -95,7 +95,7 @@ These are deliberate security properties of the app, written here so new code pr
 - Packaging hardening: Electron Fuses disable `RunAsNode` / Node-inspect / `NODE_OPTIONS` and require loading from a verified asar (`onlyLoadAppFromAsar`, `EmbeddedAsarIntegrityValidation`); macOS uses Hardened Runtime with the minimal `build/entitlements.mac.plist`. One shared `electronFuses` block covers all three platforms: `onlyLoadAppFromAsar` and the Node fuses are enforced everywhere, but `EmbeddedAsarIntegrityValidation` is enforced only on macOS (Mach-O) and Windows (PE); on Linux (ELF) it is a harmless no-op while `onlyLoadAppFromAsar` still holds. These live in `electron-builder.config.cjs` and must survive build-config changes. Code signing and notarization are deliberately deferred for the alpha on every platform (artifacts ship unsigned; Windows shows a SmartScreen prompt). `package-lock.json` is the single committed lockfile; never reintroduce `yarn.lock`.
 - Every IPC handler (crypto and non-crypto alike) checks `isTrustedSender` first (only the app window's own `webContents`; devtools, other windows and webviews are rejected); non-crypto handlers return an inert value on rejection. The crypto handlers then validate the payload before touching the filesystem: `normalizeCryptoPayload`, operation id matching `[A-Za-z0-9_-]{1,64}`, `assertEncryptSource`/`assertDecryptSource`. Source validation uses `lstat` and rejects symlinks, so a symlinked source is never processed as its link target (the divergence with `Utils.isDirectory`, which also uses lstat, is closed).
 - Failure messages are fixed strings. User-controlled content (paths, passwords, operation ids) never goes into error messages or logs.
-- `files:confirm-delete-encrypted` deletes only paths ending in the `.ctx` extension and always behind a native confirm dialog. `shell:open-external` opens only https URLs from the hardcoded allowlist in ipcValidation.js.
+- `files:confirm-delete-encrypted` deletes only paths ending in the `.dino` extension (or the legacy `.ctx`) and always behind a native confirm dialog. `shell:open-external` opens only https URLs from the hardcoded allowlist in ipcValidation.js.
 - The CTX1 header is fed to AES-256-GCM as associated data: tampered metadata fails decryption. Header parsing is bounded (`MAX_HEADER_JSON` 4096, name length 255 with `sanitizeName` rejecting path separators, `validateKdfParams` clamping Argon2id params so a hostile header cannot trigger memory exhaustion). The memlimit ceiling is the MODERATE preset (256 MiB), exactly what the encrypt path writes, so a crafted header cannot pin more memory per decrypt than the app itself produces.
 - Legacy and CTXBOX formats are decrypt-only compatibility paths; never write them. Their trailing extension field is NOT covered by the auth tag, so `sanitizeName` runs on the derived output name to stop path steering.
 - Tar extraction rejects path traversal and anything that is not a regular file or directory (symlinks, hardlinks, devices, FIFOs are ignored).

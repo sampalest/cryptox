@@ -14,8 +14,10 @@ export function validateDeletePath(value) {
         throw new TypeError("Delete path must be a non-empty string.");
     }
 
-    if (!value.endsWith(Constants.POINT_EXT)) {
-        throw new Error(`Only ${Constants.POINT_EXT} files may be deleted.`);
+    // .dino or the legacy .ctx: both are app-produced encrypted files the
+    // post-decrypt prompt may offer to delete.
+    if (!Constants.ENCRYPTED_POINT_EXTS.some(ext => value.endsWith(ext))) {
+        throw new Error("Only encrypted files may be deleted.");
     }
 
     return value;
@@ -100,15 +102,17 @@ export async function assertEncryptSource(filePath) {
     if (stats.isSymbolicLink() || (!stats.isFile() && !stats.isDirectory())) {
         throw new IpcValidationError(Codes.INVALID_FILE_TYPE, "Only regular files and folders can be encrypted.");
     }
-    if (filePath.endsWith(Constants.POINT_EXT)) {
-        throw new IpcValidationError(Codes.INVALID_FILE_TYPE, `${Constants.POINT_EXT} files are already encrypted.`);
+    // Reject the legacy extension too, or a .ctx could be re-encrypted into a
+    // nested .ctx.dino.
+    if (Constants.ENCRYPTED_POINT_EXTS.some(ext => filePath.endsWith(ext))) {
+        throw new IpcValidationError(Codes.INVALID_FILE_TYPE, "This file is already encrypted.");
     }
 }
 
 export async function assertDecryptSource(filePath) {
     const stats = await statSource(filePath);
     // isFile is false for a symlink under lstat, so symlinked sources are rejected.
-    if (!stats.isFile() || !filePath.endsWith(Constants.POINT_EXT)) {
-        throw new IpcValidationError(Codes.INVALID_FILE_TYPE, `Only ${Constants.POINT_EXT} files can be decrypted.`);
+    if (!stats.isFile() || !Constants.ENCRYPTED_POINT_EXTS.some(ext => filePath.endsWith(ext))) {
+        throw new IpcValidationError(Codes.INVALID_FILE_TYPE, "Only .dino and .ctx files can be decrypted.");
     }
 }

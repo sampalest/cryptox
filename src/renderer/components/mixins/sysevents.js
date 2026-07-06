@@ -1,5 +1,6 @@
 import FileManager from "@shared/filemanager.js";
 import { useFilesStore } from "@/store/files.js";
+import { useUiStore } from "@/store/ui.js";
 
 export default {
     name: "sysevents",
@@ -11,8 +12,10 @@ export default {
         };
     },
     methods: {
+        // About is an in-window overlay now, not a route (menu:about channel
+        // unchanged).
         onRoute() {
-            this.$router.push("/about");
+            useUiStore().openAbout();
         },
         async onOpen() {
             const paths = await window.cryptox.dialog.openFiles();

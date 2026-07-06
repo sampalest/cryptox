@@ -6,6 +6,7 @@ import {
     assertEncryptSource,
     isTrustedSender,
     normalizeCryptoPayload,
+    validateDeletePath,
     validateExternalUrl,
     validateOperationId
 } from "@main/ipcValidation.js";
@@ -125,28 +126,34 @@ describe("IPC validation", () => {
             await expect(assertEncryptSource(dirPath)).resolves.toBeUndefined();
         });
 
-        it("rejects already encrypted .ctx inputs for encryption", async () => {
+        it("rejects already encrypted .dino and legacy .ctx inputs for encryption", async () => {
+            const dinoFile = path.join(tempDir, "secret.dino");
+            fs.writeFileSync(dinoFile, "ciphertext");
             const ctxFile = path.join(tempDir, "secret.ctx");
             fs.writeFileSync(ctxFile, "ciphertext");
-            const ctxDir = path.join(tempDir, "archive.ctx");
-            fs.mkdirSync(ctxDir);
+            const dinoDir = path.join(tempDir, "archive.dino");
+            fs.mkdirSync(dinoDir);
+            await expectCode(assertEncryptSource(dinoFile), "INVALID_FILE_TYPE");
             await expectCode(assertEncryptSource(ctxFile), "INVALID_FILE_TYPE");
-            await expectCode(assertEncryptSource(ctxDir), "INVALID_FILE_TYPE");
+            await expectCode(assertEncryptSource(dinoDir), "INVALID_FILE_TYPE");
         });
 
-        it("accepts only regular .ctx files for decryption", async () => {
+        it("accepts only regular .dino and legacy .ctx files for decryption", async () => {
+            const dinoFile = path.join(tempDir, "secret.dino");
+            fs.writeFileSync(dinoFile, "ciphertext");
             const ctxFile = path.join(tempDir, "secret.ctx");
             fs.writeFileSync(ctxFile, "ciphertext");
+            await expect(assertDecryptSource(dinoFile)).resolves.toBeUndefined();
             await expect(assertDecryptSource(ctxFile)).resolves.toBeUndefined();
         });
 
         it("rejects wrong file types for decryption with INVALID_FILE_TYPE", async () => {
             const plainFile = path.join(tempDir, "plain.txt");
             fs.writeFileSync(plainFile, "hello");
-            const ctxDir = path.join(tempDir, "folder.ctx");
-            fs.mkdirSync(ctxDir);
+            const dinoDir = path.join(tempDir, "folder.dino");
+            fs.mkdirSync(dinoDir);
             await expectCode(assertDecryptSource(plainFile), "INVALID_FILE_TYPE");
-            await expectCode(assertDecryptSource(ctxDir), "INVALID_FILE_TYPE");
+            await expectCode(assertDecryptSource(dinoDir), "INVALID_FILE_TYPE");
         });
 
         it("rejects symlinked sources so a link target is never silently processed (CODE-03)", async () => {
@@ -173,6 +180,39 @@ describe("IPC validation", () => {
             const error = await assertEncryptSource(missing).then(() => null, e => e);
             expect(error).not.toBeNull();
             expect(error.message).not.toContain(tempDir);
+        });
+    });
+
+    describe("validateDeletePath", () => {
+        it("accepts .dino and legacy .ctx paths", () => {
+            expect(validateDeletePath("/tmp/secret.dino")).toBe("/tmp/secret.dino");
+            expect(validateDeletePath("/tmp/secret.ctx")).toBe("/tmp/secret.ctx");
+        });
+
+        it("rejects paths with any other extension", () => {
+            expect(() => validateDeletePath("/tmp/plain.txt")).toThrow("encrypted");
+            expect(() => validateDeletePath("/tmp/nodots")).toThrow("encrypted");
+            // The extension must terminate the path, not merely appear in it.
+            expect(() => validateDeletePath("/tmp/secret.dino.txt")).toThrow("encrypted");
+        });
+
+        it("rejects non-string and empty paths", () => {
+            for (const value of ["", "   ", 42, null, undefined, {}]) {
+                expect(() => validateDeletePath(value)).toThrow();
+            }
+        });
+
+        it("keeps the user-supplied path out of the error message", () => {
+            const error = (() => {
+                try {
+                    validateDeletePath("/tmp/some-user-path.txt");
+                    return null;
+                } catch (e) {
+                    return e;
+                }
+            })();
+            expect(error).not.toBeNull();
+            expect(error.message).not.toContain("some-user-path");
         });
     });
 });
