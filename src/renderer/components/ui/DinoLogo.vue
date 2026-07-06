@@ -8,6 +8,10 @@
     @click="poke"
     @keydown.enter.prevent="poke"
     @keydown.space.prevent="poke"
+    @pointerdown="holdStart"
+    @pointerup="holdEnd"
+    @pointerleave="holdEnd"
+    @pointercancel="holdEnd"
   >
     <div class="lk-dino-halo" aria-hidden="true"></div>
     <div ref="svg" class="lk-dino-svg" v-html="dinoMarkup"></div>
@@ -28,8 +32,12 @@ export default {
             default: 260
         }
     },
+    emits: ["hold-start", "hold-cancel", "hold-complete"],
     data: () => ({
-        pokeSTO: null
+        pokeSTO: null,
+        rainSTO: null,
+        holdSTO: null,
+        holdCompleted: false
     }),
     computed: {
         dinoMarkup() {
@@ -37,7 +45,38 @@ export default {
         }
     },
     methods: {
+        // Long-press easter egg: hold-start fires after 0.5 s of primary-button
+        // hold (so quick clicks never flash the rain) and hold-complete after
+        // 5 s. No pointer capture on purpose, so dragging off the dino fires
+        // pointerleave and cancels the hold.
+        holdStart(e) {
+            if (e.button !== 0) return;
+            this.holdCompleted = false;
+            this.rainSTO = setTimeout(() => {
+                this.rainSTO = null;
+                this.$emit("hold-start");
+            }, 500);
+            this.holdSTO = setTimeout(() => {
+                this.holdSTO = null;
+                this.holdCompleted = true;
+                this.$emit("hold-complete");
+            }, 5000);
+        },
+        holdEnd() {
+            if (this.holdSTO == null) return;
+            clearTimeout(this.rainSTO);
+            this.rainSTO = null;
+            clearTimeout(this.holdSTO);
+            this.holdSTO = null;
+            this.$emit("hold-cancel");
+        },
         poke() {
+            // A completed hold still fires a trailing click; swallow it once so
+            // the easter egg does not also poke.
+            if (this.holdCompleted) {
+                this.holdCompleted = false;
+                return;
+            }
             const el = this.$refs.svg;
             // Toggle with a reflow in between so a rapid re-click restarts the
             // animation instead of being ignored mid-play.
@@ -50,6 +89,8 @@ export default {
     },
     beforeUnmount() {
         clearTimeout(this.pokeSTO);
+        clearTimeout(this.rainSTO);
+        clearTimeout(this.holdSTO);
     }
 };
 </script>

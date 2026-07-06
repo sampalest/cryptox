@@ -73,8 +73,8 @@ export default {
 /* Visual only (pointer-events:none) so clicks fall through to the dino behind;
    revealed by the window-level drag listeners above. */
 .lk-drop {
-    width: min(78vw, 540px);
-    height: min(42vh, 268px);
+    width: min(88vw, 640px);
+    height: min(54vh, 340px);
     position: absolute;
     margin: auto;
     top: 50%;
@@ -83,13 +83,15 @@ export default {
     z-index: 999;
     gap: 6px;
     pointer-events: none;
-    border-radius: 24px;
-    /* Frosted glass panel, no border: the blur + inset top highlight + soft
-       shadow read as glass floating over the content behind. */
-    background: var(--glass-strong);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    box-shadow: inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 rgba(255, 255, 255, 0.15), var(--dialog-shadow);
+    border-radius: 28px;
+    /* Crystal glass: a more transparent surface with a diagonal light sheen on
+       top, a stronger blur/saturation, and a rim highlight plus inner glow so
+       the panel catches light like polished glass floating over the content. */
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.04) 62%), var(--surface);
+    backdrop-filter: saturate(1.9) blur(30px);
+    -webkit-backdrop-filter: saturate(1.9) blur(30px);
+    border: 1px solid var(--glass-edge);
+    box-shadow: inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 rgba(255, 255, 255, 0.16), inset 0 0 44px rgba(255, 255, 255, 0.1), var(--dialog-shadow);
     opacity: 1;
     transition: opacity 0.25s ease-in-out;
 

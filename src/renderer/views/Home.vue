@@ -9,7 +9,10 @@
                 <div class="lk-home-tagline">Encryption with <span class="lk-home-bite">bite.</span></div>
             </div>
             <div class="lk-home-logo">
-                <dino-logo :size="280" />
+                <dino-logo :size="280"
+                    @hold-start="ui.startBinaryRain()"
+                    @hold-cancel="ui.stopBinaryRain()"
+                    @hold-complete="enterRawr" />
                 <fileloader @imageFile="selectFile"></fileloader>
             </div>
             <div class="lk-home-hint">Drop your files here, or let the dino fetch them.</div>
@@ -35,9 +38,13 @@ import GlassButton from "@/components/ui/GlassButton.vue";
 import WordMark from "@/components/ui/Wordmark.vue";
 import DinoLogo from "@/components/ui/DinoLogo.vue";
 import { useFilesStore } from "@/store/files.js";
+import { useUiStore } from "@/store/ui";
 
 export default {
     name: "home-view",
+    setup() {
+        return { ui: useUiStore() };
+    },
     data: () => {
         return {
             showPassword: false,
@@ -122,6 +129,10 @@ export default {
         },
         setDecrypt(bool) {
             this.encrypted = bool;
+        },
+        enterRawr() {
+            this.ui.stopBinaryRain();
+            this.$router.push({ name: "rawr" });
         }
     },
     beforeMount() {

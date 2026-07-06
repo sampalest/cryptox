@@ -18,7 +18,7 @@ post-release fixes for the multi-platform builds (APP-11).
 | Changed | New encrypted files use the `.dino` extension. Legacy `.ctx` files remain fully supported for decryption and for the post-decrypt delete prompt, and the `.ctx` file association is kept so old files still open the app; re-encrypting an already-encrypted file of either extension is rejected | APP-12 |
 | Changed | Complete UI redesign: glassmorphism design system with CSS design tokens, animated blob background, DynaPuff wordmark, bundled Poppins/DynaPuff fonts (OFL), unified 42px in-app titlebar on all platforms with About/Settings buttons, rounded transparent window on macOS/Windows/Linux, custom minimize/close controls on Windows/Linux | APP-12 |
 | Added | Dark mode with a Settings overlay (Light / Dark / System, persisted; System follows the OS live) | APP-12 |
-| Added | Success screen after encrypt/decrypt with the output name; animated padlock on the working screen whose shackle closes while encrypting and springs open ("Lockasaur Open") while decrypting | APP-12 |
+| Added | Success screen after encrypt/decrypt with the output name; animated padlock on the working screen that mirrors the file's state: open while encrypting and snapping shut on success, closed while decrypting ("Lockasaur Open") and springing open on success | APP-12 |
 | Changed | About is an in-window overlay (the `/about` route was removed); the app version shown there is injected at build time | APP-12 |
 | Removed | Materialize CSS (vendored copy and npm dependency) and animate.css; all styling is first-party Sass | APP-12 |
 | Fixed | Reverted renderer regressions that slipped into the APP-10 PR: an `is-encrypt` prop/event rename left every operation running as decrypt (encryption unreachable) and skipped the encrypt password confirmation; the crypto-listener bookkeeping used on unmount was removed while still called; a multi-file decrypt tore the progress screen down after the first file; `SENDER_REJECTED`/`INVALID_PAYLOAD` alerts lost their fixed messages | APP-11 |
@@ -31,6 +31,7 @@ post-release fixes for the multi-platform builds (APP-11).
 | Fixed | CI: a `unit-gate` job aggregates the unit matrix under the fixed check name the develop branch protection requires; after the matrix split, PRs hung on "Expected: waiting for status to be reported" | APP-11 |
 | Added | AppImage first-run helper: on Ubuntu 24.04+ (AppArmor userns restriction) the AppImage offers a one-time, pkexec-authorized AppArmor profile install and then starts sandboxed, instead of aborting with a Chromium sandbox FATAL; it never falls back to running unsandboxed | APP-11 |
 | Removed | Unused `PASSWORD_ERROR` constant introduced by the APP-10 PR | APP-11 |
+| Added | Easter egg: press and hold the dino for 5 seconds through a falling binary rain to unlock a hidden thank-you page where the dino roars | - |
 
 Known issues:
 

@@ -9,7 +9,7 @@
             <div class="lk-work-bits" aria-hidden="true">
                 <span v-for="(bit, index) in bits" :key="index" class="lk-work-bit" :style="bit.style">{{ bit.char }}</span>
             </div>
-            <lockasaur-lock class="lk-work-lock" :size="150" :lock-state="isDecrypt ? 'unlocking' : 'locking'" />
+            <lockasaur-lock class="lk-work-lock" :class="{ 'lk-work-lock-done': done }" :size="150" :lock-state="lockState" />
         </div>
         <div class="lk-work-track">
             <div class="lk-work-bar" :style="{ width: (fileEvent.loader ? 100 : percent.value) + '%' }"></div>
@@ -58,6 +58,7 @@ export default {
                 msg: "",
                 filename: ""
             },
+            done: false,
             finishSTO: null
         };
     },
@@ -82,6 +83,13 @@ export default {
         }
     },
     computed: {
+        // The lock mirrors the file's current state and only transitions on
+        // success: open (plaintext) while encrypting, then it snaps shut;
+        // locked while decrypting, then the shackle springs open.
+        lockState() {
+            if (this.done) return this.isDecrypt ? "unlocking" : "locking";
+            return this.isDecrypt ? "locked" : "open";
+        },
         bits() {
             return BITS.map(bit => ({
                 char: bit.char,
@@ -97,9 +105,12 @@ export default {
     },
     watch: {
         finish() {
+            // Let the lock's closing (1.5 s) or opening (0.9 s) animation play
+            // out and rest visibly for at least 0.5 s before the success screen.
+            this.done = true;
             this.finishSTO = setTimeout(()=> {
                 this.$emit("finish", this.finish);
-            }, 500);
+            }, 2100);
         },
         fileEvent: {
             deep: true,
@@ -202,6 +213,11 @@ export default {
     z-index: 2;
     animation: dinoMunch 2.4s ease-in-out infinite;
     transform-origin: 50% 70%;
+}
+
+// Hold still on completion so the lock transition reads clearly.
+.lk-work-lock-done {
+    animation: none;
 }
 
 .lk-work-track {

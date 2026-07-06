@@ -7,6 +7,7 @@
     </div>
     <SettingsOverlay v-if="ui.settingsOpen" />
     <AboutOverlay v-if="ui.aboutOpen" />
+    <BinaryRain v-if="ui.binaryRainActive" />
   </div>
 </template>
 <script>
@@ -14,11 +15,12 @@ import TitleBar from "@/components/TitleBar.vue";
 import BackgroundBlobs from "@/components/BackgroundBlobs.vue";
 import SettingsOverlay from "@/components/overlays/SettingsOverlay.vue";
 import AboutOverlay from "@/components/overlays/AboutOverlay.vue";
+import BinaryRain from "@/components/overlays/BinaryRain.vue";
 import { useThemeStore } from "@/store/theme";
 import { useUiStore } from "@/store/ui";
 
 export default {
-    components: { TitleBar, BackgroundBlobs, SettingsOverlay, AboutOverlay },
+    components: { TitleBar, BackgroundBlobs, SettingsOverlay, AboutOverlay, BinaryRain },
     data: () => {
         return {
             appTitle: "LOCKASAUR",
