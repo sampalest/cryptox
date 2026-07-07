@@ -10,6 +10,14 @@ const mac = {
     entitlements: "build/entitlements.mac.plist",
     entitlementsInherit: "build/entitlements.mac.plist",
     gatekeeperAssess: false,
+    // CTX-17: appearance-aware app icon. Assets.car is compiled from the Icon
+    // Composer document by scripts/generate-appicon.mjs and carries the real
+    // Dark/Clear/Tinted variants macOS 26+ renders; CFBundleIconName (in
+    // extendInfo below) points at its "AppIcon" entry. Older macOS ignores the
+    // key and falls back to build/icon.icns (CFBundleIconFile).
+    extraResources: [
+        { from: "build/Assets.car", to: "Assets.car" }
+    ],
     // APP-12: electron-builder's fileAssociations only emit CFBundleTypeExtensions,
     // which modern macOS does not resolve to a real type for a custom extension
     // (Finder shows the generic document icon). Declare exported UTIs so the OS
@@ -17,6 +25,9 @@ const mac = {
     // to the CFBundleDocumentTypes' CFBundleTypeIconFile). extendInfo merges into
     // the generated Info.plist.
     extendInfo: {
+        // Must match the icon name compiled into Assets.car (the staged
+        // AppIcon.icon name in scripts/generate-appicon.mjs).
+        CFBundleIconName: "AppIcon",
         UTExportedTypeDeclarations: [
             {
                 UTTypeIdentifier: "com.sampalest.lockasaur.dino",

@@ -14,33 +14,35 @@ post-release fixes for the multi-platform builds (APP-11).
 
 | Type | Change | Ref |
 |---|---|---|
+| Added | Appearance-aware macOS app icon: the Icon Composer icon (v2) is compiled into an `Assets.car` shipped next to the icns, so macOS 26+ renders the real Dark (and Clear/Tinted) variants; older macOS keeps the regenerated full-resolution `icon.icns`. New `npm run electron:generate-appicon` regenerates all committed icon artifacts (requires Xcode 26+) | CTX-17 |
+| Added | App icon picker in Settings (macOS): choose Auto, Default, Dark, Clear Light/Dark, or Tinted Light/Dark for the Dock icon, persisted across launches and applied through a new allowlisted `app:set-icon` IPC channel. Auto follows the app appearance (including live System changes), Default follows the system appearance via the bundle icon | CTX-17 |
+| Added | Dark mode with a Settings overlay (Light / Dark / System, persisted; System follows the OS live) | APP-12 |
+| Added | Show/hide password eye toggle on both password fields, one per field; visibility flips back to hidden whenever the fields are cleared | APP-12 |
+| Added | Success screen after encrypt/decrypt with the output name; animated padlock on the working screen that mirrors the file's state: open while encrypting and snapping shut on success, closed while decrypting ("Lockasaur Open") and springing open on success | APP-12 |
+| Added | Unit tests for the `filecryto` mixin (error-code message coverage, multi-file decrypt completion, listener release idempotency) | APP-11 |
+| Added | Install notes in the README and in every release body: unsigned-build prompts (Windows SmartScreen, macOS Gatekeeper) and Ubuntu guidance (prefer the `.deb`; the AppImage needs `libfuse2t64` and can be blocked by the Ubuntu 24.04 user-namespace restriction) | APP-11 |
+| Added | Manual deploy workflow (`manual-deploy.yml`): a platform dropdown (linux/windows/macos) builds that platform's x64 and arm64 artifacts and publishes them as the `v<version>.<shortsha>` prerelease for the built commit | APP-11 |
+| Added | AppImage first-run helper: on Ubuntu 24.04+ (AppArmor userns restriction) the AppImage offers a one-time, pkexec-authorized AppArmor profile install and then starts sandboxed, instead of aborting with a Chromium sandbox FATAL; it never falls back to running unsandboxed | APP-11 |
+| Added | Easter egg: press and hold the dino for 5 seconds through a falling binary rain to unlock a hidden thank-you page where the dino roars | - |
+| Added | After a successful encryption, a native prompt offers to permanently delete the original file or folder (defaulting to Keep), mirroring the existing post-decrypt prompt. The main process only allows deleting a source it just encrypted in the same session, one prompt per operation, and the plaintext is removed permanently rather than moved to the system trash | - |
 | Changed | Full rebrand to **Lockasaur**: new name, dino padlock branding and app icons, "Encryption with bite." The app id moved to `com.sampalest.lockasaur`, so the Electron user-data directory starts fresh (only the appearance preference lived there) | APP-12 |
 | Changed | New encrypted files use the `.dino` extension. Legacy `.ctx` files remain fully supported for decryption and for the post-decrypt delete prompt, and the `.ctx` file association is kept so old files still open the app; re-encrypting an already-encrypted file of either extension is rejected | APP-12 |
 | Changed | Internal identifiers renamed from the old cryptox name to lockasaur: the preload bridge (`window.lockasaur`), the test and CI environment variables (`LOCKASAUR_*`), the staged-output and temp-dir prefixes (`.lockasaur-part-`, `.lockasaur-extract-`, `lockasaur-`), the dev CSP Vite plugin and the AppImage AppArmor profile name. On-disk format identity (CTX1 magic), the legacy `.ctx` UTI/mime identifiers and the GitHub repo URLs are unchanged | APP-12 |
-| Fixed | The AppImage first-run AppArmor profile still attached to the pre-rebrand binary path (`/tmp/.mount_Crypt*/cryptox`), so installing it did not actually unblock the renamed app on Ubuntu 24.04+; it now attaches to the Lockasaur mount path (`/tmp/.mount_Locka*/lockasaur`) | APP-12 |
 | Changed | Complete UI redesign: glassmorphism design system with CSS design tokens, animated blob background, DynaPuff wordmark, bundled Poppins/DynaPuff fonts (OFL), unified 42px in-app titlebar on all platforms with About/Settings buttons, rounded transparent window on macOS/Windows/Linux, custom minimize/close controls on Windows/Linux | APP-12 |
-| Added | Dark mode with a Settings overlay (Light / Dark / System, persisted; System follows the OS live) | APP-12 |
-| Added | Show/hide password eye toggle on both password fields, one per field; visibility flips back to hidden whenever the fields are cleared | APP-12 |
-| Fixed | The Select Files button used a hidden HTML file input, so folders could not be selected for encryption (the dialog navigated into them); it now opens the native dialog, with a new Select Folder button because Windows and Linux cannot mix files and folders in one picker (macOS can, so Select Files allows both there). Both pickers support multi-selection, and the renderer-supplied dialog kind is allowlisted in ipcValidation | APP-12 |
-| Added | Success screen after encrypt/decrypt with the output name; animated padlock on the working screen that mirrors the file's state: open while encrypting and snapping shut on success, closed while decrypting ("Lockasaur Open") and springing open on success | APP-12 |
 | Changed | About is an in-window overlay (the `/about` route was removed); the app version shown there is injected at build time | APP-12 |
 | Changed | The working-screen padlock is one artwork in every state: the shackle now rotates shut (and open) instead of swapping to a second closed image; the asset was renamed `lockasaur-open.svg` to `lockasaur-lock.svg` and `lockasaur-closed.png` was removed | APP-12 |
-| Removed | Unused files: the leftover Nightwatch e2e scaffolding, five unreferenced Montserrat weights, the never-used Material Icons font and its CSS, and `files.svg`; the ad hoc `lintfix:js`/`lintfix:vue` npm scripts were replaced by one `lint:fix` covering the same globs as `lint` | APP-12 |
-| Removed | Materialize CSS (vendored copy and npm dependency) and animate.css; all styling is first-party Sass | APP-12 |
+| Changed | On macOS the two select buttons are merged into a single "Feed the Dino" button with a bone icon (one native dialog picks files and folders there, with a tooltip spelling that out); Windows and Linux keep the separate Select Files and Select Folder buttons | - |
+| Changed | The `.dino` document icon now uses the refreshed dino-page artwork on macOS and, for the first time, on Windows (`build/dino.ico`); the deleted legacy `ctx.icns` is restored as a copy of the dino icons so `.ctx` files share the artwork. All document icons are now generated by `electron:generate-icons` (padlock below 128px for list-view legibility, document page above) instead of being hand-exported | - |
+| Fixed | The AppImage first-run AppArmor profile still attached to the pre-rebrand binary path (`/tmp/.mount_Crypt*/cryptox`), so installing it did not actually unblock the renamed app on Ubuntu 24.04+; it now attaches to the Lockasaur mount path (`/tmp/.mount_Locka*/lockasaur`) | APP-12 |
+| Fixed | The Select Files button used a hidden HTML file input, so folders could not be selected for encryption (the dialog navigated into them); it now opens the native dialog, with a new Select Folder button because Windows and Linux cannot mix files and folders in one picker (macOS can, so Select Files allows both there). Both pickers support multi-selection, and the renderer-supplied dialog kind is allowlisted in ipcValidation | APP-12 |
 | Fixed | Reverted renderer regressions that slipped into the APP-10 PR: an `is-encrypt` prop/event rename left every operation running as decrypt (encryption unreachable) and skipped the encrypt password confirmation; the crypto-listener bookkeeping used on unmount was removed while still called; a multi-file decrypt tore the progress screen down after the first file; `SENDER_REJECTED`/`INVALID_PAYLOAD` alerts lost their fixed messages | APP-11 |
 | Fixed | CI: the macOS x64 package job targeted the retired `macos-13` Intel runner and queued forever, blocking the release job; mac x64 is now cross-compiled on `macos-15` with an explicit `--x64`, and every package leg passes its arch explicitly | APP-11 |
 | Fixed | The Linux `.deb` declares the missing `libasound2` dependency; the Electron binary links it at load time, so the installed app failed to start on Ubuntu machines without the desktop audio stack (reproduced on Ubuntu 24.04 arm64) | APP-11 |
 | Fixed | AppImages use electron-builder's static (type2) launcher runtime; the legacy launcher was dynamically linked and its arm64 build required an unversioned `libz.so`, so the arm64 AppImage could not start on stock Ubuntu | APP-11 |
-| Added | Unit tests for the `filecryto` mixin (error-code message coverage, multi-file decrypt completion, listener release idempotency) | APP-11 |
-| Added | Install notes in the README and in every release body: unsigned-build prompts (Windows SmartScreen, macOS Gatekeeper) and Ubuntu guidance (prefer the `.deb`; the AppImage needs `libfuse2t64` and can be blocked by the Ubuntu 24.04 user-namespace restriction) | APP-11 |
-| Added | Manual deploy workflow (`manual-deploy.yml`): a platform dropdown (linux/windows/macos) builds that platform's x64 and arm64 artifacts and publishes them as the `v<version>.<shortsha>` prerelease for the built commit | APP-11 |
 | Fixed | CI: a `unit-gate` job aggregates the unit matrix under the fixed check name the develop branch protection requires; after the matrix split, PRs hung on "Expected: waiting for status to be reported" | APP-11 |
-| Added | AppImage first-run helper: on Ubuntu 24.04+ (AppArmor userns restriction) the AppImage offers a one-time, pkexec-authorized AppArmor profile install and then starts sandboxed, instead of aborting with a Chromium sandbox FATAL; it never falls back to running unsandboxed | APP-11 |
+| Removed | Unused files: the leftover Nightwatch e2e scaffolding, five unreferenced Montserrat weights, the never-used Material Icons font and its CSS, and `files.svg`; the ad hoc `lintfix:js`/`lintfix:vue` npm scripts were replaced by one `lint:fix` covering the same globs as `lint` | APP-12 |
+| Removed | Materialize CSS (vendored copy and npm dependency) and animate.css; all styling is first-party Sass | APP-12 |
 | Removed | Unused `PASSWORD_ERROR` constant introduced by the APP-10 PR | APP-11 |
-| Added | Easter egg: press and hold the dino for 5 seconds through a falling binary rain to unlock a hidden thank-you page where the dino roars | - |
-| Changed | On macOS the two select buttons are merged into a single "Feed the Dino" button with a bone icon (one native dialog picks files and folders there, with a tooltip spelling that out); Windows and Linux keep the separate Select Files and Select Folder buttons | - |
-| Added | After a successful encryption, a native prompt offers to permanently delete the original file or folder (defaulting to Keep), mirroring the existing post-decrypt prompt. The main process only allows deleting a source it just encrypted in the same session, one prompt per operation, and the plaintext is removed permanently rather than moved to the system trash | - |
-| Changed | The `.dino` document icon now uses the refreshed dino-page artwork on macOS and, for the first time, on Windows (`build/dino.ico`); the deleted legacy `ctx.icns` is restored as a copy of the dino icons so `.ctx` files share the artwork. All document icons are now generated by `electron:generate-icons` (padlock below 128px for list-view legibility, document page above) instead of being hand-exported | - |
 
 Known issues:
 
@@ -68,11 +70,11 @@ final build and release audit findings (CTX-25, Batch B).
 
 | Type | Change | Ref |
 |---|---|---|
+| Changed | Copyright year refreshed to 2026 | APP-09 |
 | Security | Electron Fuses disable RunAsNode, Node inspect and `NODE_OPTIONS`, and require a verified asar (`onlyLoadAppFromAsar`, embedded integrity validation) | APP-02 |
 | Security | macOS target uses Hardened Runtime with a minimal entitlements file | APP-03 |
 | Security | Window session denies all web permission requests by default | APP-04 |
 | Security | Production CSP locked to `connect-src 'self'` with `frame-ancestors 'none'` and `frame-src 'none'`; HMR `ws://` origins ship only under dev | APP-06/07 |
-| Changed | Copyright year refreshed to 2026 | APP-09 |
 | Removed | Dead `scripts/notarize.js`, and a regenerated `yarn.lock` (`package-lock.json` is the only lockfile) | APP-01/05 |
 
 ## 0.3.9-alpha - 2026-06-21
@@ -82,29 +84,29 @@ Main process and crypto core audit remediation (CTX-24, Batch A).
 | Type | Change | Ref |
 |---|---|---|
 | Added | Security regression suite covers binary round-trips across chunk boundaries, IV tampering, tricky filenames, and CTXBOX extension smuggling | CTX-13 |
+| Changed | `FileManager` splits names on both path separators (Windows paths) | CODE-02 |
 | Security | Argon2id `memlimit` clamp ceiling lowered to 256 MiB (MODERATE preset), blocking crafted-header KDF denial of service | CODE-01 |
 | Security | Source validation uses `lstat` and rejects symlinks | CODE-03 |
 | Security | All non-crypto IPC handlers gate on `isTrustedSender` | CODE-04 |
-| Changed | `FileManager` splits names on both path separators (Windows paths) | CODE-02 |
 | Removed | Dead `Utils` helpers and a raw `console.error` | CODE-05 |
 
 ## 0.3.8-alpha - 2026-06-12
 
 | Type | Change | Ref |
 |---|---|---|
-| Security | Renderer hardened: `sandbox` and `webSecurity` on, `setWindowOpenHandler` denies new windows, `will-navigate` guard, CSP meta tag; smoke test asserts the sandboxed preload bridge | CTX-12 |
 | Changed | `src/` reorganized by Electron process (`main`, `preload`, `renderer`, `shared`); import aliases updated | CTX-12 |
+| Security | Renderer hardened: `sandbox` and `webSecurity` on, `setWindowOpenHandler` denies new windows, `will-navigate` guard, CSP meta tag; smoke test asserts the sandboxed preload bridge | CTX-12 |
 | Removed | Dead root files (`yarn.lock`, `.browserslistrc`, stray entitlements) | CTX-12 |
 
 ## 0.3.7-alpha - 2026-06-11
 
 | Type | Change | Ref |
 |---|---|---|
+| Changed | Crypto channels return structured `{ ok, code, message }` results instead of throwing | CTX-11 |
 | Security | Crypto IPC handlers reject any sender other than the app window | CTX-11 |
 | Security | Source paths validated before any operation (must exist; decrypt accepts only `.ctx`; encrypt rejects `.ctx`) | CTX-11 |
 | Security | Operation ids restricted to `[A-Za-z0-9_-]{1,64}`; renderer sends random UUIDs | CTX-11 |
 | Security | Error messages and logs drop user content; only stable codes are logged | CTX-11 |
-| Changed | Crypto channels return structured `{ ok, code, message }` results instead of throwing | CTX-11 |
 
 ## 0.3.6-alpha - 2026-06-10
 
@@ -128,17 +130,17 @@ Main process and crypto core audit remediation (CTX-24, Batch A).
 
 | Type | Change | Ref |
 |---|---|---|
-| Fixed | Output naming no longer truncates at the first dot; multi-dot and Unicode names round-trip | CTX-8 |
-| Fixed | UI encrypted-file detection checks the last extension (`archive.backup.ctx`) | CTX-8 |
 | Changed | Encryption and decryption never overwrite: a free `name (1)` variant is chosen, output opened with exclusive flags | CTX-8 |
 | Changed | The unauthenticated trailing extension of legacy and interim files is validated before use | CTX-8 |
+| Fixed | Output naming no longer truncates at the first dot; multi-dot and Unicode names round-trip | CTX-8 |
+| Fixed | UI encrypted-file detection checks the last extension (`archive.backup.ctx`) | CTX-8 |
 
 ## 0.3.3-alpha - 2026-06-10
 
 | Type | Change | Ref |
 |---|---|---|
-| Security | Per-operation `mkdtemp` temp directories (mode 0700) replace the fixed `/tmp/cryptox`; removed on success or failure | CTX-7 |
 | Fixed | Directory encryption no longer leaks the temporary tar archive on stream failure | CTX-7 |
+| Security | Per-operation `mkdtemp` temp directories (mode 0700) replace the fixed `/tmp/cryptox`; removed on success or failure | CTX-7 |
 
 ## 0.3.2-alpha - 2026-06-09
 
@@ -158,13 +160,13 @@ Main process and crypto core audit remediation (CTX-24, Batch A).
 
 | Type | Change | Ref |
 |---|---|---|
-| Security | Replaced weak SHA-256 key derivation with Argon2id | |
 | Added | Password strength validation | CTX-4 |
 | Added | Continuous integration improvements | CTX-4 |
 | Changed | Renderer migrated to Vue 3 | SAM-6 |
 | Changed | Modernized the build stack | SAM-5 |
 | Changed | File encrypt and decrypt switched to a file-path object API | |
 | Changed | Sass color functions updated to the new module syntax | |
+| Security | Replaced weak SHA-256 key derivation with Argon2id | |
 
 ## 0.2.1-alpha - 2026-06-10
 

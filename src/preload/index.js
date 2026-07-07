@@ -2,7 +2,8 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 contextBridge.exposeInMainWorld("lockasaur", {
     app: {
-        getInfo: () => ipcRenderer.invoke("app:info")
+        getInfo: () => ipcRenderer.invoke("app:info"),
+        setIcon: iconId => ipcRenderer.invoke("app:set-icon", iconId)
     },
     window: {
         minimize: () => ipcRenderer.invoke("window:minimize"),

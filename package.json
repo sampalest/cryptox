@@ -18,6 +18,7 @@
     "build:electron": "node scripts/build-electron.mjs",
     "electron:build": "npm run build && npm run build:electron && node scripts/package-app.mjs",
     "electron:generate-icons": "node scripts/generate-icons.mjs",
+    "electron:generate-appicon": "node scripts/generate-appicon.mjs",
     "test:unit": "jest --runInBand",
     "test:e2e": "npm run build && npm run build:electron && node tests/e2e/smoke.js",
     "test:large": "jest --runInBand --testMatch \"<rootDir>/tests/large/**/*.spec.js\"",

@@ -24,6 +24,10 @@ async function buildElectronEntry({ entry, fileName, emptyOutDir }) {
         configFile: false,
         root: rootDir,
         mode: process.env.NODE_ENV === "development" ? "development" : "production",
+        // public/ belongs to the renderer build (Vite copies it into dist/);
+        // without this the lib builds would copy it into dist-electron/ too,
+        // duplicating every public asset inside the packaged asar.
+        publicDir: false,
         build: {
             outDir: path.resolve(rootDir, "dist-electron"),
             emptyOutDir,

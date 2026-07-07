@@ -16,6 +16,7 @@ import BackgroundBlobs from "@/components/BackgroundBlobs.vue";
 import SettingsOverlay from "@/components/overlays/SettingsOverlay.vue";
 import AboutOverlay from "@/components/overlays/AboutOverlay.vue";
 import BinaryRain from "@/components/overlays/BinaryRain.vue";
+import { useAppIconStore } from "@/store/appIcon";
 import { useThemeStore } from "@/store/theme";
 import { useUiStore } from "@/store/ui";
 
@@ -31,12 +32,22 @@ export default {
     setup() {
         const theme = useThemeStore();
         theme.init();
-        return { theme, ui: useUiStore() };
+        return { theme, appIcon: useAppIconStore(), ui: useUiStore() };
+    },
+    watch: {
+        // An "auto" icon selection resolves through the theme store, so a
+        // theme change (or an OS appearance change under "system") retargets
+        // the Dock icon live.
+        "appIcon.resolvedIcon"() {
+            this.appIcon.applyResolved();
+        }
     },
     async beforeMount() {
         const appInfo = await window.lockasaur.app.getInfo();
         this.isMac = appInfo.platform === "darwin";
         this.isFrameless = appInfo.platform === "win32" || appInfo.platform === "linux";
+        // Reapply the saved Dock icon choice (inert off macOS).
+        this.appIcon.init(this.isMac);
     }
 };
 </script>

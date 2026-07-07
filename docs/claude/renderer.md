@@ -7,6 +7,7 @@ The renderer is a Vue 3 app (Pinia + vue-router, hash history) running with cont
 Bundled to `dist-electron/preload.cjs`. Exposes `window.lockasaur` via `contextBridge.exposeInMainWorld`. Every member either invokes a specific channel or subscribes to a specific event; nothing generic (no raw `ipcRenderer`) is ever exposed. All `on*` subscription helpers return an unsubscribe function, and callers are expected to call it (the mixins do, in `finally`/`beforeUnmount`).
 
 - `app.getInfo()`: invokes `app:info`.
+- `app.setIcon(iconId)`: invokes `app:set-icon` with an icon id (main process enforces the allowlist and applies the Dock icon on macOS only); resolves to whether the icon was applied.
 - `crypto.encrypt(file, password, operationId)` / `crypto.decrypt(...)`: invoke `crypto:encrypt` / `crypto:decrypt` with `{ file: { path }, password, operationId }`. Only `file.path` crosses the bridge.
 - `crypto.cancel(operationId)`: invokes `crypto:cancel`.
 - `crypto.onProgress(cb)` / `crypto.onStatus(cb)`: subscribe to `crypto:progress` / `crypto:status`. Payloads carry `operationId`, so subscribers must filter by id.
@@ -31,7 +32,7 @@ Renderer entry: creates the Vue app with Pinia and the router, imports the Sass 
 
 ## src/renderer/App.vue
 
-Root shell: renders `TitleBar` (all platforms), `BackgroundBlobs`, `.page-block > router-view`, the About/Settings overlays, and the `BinaryRain` easter-egg overlay (each v-if on the ui store). `#app` classes: `dark` (from the theme store's `effectiveDark`), `platform-darwin`, `platform-frameless` (win32/linux). `#app` is the visible window: the BrowserWindow is transparent on every platform and `#app` carries `border-radius: 14px`, the background (`--page-bg`), and on Win/Linux a CSS drop shadow (macOS uses its native window shadow instead, `#app.platform-darwin { box-shadow: none }`). While an overlay is open `.page-block` gets `.page-block-muted` (opacity fade) for readability. `setup()` initializes the theme store.
+Root shell: renders `TitleBar` (all platforms), `BackgroundBlobs`, `.page-block > router-view`, the About/Settings overlays, and the `BinaryRain` easter-egg overlay (each v-if on the ui store). `#app` classes: `dark` (from the theme store's `effectiveDark`), `platform-darwin`, `platform-frameless` (win32/linux). `#app` is the visible window: the BrowserWindow is transparent on every platform and `#app` carries `border-radius: 14px`, the background (`--page-bg`), and on Win/Linux a CSS drop shadow (macOS uses its native window shadow instead, `#app.platform-darwin { box-shadow: none }`). While an overlay is open `.page-block` gets `.page-block-muted` (opacity fade) for readability. `setup()` initializes the theme store; `beforeMount` fetches `app.getInfo()` for the platform flags and calls the appIcon store's `init(isMac)` to reapply a saved Dock icon choice (inert off macOS). A watcher on the appIcon store's `resolvedIcon` calls `applyResolved()`, so the `auto` icon follows theme changes live.
 
 ## src/renderer/components/TitleBar.vue
 
@@ -57,6 +58,7 @@ Two routes on hash history: `/` -> `Home.vue` and the hidden easter-egg route `/
 - `store/files.js`: state `{ files: null }`, actions `setFiles` / `clearFiles`. Deferred file opens; cleared by the sysevents mixin on unmount.
 - `store/theme.js`: appearance. State `mode` (`light` | `dark` | `system`, validated against an allowlist, persisted to `localStorage["lockasaur:theme"]`) and `systemDark` (live `prefers-color-scheme` listener registered in `init()`). Getter `effectiveDark` drives the `#app.dark` class. No IPC involved.
 - `store/ui.js`: `aboutOpen` / `settingsOpen` booleans with `openAbout` / `openSettings` (mutually exclusive) / `closeOverlays`, plus `binaryRainActive` with `startBinaryRain` / `stopBinaryRain` for the easter-egg rain overlay (`closeOverlays` also clears it).
+- `store/appIcon.js`: the macOS Dock icon choice (CTX-17). Exports `APP_ICONS` (id + label for `auto` plus the six appearance variants; the concrete ids mirror ipcValidation's `APP_ICON_IDS` and the `public/appicons` PNGs) and the store. State: `icon` (the selected option, may be `auto`, persisted to `localStorage["lockasaur:app-icon"]`), `applied` (the concrete icon last accepted by the main process, deduping IPC), `supported` (set from the platform in `init(supported)`; everything no-ops when false). Getter `resolvedIcon` maps `auto` to `dark`/`default` via the theme store's `effectiveDark`; `auto` itself never crosses the bridge. Actions: `init(supported)` (loads and reapplies the saved choice), `setIcon(id)` (optimistically selects, reverts and skips persisting if the apply fails), `applyResolved()` (pushes `resolvedIcon` through `app.setIcon`, committing `applied` only on acceptance). App.vue watches `resolvedIcon`, so an `auto` selection retargets the Dock icon live on theme or OS appearance changes.
 
 ## src/renderer/views/Home.vue
 
@@ -122,5 +124,5 @@ System event wiring used by Home: on mount it subscribes to menu open-file (runs
 
 Both render as `.lk-overlay` glass sheets absolutely positioned below the titlebar inside `#app`, close on Esc (window keydown listener, removed on unmount) and via a Done button.
 
-- `SettingsOverlay.vue`: the Appearance section only: a Light/Dark/System segmented control bound to the theme store.
+- `SettingsOverlay.vue`: the Appearance section (a Light/Dark/System segmented control bound to the theme store) and, on macOS only (`app.getInfo()` platform, fetched in `beforeMount`), the App Icon section (CTX-17): a 4-column tile grid over the appIcon store's `APP_ICONS` (Auto first, then the six variants), previews loaded from the bundled `appicons/<id>.png` (relative URL, so it resolves against the dev server in dev and `dist/` in prod), the Auto tile showing a diagonal split of the default and dark artwork (`clip-path`), the active tile marked with an accent inset ring, and a hint line that switches wording when Auto is selected.
 - `AboutOverlay.vue`: wordmark, floating dino, tagline, version pill using the build-time `__APP_VERSION__` define (from vite.config.js; ESLint global), credit, GitHub glass pill calling `shell.openExternal` with the allowlisted repo URL, footer.

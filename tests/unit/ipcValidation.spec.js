@@ -5,6 +5,7 @@ import {
     assertDecryptSource,
     assertEncryptSource,
     isTrustedSender,
+    normalizeAppIconId,
     normalizeCryptoPayload,
     normalizeOpenDialogKind,
     validateDeletePath,
@@ -65,6 +66,23 @@ describe("IPC validation", () => {
             const cases = ["Files", "folders", "openDirectory", "", 42, null, {}, []];
             for (const value of cases) {
                 expect(normalizeOpenDialogKind(value)).toBeNull();
+            }
+        });
+    });
+
+    describe("normalizeAppIconId", () => {
+        it("accepts the allowlisted icon ids", () => {
+            for (const id of ["default", "dark", "clear-light", "clear-dark", "tinted-light", "tinted-dark"]) {
+                expect(normalizeAppIconId(id)).toBe(id);
+            }
+        });
+
+        it("returns null for anything outside the allowlist", () => {
+            // Ids are resolved to bundled file names, so path fragments must
+            // never survive normalization.
+            const cases = ["Default", "dark.png", "../dark", "appicons/dark", "", 42, null, undefined, {}, []];
+            for (const value of cases) {
+                expect(normalizeAppIconId(value)).toBeNull();
             }
         });
     });

@@ -19,6 +19,17 @@ export function normalizeOpenDialogKind(value) {
     return OPEN_DIALOG_KINDS.has(value) ? value : null;
 }
 
+// CTX-17: the app:set-icon handler resolves the id to a bundled PNG, so the
+// renderer-supplied value is allowlisted rather than used as a path fragment.
+// Ids mirror the appearance variants scripts/generate-appicon.mjs writes to
+// public/appicons; anything unexpected returns null and the handler answers
+// with an inert false.
+const APP_ICON_IDS = new Set(["default", "dark", "clear-light", "clear-dark", "tinted-light", "tinted-dark"]);
+
+export function normalizeAppIconId(value) {
+    return APP_ICON_IDS.has(value) ? value : null;
+}
+
 export function validateDeletePath(value) {
     if (typeof value !== "string" || value.trim() === "") {
         throw new TypeError("Delete path must be a non-empty string.");

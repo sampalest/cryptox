@@ -1,6 +1,6 @@
 "use strict";
 
-import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, shell } from "electron";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath, pathToFileURL } from "url";
@@ -13,6 +13,7 @@ import {
     assertDecryptSource,
     assertEncryptSource,
     isTrustedSender,
+    normalizeAppIconId,
     normalizeCryptoPayload,
     normalizeOpenDialogKind,
     validateDeletePath,
@@ -226,6 +227,36 @@ ipcMain.handle("app:info", event => {
         name: app.name,
         platform: process.platform
     };
+});
+
+// CTX-17: the Settings icon picker (macOS Dock icon only). The renderer sends
+// an allowlisted id, never a path; it resolves against the PNGs bundled under
+// dist/appicons (public/appicons in dev, mirroring how index.html is located).
+const appIconsDir = process.env.VITE_DEV_SERVER_URL
+    ? path.join(runtimeDir, "..", "public", "appicons")
+    : path.join(runtimeDir, "..", "dist", "appicons");
+
+ipcMain.handle("app:set-icon", (event, iconId) => {
+    if (!isTrustedSender(event, win)) return false;
+    const id = normalizeAppIconId(iconId);
+    if (!id || process.platform !== "darwin" || !app.dock) return false;
+    try {
+        if (id === "default") {
+            // Reset to the bundle icon: a static image would freeze one
+            // appearance, while the bundle's Assets.car keeps the Dock icon
+            // following the system light/dark appearance on macOS 26+.
+            app.dock.setIcon(null);
+            return true;
+        }
+        const image = nativeImage.createFromPath(path.join(appIconsDir, `${id}.png`));
+        if (image.isEmpty()) return false;
+        app.dock.setIcon(image);
+        return true;
+    } catch {
+        // Fixed string: the renderer-supplied value stays out of the log.
+        logger.error("app:set-icon failed");
+        return false;
+    }
 });
 
 ipcMain.handle("window:minimize", event => {
@@ -445,6 +476,14 @@ async function runSmokeTest() {
         await win.webContents.executeJavaScript("window.open(\"https://example.com\"); 0");
         if (BrowserWindow.getAllWindows().length !== 1) {
             throw new Error("Renderer was able to open a new window.");
+        }
+        // app:set-icon applies an allowlisted id on macOS (an inert false
+        // elsewhere) and rejects anything outside the allowlist (CTX-17).
+        const [validIcon, invalidIcon] = await win.webContents.executeJavaScript(
+            "Promise.all([window.lockasaur.app.setIcon(\"dark\"), window.lockasaur.app.setIcon(\"../evil\")])"
+        );
+        if (validIcon !== (process.platform === "darwin") || invalidIcon !== false) {
+            throw new Error("app:set-icon did not behave as expected.");
         }
         logger.info("Lockasaur smoke test passed.");
         app.exit(0);

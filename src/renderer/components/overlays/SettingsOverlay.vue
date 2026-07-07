@@ -20,6 +20,31 @@
             </div>
             <div class="lk-settings-hint">{{ appearanceHint }}</div>
         </div>
+        <div v-if="isMac" class="lk-settings-section">
+            <div class="lk-settings-label">APP ICON</div>
+            <div class="lk-settings-icons">
+                <button
+                    v-for="icon in icons"
+                    :key="icon.id"
+                    type="button"
+                    class="lk-settings-icon-btn"
+                    :class="{ active: appIcon.icon === icon.id }"
+                    :title="icon.label"
+                    @click="appIcon.setIcon(icon.id)"
+                >
+                    <!-- Bound (not static) src, so the compiler leaves these as
+                         runtime paths into the bundled public assets instead of
+                         trying to resolve them as module imports. -->
+                    <span v-if="icon.id === 'auto'" class="lk-settings-icon-preview">
+                        <img class="lk-settings-icon-img" :src="'appicons/default.png'" :alt="icon.label">
+                        <img class="lk-settings-icon-img lk-settings-icon-img-half" :src="'appicons/dark.png'" alt="" aria-hidden="true">
+                    </span>
+                    <img v-else class="lk-settings-icon-img" :src="`appicons/${icon.id}.png`" :alt="icon.label">
+                    <span class="lk-settings-icon-name">{{ icon.label }}</span>
+                </button>
+            </div>
+            <div class="lk-settings-hint">{{ iconHint }}</div>
+        </div>
         <glass-button variant="primary" @click="ui.closeOverlays()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>
             Done
@@ -28,6 +53,7 @@
 </template>
 <script>
 import GlassButton from "@/components/ui/GlassButton.vue";
+import { APP_ICONS, useAppIconStore } from "@/store/appIcon";
 import { useThemeStore } from "@/store/theme";
 import { useUiStore } from "@/store/ui";
 
@@ -37,7 +63,12 @@ export default {
         "glass-button": GlassButton
     },
     setup() {
-        return { theme: useThemeStore(), ui: useUiStore() };
+        return { appIcon: useAppIconStore(), theme: useThemeStore(), ui: useUiStore() };
+    },
+    data() {
+        return {
+            isMac: false
+        };
     },
     computed: {
         modes() {
@@ -47,15 +78,26 @@ export default {
                 { value: "system", label: "System" }
             ];
         },
+        icons() {
+            return APP_ICONS;
+        },
         appearanceHint() {
             if (this.theme.mode === "system") return "Follows your OS appearance.";
             return this.theme.mode === "dark" ? "Always dark, day or night." : "Always light and airy.";
+        },
+        iconHint() {
+            if (this.appIcon.icon === "auto") return "Changes the Dock icon. Auto matches the app appearance.";
+            return "Changes the Dock icon. Default follows your system appearance.";
         }
     },
     methods: {
         onKeydown(event) {
             if (event.key === "Escape") this.ui.closeOverlays();
         }
+    },
+    async beforeMount() {
+        const appInfo = await window.lockasaur.app.getInfo();
+        this.isMac = appInfo.platform === "darwin";
     },
     mounted() {
         window.addEventListener("keydown", this.onKeydown);
@@ -118,5 +160,65 @@ export default {
 .lk-settings-hint {
     font-size: 12px;
     color: var(--faint);
+}
+
+.lk-settings-icons {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    background: var(--track);
+    border-radius: 14px;
+    padding: 6px;
+}
+
+.lk-settings-icon-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    border: none;
+    border-radius: 11px;
+    padding: 8px 14px 6px;
+    font-family: Poppins, sans-serif;
+    cursor: pointer;
+    background: none;
+    color: var(--dim);
+    transition: background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+
+    &:focus {
+        outline: none;
+    }
+
+    &.active {
+        background: var(--surface);
+        color: var(--text);
+        box-shadow: 0 2px 8px rgba(20, 24, 32, 0.14), inset 0 0 0 1.5px var(--accent);
+    }
+}
+
+.lk-settings-icon-img {
+    width: 52px;
+    height: 52px;
+}
+
+/* The Auto tile previews both appearances: the dark artwork is stacked on the
+   default one and clipped to the lower-right diagonal half. */
+.lk-settings-icon-preview {
+    position: relative;
+    display: block;
+    width: 52px;
+    height: 52px;
+}
+
+.lk-settings-icon-img-half {
+    position: absolute;
+    top: 0;
+    left: 0;
+    clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
+.lk-settings-icon-name {
+    font-size: 11px;
+    font-weight: 500;
 }
 </style>
