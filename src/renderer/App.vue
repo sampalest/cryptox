@@ -1,6 +1,6 @@
 <template>
-  <div id="app" :class="{ 'dark': theme.effectiveDark, 'platform-darwin': isMac, 'platform-frameless': isFrameless }">
-    <TitleBar :title="appTitle" :show-window-controls="isFrameless" />
+  <div id="app" :class="{ 'dark': theme.effectiveDark, 'platform-darwin': appStore.isMac, 'platform-frameless': appStore.isFrameless, 'lk-hidden': windowHidden }">
+    <TitleBar :title="appTitle" :show-window-controls="appStore.isFrameless" />
     <BackgroundBlobs />
     <div class="page-block" :class="{ 'page-block-muted': ui.aboutOpen || ui.settingsOpen }">
       <router-view />
@@ -11,28 +11,37 @@
   </div>
 </template>
 <script>
+import { defineAsyncComponent } from "vue";
 import TitleBar from "@/components/TitleBar.vue";
 import BackgroundBlobs from "@/components/BackgroundBlobs.vue";
-import SettingsOverlay from "@/components/overlays/SettingsOverlay.vue";
-import AboutOverlay from "@/components/overlays/AboutOverlay.vue";
-import BinaryRain from "@/components/overlays/BinaryRain.vue";
 import { useAppIconStore } from "@/store/appIcon";
+import { useAppStore } from "@/store/app";
 import { useThemeStore } from "@/store/theme";
 import { useUiStore } from "@/store/ui";
 
 export default {
-    components: { TitleBar, BackgroundBlobs, SettingsOverlay, AboutOverlay, BinaryRain },
+    components: {
+        TitleBar,
+        BackgroundBlobs,
+        // The overlays are v-if gated and rarely open, so each is an async
+        // chunk fetched on first open (disk-local, a few ms) instead of
+        // weighing down the initial bundle. Entry animations still start at
+        // mount, so their timing is unchanged.
+        SettingsOverlay: defineAsyncComponent(() => import("@/components/overlays/SettingsOverlay.vue")),
+        AboutOverlay: defineAsyncComponent(() => import("@/components/overlays/AboutOverlay.vue")),
+        BinaryRain: defineAsyncComponent(() => import("@/components/overlays/BinaryRain.vue"))
+    },
     data: () => {
         return {
             appTitle: "LOCKASAUR",
-            isMac: false,
-            isFrameless: false
+            windowHidden: false,
+            onVisibilityChange: null
         };
     },
     setup() {
         const theme = useThemeStore();
         theme.init();
-        return { theme, appIcon: useAppIconStore(), ui: useUiStore() };
+        return { theme, appIcon: useAppIconStore(), appStore: useAppStore(), ui: useUiStore() };
     },
     watch: {
         // An "auto" icon selection resolves through the theme store, so a
@@ -43,11 +52,22 @@ export default {
         }
     },
     async beforeMount() {
-        const appInfo = await window.lockasaur.app.getInfo();
-        this.isMac = appInfo.platform === "darwin";
-        this.isFrameless = appInfo.platform === "win32" || appInfo.platform === "linux";
+        await this.appStore.load();
         // Reapply the saved Dock icon choice (inert off macOS).
-        this.appIcon.init(this.isMac);
+        this.appIcon.init(this.appStore.isMac);
+    },
+    mounted() {
+        // While the window is hidden (minimized/fully covered) the ambient
+        // infinite animations pause via #app.lk-hidden (master.scss) to stop
+        // burning CPU/GPU on invisible frames. Visibility only, never window
+        // blur: a visible-but-unfocused window must keep animating.
+        this.onVisibilityChange = () => {
+            this.windowHidden = document.visibilityState === "hidden";
+        };
+        document.addEventListener("visibilitychange", this.onVisibilityChange);
+    },
+    beforeUnmount() {
+        document.removeEventListener("visibilitychange", this.onVisibilityChange);
     }
 };
 </script>

@@ -41,13 +41,14 @@ import SuccessScreen from "@/components/SuccessScreen.vue";
 import GlassButton from "@/components/ui/GlassButton.vue";
 import WordMark from "@/components/ui/Wordmark.vue";
 import DinoLogo from "@/components/ui/DinoLogo.vue";
+import { useAppStore } from "@/store/app";
 import { useFilesStore } from "@/store/files.js";
 import { useUiStore } from "@/store/ui";
 
 export default {
     name: "home-view",
     setup() {
-        return { ui: useUiStore() };
+        return { appStore: useAppStore(), ui: useUiStore() };
     },
     data: () => {
         return {
@@ -57,9 +58,13 @@ export default {
             files: null,
             loader: false,
             success: false,
-            error: false,
-            isMac: false
+            error: false
         };
+    },
+    computed: {
+        isMac() {
+            return this.appStore.isMac;
+        }
     },
     mixins: [sysevents],
     components: {
@@ -145,10 +150,9 @@ export default {
 
         // macOS is the only platform whose native dialog picks files and
         // folders at once, so it gets one merged button; Windows and Linux
-        // keep the separate Select Folder button. Defaulting isMac to false
-        // keeps both buttons working while app info is in flight.
-        const appInfo = await window.lockasaur.app.getInfo();
-        this.isMac = appInfo.platform === "darwin";
+        // keep the separate Select Folder button. The app store's isMac stays
+        // false while app info is in flight, so both buttons keep working.
+        await this.appStore.load();
     }
 };
 </script>

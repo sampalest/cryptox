@@ -107,6 +107,17 @@ function buildApplicationMenu() {
     }
 }
 
+// The window is created hidden and shown on the first of three
+// signals, so launch never flashes an empty transparent frame: ready-to-show
+// (normal path), files:renderer-ready (fallback: ready-to-show has a history
+// of firing late for transparent frameless windows on Win/Linux), or a safety
+// timer (a broken renderer must never leave an invisible app).
+function showWindowWhenReady() {
+    if (win && !win.isDestroyed() && !win.isVisible()) {
+        win.show();
+    }
+}
+
 function createWindow () {
     rendererReady = false;
     const useCustomFrame = process.platform === "win32" || process.platform === "linux";
@@ -121,6 +132,7 @@ function createWindow () {
         // (the window is fixed-size, so content must fit; APP-12).
         height: 660,
         title: "Lockasaur",
+        show: false,
         frame: !useCustomFrame,
         transparent: true,
         backgroundColor: "#00000000",
@@ -161,6 +173,9 @@ function createWindow () {
         }
     });
 
+    win.once("ready-to-show", showWindowWhenReady);
+    const showFallbackTimer = setTimeout(showWindowWhenReady, 2000);
+
     if (process.env.VITE_DEV_SERVER_URL) {
         win.loadURL(process.env.VITE_DEV_SERVER_URL);
         if (!process.env.IS_TEST) win.webContents.openDevTools();
@@ -169,6 +184,7 @@ function createWindow () {
     }
 
     win.on("closed", () => {
+        clearTimeout(showFallbackTimer);
         win = null;
         rendererReady = false;
     });
@@ -214,6 +230,7 @@ app.on("ready", async () => {
 ipcMain.handle("files:renderer-ready", event => {
     if (!isTrustedSender(event, win)) return;
     rendererReady = true;
+    showWindowWhenReady();
     flushPendingOpenFiles();
     if (process.env.LOCKASAUR_SMOKE_TEST) {
         runSmokeTest();

@@ -59,3 +59,9 @@ body {
 .page-block-muted {
     opacity: 0.12;
 }
+
+#app.lk-hidden .lk-blob,
+#app.lk-hidden .lk-dino-halo,
+#app.lk-hidden .lk-dino-svg svg {
+    animation-play-state: paused;
+}

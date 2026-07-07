@@ -54,6 +54,7 @@
 <script>
 import GlassButton from "@/components/ui/GlassButton.vue";
 import { APP_ICONS, useAppIconStore } from "@/store/appIcon";
+import { useAppStore } from "@/store/app";
 import { useThemeStore } from "@/store/theme";
 import { useUiStore } from "@/store/ui";
 
@@ -63,14 +64,12 @@ export default {
         "glass-button": GlassButton
     },
     setup() {
-        return { appIcon: useAppIconStore(), theme: useThemeStore(), ui: useUiStore() };
-    },
-    data() {
-        return {
-            isMac: false
-        };
+        return { appIcon: useAppIconStore(), appStore: useAppStore(), theme: useThemeStore(), ui: useUiStore() };
     },
     computed: {
+        isMac() {
+            return this.appStore.isMac;
+        },
         modes() {
             return [
                 { value: "light", label: "Light" },
@@ -96,8 +95,7 @@ export default {
         }
     },
     async beforeMount() {
-        const appInfo = await window.lockasaur.app.getInfo();
-        this.isMac = appInfo.platform === "darwin";
+        await this.appStore.load();
     },
     mounted() {
         window.addEventListener("keydown", this.onKeydown);

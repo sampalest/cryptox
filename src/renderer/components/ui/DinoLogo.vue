@@ -22,7 +22,11 @@
 // its arm groups. Clicking pokes the dino: a small body bob plus a wave of the
 // two front arms (#Brazo and #Brazo2). The shadow is a CSS drop-shadow so it
 // follows the alpha shape.
-import dinoSvg from "@/assets/dino-vector.svg?raw";
+// The SVG is ~1.2 MB, so it is a dynamic import (its own async chunk)
+// instead of a static ?raw import that would sit in the initial bundle. The
+// import starts at module evaluation, in parallel with mounting; a runtime
+// fetch() is not an option because prod loads from file:// (win.loadFile).
+const dinoSvgPromise = import("@/assets/dino-vector.svg?raw");
 
 export default {
     name: "DinoLogo",
@@ -34,15 +38,16 @@ export default {
     },
     emits: ["hold-start", "hold-cancel", "hold-complete"],
     data: () => ({
+        dinoMarkup: "",
         pokeSTO: null,
         rainSTO: null,
         holdSTO: null,
         holdCompleted: false
     }),
-    computed: {
-        dinoMarkup() {
-            return dinoSvg;
-        }
+    created() {
+        dinoSvgPromise.then(mod => {
+            this.dinoMarkup = mod.default;
+        });
     },
     methods: {
         // Long-press easter egg: hold-start fires after 0.5 s of primary-button
@@ -124,6 +129,7 @@ export default {
     position: relative;
     display: block;
     transform-origin: center bottom;
+    aspect-ratio: 2002 / 2353;
 
     :deep(svg) {
         width: 100%;
@@ -132,6 +138,7 @@ export default {
         overflow: visible;
         filter: drop-shadow(0 18px 34px rgba(7, 102, 229, 0.32));
         animation: logoShadow 2.8s ease-in-out infinite;
+        will-change: filter;
     }
 
     // Each arm waves about its shoulder (fill-box percentages of the arm's bbox).

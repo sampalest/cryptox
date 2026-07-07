@@ -1,6 +1,5 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 import Home from  "../views/Home.vue";
-import Rawr from "../views/Rawr.vue";
 
 const routes = [
     {
@@ -10,9 +9,11 @@ const routes = [
     },
     {
         // Hidden easter-egg page, reached by holding the Home dino for 5 s.
+        // Lazy: keeps the page (and its roar audio reference) out of the
+        // initial chunk; Home stays eager because it is the first paint.
         path: "/rawr",
         name: "rawr",
-        component: Rawr
+        component: () => import("../views/Rawr.vue")
     }
 ];
 

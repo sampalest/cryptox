@@ -29,33 +29,30 @@
     font-style: normal;
     font-weight: 400 700;
     font-display: swap;
-    src: url("../../assets/fonts/DynaPuff.ttf") format("truetype");
+    src: url("../../assets/fonts/DynaPuff.woff2") format("woff2");
 }
 
-@font-face {
-    font-family: "Montserrat";
-    font-style: normal;
-    font-weight: 400;
-    src: url("../../assets/fonts/Montserrat-Regular.ttf") format("truetype");
-}
-
+// Montserrat is only ever used at weights 500/600/700; no 400 face is bundled.
 @font-face {
     font-family: "Montserrat";
     font-style: normal;
     font-weight: 500;
-    src: url("../../assets/fonts/Montserrat-Medium.ttf") format("truetype");
+    font-display: swap;
+    src: url("../../assets/fonts/Montserrat-Medium.woff2") format("woff2");
 }
 
 @font-face {
     font-family: "Montserrat";
     font-style: normal;
     font-weight: 600;
-    src: url("../../assets/fonts/Montserrat-SemiBold.ttf") format("truetype");
+    font-display: swap;
+    src: url("../../assets/fonts/Montserrat-SemiBold.woff2") format("woff2");
 }
 
 @font-face {
     font-family: "Montserrat";
     font-style: normal;
     font-weight: 700;
-    src: url("../../assets/fonts/Montserrat-Bold.ttf") format("truetype");
+    font-display: swap;
+    src: url("../../assets/fonts/Montserrat-Bold.woff2") format("woff2");
 }

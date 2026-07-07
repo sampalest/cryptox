@@ -17,11 +17,19 @@ export default {
     z-index: 0;
     pointer-events: none;
     overflow: hidden;
+    // Paint containment is visually a no-op (overflow: hidden already clips to
+    // the same bounds) but keeps the blobs' per-frame border-radius
+    // invalidations from propagating to ancestors.
+    contain: layout style paint;
 }
 
 .lk-blob {
     position: absolute;
-    will-change: transform;
+    // "filter" keeps each blob's blur(32-36px) on the compositor, so the
+    // border-radius morph in the blob keyframe repaints only the small
+    // unblurred gradient instead of re-rasterizing a large blurred texture
+    // every frame.
+    will-change: transform, filter;
 }
 
 .lk-blob-1 {
