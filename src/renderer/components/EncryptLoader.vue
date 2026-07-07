@@ -105,8 +105,8 @@ export default {
     },
     watch: {
         finish() {
-            // Let the lock's closing (1.5 s) or opening (0.9 s) animation play
-            // out and rest visibly for at least 0.5 s before the success screen.
+            // Let the shackle's 0.9 s closing or opening animation play out
+            // and rest visibly for at least a second before the success screen.
             this.done = true;
             this.finishSTO = setTimeout(()=> {
                 this.$emit("finish", this.finish);

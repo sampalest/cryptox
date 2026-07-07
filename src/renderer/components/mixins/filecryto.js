@@ -42,7 +42,7 @@ export default {
         },
         cancelOperations() {
             this.activeOperations.forEach(operationId => {
-                window.cryptox.crypto.cancel(operationId).catch(err => window.cryptox.log.error(err));
+                window.lockasaur.crypto.cancel(operationId).catch(err => window.lockasaur.log.error(err));
             });
         },
         addHandlers(...offs) {
@@ -68,32 +68,39 @@ export default {
         // message may be shown but must never be logged with payload content).
         handleCryptoFailure(kind, result) {
             const code = result && result.code;
-            window.cryptox.log.error(`crypto ${kind} failed: ${code || "NO_RESULT"}`);
+            window.lockasaur.log.error(`crypto ${kind} failed: ${code || "NO_RESULT"}`);
             const messages = FAILURE_MESSAGES[kind];
             alert(messages[code] || (result && result.message) || "The operation failed.");
             this.cancel();
         },
         encryptFile(file) {
             const operationId = this.operationId();
-            const offProgress = window.cryptox.crypto.onProgress(payload => {
+            const offProgress = window.lockasaur.crypto.onProgress(payload => {
                 if (payload.operationId === operationId) this.percent.value = payload.value;
             });
-            const offStatus = window.cryptox.crypto.onStatus(payload => {
+            const offStatus = window.lockasaur.crypto.onStatus(payload => {
                 if (payload.operationId === operationId) Object.assign(this.fileEvent, payload.status);
             });
             this.addHandlers(offProgress, offStatus);
 
             this.trackOperation(operationId);
-            window.cryptox.crypto.encrypt({ path: file.path }, this.password, operationId).then(result => {
+            window.lockasaur.crypto.encrypt({ path: file.path }, this.password, operationId).then(async result => {
                 if (!result || result.ok === false) return this.handleCryptoFailure("encrypt", result);
                 // A cancelled operation must never count as a success.
                 if (result.cancelled) return;
+                // Encryption already succeeded; a failed delete prompt must not be
+                // reported as an encrypt error, so keep it isolated from the catch below.
+                try {
+                    await window.lockasaur.files.confirmDeleteOriginal(file.path);
+                } catch (deleteErr) {
+                    window.lockasaur.log.error(deleteErr);
+                }
                 this.fileEvent.counter++;
 
                 if (this.fileEvent.counter == this.files.length) this.finish = true;
             }).catch(() => {
                 // Transport-level safety net; structured failures resolve above.
-                window.cryptox.log.error("crypto encrypt failed: IPC_TRANSPORT");
+                window.lockasaur.log.error("crypto encrypt failed: IPC_TRANSPORT");
                 alert("Encryption failed.");
                 this.cancel();
             }).finally(() => {
@@ -103,16 +110,16 @@ export default {
         },
         decryptFile(file) {
             const operationId = this.operationId();
-            const offProgress = window.cryptox.crypto.onProgress(payload => {
+            const offProgress = window.lockasaur.crypto.onProgress(payload => {
                 if (payload.operationId === operationId) this.percent.value = payload.value;
             });
-            const offStatus = window.cryptox.crypto.onStatus(payload => {
+            const offStatus = window.lockasaur.crypto.onStatus(payload => {
                 if (payload.operationId === operationId) Object.assign(this.fileEvent, payload.status);
             });
             this.addHandlers(offProgress, offStatus);
 
             this.trackOperation(operationId);
-            window.cryptox.crypto.decrypt({ path: file.path }, this.password, operationId)
+            window.lockasaur.crypto.decrypt({ path: file.path }, this.password, operationId)
                 .then(async result => {
                     if (!result || result.ok === false) return this.handleCryptoFailure("decrypt", result);
                     // A cancelled operation must never count as a success.
@@ -120,9 +127,9 @@ export default {
                     // Decryption already succeeded; a failed delete prompt must not be reported
                     // as a decrypt error, so keep it isolated from the catch below.
                     try {
-                        await window.cryptox.files.confirmDeleteEncrypted(file.path);
+                        await window.lockasaur.files.confirmDeleteEncrypted(file.path);
                     } catch (deleteErr) {
-                        window.cryptox.log.error(deleteErr);
+                        window.lockasaur.log.error(deleteErr);
                     }
                     // Mirror encrypt: finish only once every selected file is done,
                     // so a multi-file decrypt does not tear the loader down after
@@ -132,7 +139,7 @@ export default {
                 })
                 .catch(() => {
                     // Transport-level safety net; structured failures resolve above.
-                    window.cryptox.log.error("crypto decrypt failed: IPC_TRANSPORT");
+                    window.lockasaur.log.error("crypto decrypt failed: IPC_TRANSPORT");
                     alert("Incorrect password or the file is corrupted.");
                     this.cancel();
                 })

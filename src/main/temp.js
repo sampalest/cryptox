@@ -22,7 +22,7 @@ export default class TempManager {
     static async acquire(operationId, baseDir = os.tmpdir()) {
         const existing = this._dirs.get(operationId);
         if (existing) return existing;
-        const dir = await fs.promises.mkdtemp(path.join(baseDir, "cryptox-"));
+        const dir = await fs.promises.mkdtemp(path.join(baseDir, "lockasaur-"));
         this._dirs.set(operationId, dir);
         return dir;
     }

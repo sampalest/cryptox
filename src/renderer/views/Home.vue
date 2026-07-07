@@ -17,13 +17,17 @@
             </div>
             <div class="lk-home-hint">Drop your files here, or let the dino fetch them.</div>
             <div class="lk-home-actions">
-                <glass-button ref="select" variant="primary" @click="$refs.fileInput.click()">
+                <glass-button ref="select" variant="primary" :title="isMac ? 'Select files or folders' : null" @click="onOpen()">
+                    <svg v-if="isMac" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 10c.7-.7 1.69 0 2.5 0a2.5 2.5 0 1 0 0-5 .5.5 0 0 1-.5-.5 2.5 2.5 0 1 0-5 0c0 .81.7 1.8 0 2.5l-7 7c-.7.7-1.69 0-2.5 0a2.5 2.5 0 0 0 0 5c.28 0 .5.22.5.5a2.5 2.5 0 1 0 5 0c0-.81-.7-1.8 0-2.5Z"></path></svg>
+                    <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-3a2 2 0 0 1-2-2V2"></path><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"></path><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"></path></svg>
+                    {{ isMac ? "Feed the Dino" : "Select Files" }}
+                </glass-button>
+                <glass-button v-if="!isMac" variant="glass" @click="onOpen('folder')">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"></path></svg>
-                    Select Files
+                    Select Folder
                 </glass-button>
             </div>
         </div>
-        <input ref="fileInput" type="file" class="hide" @change="inputFile" multiple>
     </div>
 </template>
 <script>
@@ -53,7 +57,8 @@ export default {
             files: null,
             loader: false,
             success: false,
-            error: false
+            error: false,
+            isMac: false
         };
     },
     mixins: [sysevents],
@@ -83,14 +88,11 @@ export default {
             this.password = password;
             this.showPassword = false;
         },
-        inputFile(e) {
-            this.selectFile(e.target.files);
-        },
         selectFile(files) {
             let ctx = 0;
             this.files = Array.from(files).map(file => {
                 if (file.path) return file;
-                const filePath = window.cryptox.files.getPathForFile(file);
+                const filePath = window.lockasaur.files.getPathForFile(file);
                 return new FileManager(filePath);
             });
             this.files.forEach(file => {
@@ -135,11 +137,18 @@ export default {
             this.$router.push({ name: "rawr" });
         }
     },
-    beforeMount() {
+    async beforeMount() {
         const filesStore = useFilesStore();
         const path = filesStore.files;
         if (path) this.selectFile([new FileManager(path)]);
         filesStore.clearFiles();
+
+        // macOS is the only platform whose native dialog picks files and
+        // folders at once, so it gets one merged button; Windows and Linux
+        // keep the separate Select Folder button. Defaulting isMac to false
+        // keeps both buttons working while app info is in flight.
+        const appInfo = await window.lockasaur.app.getInfo();
+        this.isMac = appInfo.platform === "darwin";
     }
 };
 </script>

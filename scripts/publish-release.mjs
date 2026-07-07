@@ -1,9 +1,9 @@
-// Publish GitHub releases for Cryptox CI.
+// Publish GitHub releases for Lockasaur CI.
 //   master  -> release "v<version>"; updated in place if it already exists.
 //   develop -> prerelease "v<version>.<shortsha>"; only this version's previous
 //              prerelease (same version, any short sha) is replaced. Other
 //              versions' releases are never touched.
-//   manual  -> with CRYPTOX_MANUAL_RELEASE=true (the manual-deploy workflow),
+//   manual  -> with LOCKASAUR_MANUAL_RELEASE=true (the manual-deploy workflow),
 //              prerelease "v<version>.<shortsha>" for the built commit on any
 //              branch. No other release is deleted or replaced, so re-running
 //              the workflow for another platform on the same commit aggregates
@@ -59,7 +59,7 @@ const upsert = (tag, extraArgs = []) => {
     }
 };
 
-if (process.env.CRYPTOX_MANUAL_RELEASE === "true") {
+if (process.env.LOCKASAUR_MANUAL_RELEASE === "true") {
     upsert(`v${version}.${sha}`, ["--prerelease"]);
 } else if (process.env.GITHUB_REF_NAME === "master") {
     upsert(`v${version}`);

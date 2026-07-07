@@ -17,8 +17,12 @@ export default {
         onRoute() {
             useUiStore().openAbout();
         },
-        async onOpen() {
-            const paths = await window.cryptox.dialog.openFiles();
+        // kind "files" (default, also what the macOS menu sends) or "folder";
+        // on Windows/Linux the native dialog cannot mix files and folders in
+        // one picker, so Home offers a button per kind there. On macOS the
+        // "files" dialog picks both, so Home shows a single merged button.
+        async onOpen(kind = "files") {
+            const paths = await window.lockasaur.dialog.openFiles(kind);
             if (paths && paths.length) {
                 let fileList = [];
                 paths.forEach(path => {
@@ -28,16 +32,16 @@ export default {
             }
         },
         openFileListener() {
-            this.unsubscribeOpenFile = window.cryptox.files.onOpenFile(file => {
+            this.unsubscribeOpenFile = window.lockasaur.files.onOpenFile(file => {
                 this.selectFile([new FileManager(file)]);
             });
         }
     },
     mounted() {
-        this.unsubscribeMenuOpen = window.cryptox.menu.onOpenFile(this.onOpen);
-        this.unsubscribeMenuAbout = window.cryptox.menu.onAbout(this.onRoute);
+        this.unsubscribeMenuOpen = window.lockasaur.menu.onOpenFile(this.onOpen);
+        this.unsubscribeMenuAbout = window.lockasaur.menu.onAbout(this.onRoute);
         this.openFileListener();
-        window.cryptox.files.ready();
+        window.lockasaur.files.ready();
     },
     beforeUnmount() {
         if (this.unsubscribeMenuOpen) this.unsubscribeMenuOpen();

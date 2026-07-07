@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 
-contextBridge.exposeInMainWorld("cryptox", {
+contextBridge.exposeInMainWorld("lockasaur", {
     app: {
         getInfo: () => ipcRenderer.invoke("app:info")
     },
@@ -24,7 +24,7 @@ contextBridge.exposeInMainWorld("cryptox", {
         }
     },
     dialog: {
-        openFiles: () => ipcRenderer.invoke("dialog:open-files")
+        openFiles: kind => ipcRenderer.invoke("dialog:open-files", kind)
     },
     menu: {
         onOpenFile: callback => {
@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld("cryptox", {
         ready: () => ipcRenderer.invoke("files:renderer-ready"),
         getPathForFile: file => webUtils.getPathForFile(file),
         confirmDeleteEncrypted: path => ipcRenderer.invoke("files:confirm-delete-encrypted", path),
+        confirmDeleteOriginal: path => ipcRenderer.invoke("files:confirm-delete-original", path),
         onOpenFile: callback => {
             const listener = (_, file) => callback(file);
             ipcRenderer.on("files:open-file", listener);

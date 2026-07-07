@@ -524,7 +524,7 @@ export default class Crypto {
      * @return {String}
      */
     _tempOutputPath(finalPath) {
-        return path.join(path.dirname(finalPath), `.cryptox-part-${crypto.randomBytes(8).toString("hex")}`);
+        return path.join(path.dirname(finalPath), `.lockasaur-part-${crypto.randomBytes(8).toString("hex")}`);
     }
 
     /**

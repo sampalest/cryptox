@@ -4,32 +4,23 @@
     :class="'lk-lock-' + lockState"
     :style="{ width: size + 'px', height: boxHeight + 'px' }"
     aria-hidden="true"
-  >
-    <img
-      v-if="isClosed"
-      class="lk-lock-closed"
-      src="@/assets/lockasaur-closed.png"
-      alt=""
-      :style="{ width: closedWidth + 'px' }"
-    >
-    <div v-else class="lk-lock-open" v-html="lockSvg"></div>
-  </div>
+    v-html="svg"
+  ></div>
 </template>
 <script>
-// Two artworks, one per state, so each looks right:
-//  - locked/locking uses lockasaur-closed.png, which has a genuine STRAIGHT
-//    shackle. The open SVG's shackle is an asymmetric open hook (short arrow-
-//    tipped right leg), so no rotation can turn it into a straight closed loop.
-//  - open/unlocking uses lockasaur-open.svg, whose #Arco shackle springs open.
-import lockSvg from "@/assets/lockasaur-open.svg?raw";
+// One artwork for every state: the SVG is inlined via ?raw + v-html (static
+// build-time content) so CSS can reach the #Arco shackle group and pose it by
+// a vertical translation alone. 0 is the open hook; dropping it straight down
+// (see $closed-drop in the styles) sinks the arrow-tipped right leg behind the
+// body so the loop reads shut. No image swap ever happens between states.
+// The #Arco id must sit on a group with NO transform attribute (a CSS
+// transform replaces the attribute instead of composing with it); the export's
+// positioning matrix lives on a parent wrapper group. Re-exports of the asset
+// must preserve that structure.
+import lockSvg from "@/assets/lockasaur-lock.svg?raw";
 
-// The open SVG artwork fills its 841x1068 viewBox, but the closed PNG carries
-// transparent padding (its art spans only ~59.6% of the 560px canvas width, by
-// alpha bounding box). The root box is sized to the open artwork and the closed
-// image is upscaled to compensate, so swapping states never changes the visual
-// lock size or the layout box.
-const OPEN_ASPECT = 1068 / 841;
-const CLOSED_ART_WIDTH_FRAC = 0.5964;
+// The artwork fills its 1804x2407 viewBox.
+const ASPECT = 2407 / 1804;
 
 export default {
     name: "LockasaurLock",
@@ -45,52 +36,26 @@ export default {
         }
     },
     computed: {
-        isClosed() {
-            return this.lockState === "locking" || this.lockState === "locked";
-        },
         boxHeight() {
-            return Math.round(this.size * OPEN_ASPECT);
+            return Math.round(this.size * ASPECT);
         },
-        closedWidth() {
-            return Math.round(this.size / CLOSED_ART_WIDTH_FRAC);
-        },
-        lockSvg() {
+        svg() {
             return lockSvg;
         }
     }
 };
 </script>
 <style lang="scss" scoped>
+// The shackle pose for locked/locking: enough straight-down travel (in SVG
+// user units, so it scales with the artwork) that the open hook's right leg
+// sinks behind the lock body and the loop reads closed.
+$closed-drop: 80px;
+
 .lk-lock {
     display: flex;
     align-items: center;
     justify-content: center;
     line-height: 0;
-}
-
-.lk-lock-closed {
-    display: block;
-    height: auto;
-    flex: none;
-    filter: drop-shadow(0 12px 20px rgba(7, 102, 229, 0.3));
-}
-
-// Locking (encrypt success): the closed lock fades in while settling into
-// place with a soft "thunk", no harsh bounce.
-.lk-lock-locking .lk-lock-closed {
-    transform-origin: 50% 35%;
-    animation: lockThunk 1.5s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes lockThunk {
-    0% { transform: translateY(-14px) scale(0.97); opacity: 0; }
-    40% { opacity: 1; }
-    70% { transform: translateY(2px) scale(1.015); }
-    100% { transform: translateY(0) scale(1); }
-}
-
-.lk-lock-open {
-    width: 100%;
 
     :deep(svg) {
         width: 100%;
@@ -100,30 +65,32 @@ export default {
         filter: drop-shadow(0 12px 20px rgba(7, 102, 229, 0.3));
     }
 
-    :deep(#Arco) {
-        transform-box: fill-box;
-        transform-origin: 9% 52%;
-    }
 }
 
-// Unlocking (decrypt success): the open artwork fades in over the closed one
-// while the shackle springs open (from a near-closed pose up and out).
-.lk-lock-unlocking .lk-lock-open {
-    animation: lockSwapIn 0.35s ease-out both;
+.lk-lock-locked :deep(#Arco) {
+    transform: translateY($closed-drop);
 }
 
+// Locking (encrypt success): the shackle drops down past the closed pose and
+// settles shut with a soft overshoot.
+.lk-lock-locking :deep(#Arco) {
+    animation: arcoLock 0.9s ease-in-out both;
+}
+
+@keyframes arcoLock {
+    0% { transform: translateY(0); }
+    70% { transform: translateY($closed-drop + 9px); }
+    100% { transform: translateY($closed-drop); }
+}
+
+// Unlocking (decrypt success): the shackle springs up from the closed pose.
 .lk-lock-unlocking :deep(#Arco) {
     animation: arcoUnlock 0.9s ease-in-out both;
 }
 
-@keyframes lockSwapIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
 @keyframes arcoUnlock {
-    0% { transform: rotate(10deg); }
-    68% { transform: rotate(-6deg); }
-    100% { transform: rotate(0deg); }
+    0% { transform: translateY($closed-drop); }
+    68% { transform: translateY(-12px); }
+    100% { transform: translateY(0); }
 }
 </style>

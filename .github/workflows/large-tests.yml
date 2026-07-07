@@ -34,8 +34,8 @@ jobs:
       - name: 🐘 Run large payload tests
         run: npm run test:large
         env:
-          CRYPTOX_LARGE_SIZE_MB: ${{ inputs.size_mb || '1024' }}
-          CRYPTOX_METRICS_FILE: large-metrics.md
+          LOCKASAUR_LARGE_SIZE_MB: ${{ inputs.size_mb || '1024' }}
+          LOCKASAUR_METRICS_FILE: large-metrics.md
       - name: 📊 Publish metrics to job summary
         if: always()
         shell: bash

@@ -9,7 +9,7 @@ describe("OperationRegistry", () => {
     const stubCrypto = () => ({ cancel: jest.fn() });
 
     beforeEach(() => {
-        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cryptox-ops-"));
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "lockasaur-ops-"));
     });
 
     afterEach(() => {

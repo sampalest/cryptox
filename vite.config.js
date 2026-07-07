@@ -13,7 +13,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf8
 // dist/index.html never carries the dev websocket origins (APP-06).
 function devCspHmr() {
     return {
-        name: "cryptox-dev-csp-hmr",
+        name: "lockasaur-dev-csp-hmr",
         apply: "serve",
         transformIndexHtml(html) {
             return html.replace(

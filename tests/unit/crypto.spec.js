@@ -111,7 +111,7 @@ async function writeCtx1File(destPath, password, payload, { flags = 0, metaOverr
  * must remove these, so tests assert the list is empty afterwards.
  */
 function leftoverTempNames(dir) {
-    return fs.readdirSync(dir).filter(name => name.startsWith(".cryptox-"));
+    return fs.readdirSync(dir).filter(name => name.startsWith(".lockasaur-"));
 }
 
 /** Parse the header of a CTX1 file written by encrypt(). */
@@ -135,7 +135,7 @@ describe("Crypto", () => {
     let acquiredDirs;
 
     beforeEach(() => {
-        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cryptox-test-"));
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "lockasaur-test-"));
         acquiredDirs = [];
         const realAcquire = TempManager.acquire.bind(TempManager);
         jest.spyOn(TempManager, "acquire").mockImplementation(async (...args) => {
@@ -154,7 +154,7 @@ describe("Crypto", () => {
     it("encrypts and decrypts a .dino file with the same password", async () => {
         const sourcePath = path.join(tempDir, "sample.txt");
         const encryptedPath = path.join(tempDir, "sample.dino");
-        fs.writeFileSync(sourcePath, "hello cryptox");
+        fs.writeFileSync(sourcePath, "hello lockasaur");
 
         await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
 
@@ -163,7 +163,7 @@ describe("Crypto", () => {
         fs.unlinkSync(sourcePath);
         await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
 
-        expect(fs.readFileSync(sourcePath, "utf-8")).toBe("hello cryptox");
+        expect(fs.readFileSync(sourcePath, "utf-8")).toBe("hello lockasaur");
     });
 
     it("round-trips binary content byte for byte", async () => {
@@ -184,7 +184,7 @@ describe("Crypto", () => {
     it("rejects when decrypting with the wrong password", async () => {
         const sourcePath = path.join(tempDir, "sample.txt");
         const encryptedPath = path.join(tempDir, "sample.dino");
-        fs.writeFileSync(sourcePath, "hello cryptox");
+        fs.writeFileSync(sourcePath, "hello lockasaur");
 
         await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
         fs.unlinkSync(sourcePath);
@@ -201,7 +201,7 @@ describe("Crypto", () => {
 
     it("writes the CTX1 format and never the old layouts", async () => {
         const sourcePath = path.join(tempDir, "sample.txt");
-        const plaintext = "hello cryptox";
+        const plaintext = "hello lockasaur";
         fs.writeFileSync(sourcePath, plaintext);
 
         await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
@@ -230,8 +230,8 @@ describe("Crypto", () => {
     it("uses a different random salt per file", async () => {
         const firstSource = path.join(tempDir, "first.txt");
         const secondSource = path.join(tempDir, "second.txt");
-        fs.writeFileSync(firstSource, "hello cryptox");
-        fs.writeFileSync(secondSource, "hello cryptox");
+        fs.writeFileSync(firstSource, "hello lockasaur");
+        fs.writeFileSync(secondSource, "hello lockasaur");
 
         await new Crypto("same password").encrypt(new FileManager(firstSource), { value: 0 }, {});
         await new Crypto("same password").encrypt(new FileManager(secondSource), { value: 0 }, {});
@@ -369,7 +369,7 @@ describe("Crypto", () => {
         // Snapshot, not bare non-existence: a stale dir left by old versions
         // on the host must not fail the test, only (re)creating it should. The
         // legacy fixed dir lived at <tmp>/cryptox; the current code only ever
-        // makes per-operation mkdtemp "cryptox-<random>" dirs, so this stays free.
+        // makes per-operation mkdtemp "lockasaur-<random>" dirs, so this stays free.
         const legacyGlobalTmp = path.join(os.tmpdir(), "cryptox");
         const hadLegacyGlobalTmp = fs.existsSync(legacyGlobalTmp);
 
@@ -418,7 +418,7 @@ describe("Crypto", () => {
         expect(acquiredDirs).toHaveLength(2);
         expect(acquiredDirs[0]).not.toBe(acquiredDirs[1]);
         for (const dir of acquiredDirs) {
-            expect(path.basename(dir)).toMatch(/^cryptox-/);
+            expect(path.basename(dir)).toMatch(/^lockasaur-/);
             expect(fs.existsSync(dir)).toBe(false);
         }
 
@@ -733,7 +733,7 @@ describe("Crypto", () => {
         // streams (and unrelated tests) untouched.
         const realCreateWriteStream = fs.createWriteStream.bind(fs);
         jest.spyOn(fs, "createWriteStream").mockImplementation((target, options) => {
-            if (!String(target).includes(".cryptox-part-")) return realCreateWriteStream(target, options);
+            if (!String(target).includes(".lockasaur-part-")) return realCreateWriteStream(target, options);
             return new Writable({
                 write(chunk, encoding, callback) {
                     callback(new Error("disk full"));
@@ -876,7 +876,7 @@ describe("Crypto", () => {
         it("aborts an encryption cancelled before it starts", async () => {
             const sourcePath = path.join(tempDir, "sample.txt");
             const encryptedPath = path.join(tempDir, "sample.dino");
-            fs.writeFileSync(sourcePath, "hello cryptox");
+            fs.writeFileSync(sourcePath, "hello lockasaur");
 
             // Proxy for a cancel arriving during an uninterruptible step (the
             // synchronous KDF): the next checkpoint must abort the operation.
@@ -906,7 +906,7 @@ describe("Crypto", () => {
         it("is idempotent and a no-op after the operation completed", async () => {
             const sourcePath = path.join(tempDir, "sample.txt");
             const encryptedPath = path.join(tempDir, "sample.dino");
-            fs.writeFileSync(sourcePath, "hello cryptox");
+            fs.writeFileSync(sourcePath, "hello lockasaur");
 
             const cryptoOp = new Crypto("correct horse");
             await cryptoOp.encrypt(new FileManager(sourcePath), { value: 0 }, {});
@@ -921,7 +921,7 @@ describe("Crypto", () => {
 
             fs.unlinkSync(sourcePath);
             await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
-            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("hello cryptox");
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("hello lockasaur");
         });
 
         it("releases the operation temp directory when a directory encrypt is cancelled", async () => {

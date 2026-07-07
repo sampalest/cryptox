@@ -84,12 +84,14 @@ export default {
     gap: 6px;
     pointer-events: none;
     border-radius: 28px;
-    /* Crystal glass: a more transparent surface with a diagonal light sheen on
-       top, a stronger blur/saturation, and a rim highlight plus inner glow so
-       the panel catches light like polished glass floating over the content. */
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.04) 62%), var(--surface);
-    backdrop-filter: saturate(1.9) blur(30px);
-    -webkit-backdrop-filter: saturate(1.9) blur(30px);
+    /* Crystal glass: the tint is kept light (well under half opacity) on purpose
+       so the blur actually reads, the blurred dino and background show through
+       the panel instead of being masked by a milky fill. A diagonal light sheen,
+       strong blur/saturation and a rim highlight plus inner glow let it catch
+       light like polished glass floating over the content. */
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.08) 62%), rgba(255, 255, 255, 0.16);
+    backdrop-filter: saturate(1.9) blur(34px);
+    -webkit-backdrop-filter: saturate(1.9) blur(34px);
     border: 1px solid var(--glass-edge);
     box-shadow: inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 rgba(255, 255, 255, 0.16), inset 0 0 44px rgba(255, 255, 255, 0.1), var(--dialog-shadow);
     opacity: 1;
@@ -98,6 +100,12 @@ export default {
     &.hidden {
         opacity: 0;
     }
+}
+
+:global(#app.dark) .lk-drop {
+    /* Same intent in dark mode: a faint dark tint plus a soft top sheen keeps the
+       glass transparent enough for the blur behind it to show. */
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02) 62%), rgba(24, 28, 36, 0.26);
 }
 
 .lk-drop-icon {

@@ -22,7 +22,7 @@ Entry point of the main process (bundled to `dist-electron/background.cjs`, the 
 - `failure(code, message)`: builds the structured failure result `{ ok: false, code, message }` returned over IPC.
 - `toCryptoFailure(error, fallbackMessage)`: maps a thrown error to a structured failure. `IpcValidationError` keeps its code/message; `PathBusyError` becomes `OPERATION_FAILED` with a fixed string; anything else logs only the error name and returns the fallback message.
 - `runRegisteredOperation(operationId, run, fallbackMessage)`: wraps an operation already registered in `OperationRegistry`. Resolves `{ ok: true, cancelled: false }` on success, `{ ok: true, cancelled: true }` on `CancelledError`, a structured failure otherwise, and always calls `OperationRegistry.finish(operationId)` in `finally`.
-- `runSmokeTest()`: only under `CRYPTOX_SMOKE_TEST`. Verifies `window.cryptox` exists in the renderer (which proves the preload bridge works under `sandbox: true`) and that `window.open` does not create a second window, then exits 0/1; used by `tests/e2e/smoke.js`.
+- `runSmokeTest()`: only under `LOCKASAUR_SMOKE_TEST`. Verifies `window.lockasaur` exists in the renderer (which proves the preload bridge works under `sandbox: true`) and that `window.open` does not create a second window, then exits 0/1; used by `tests/e2e/smoke.js`.
 
 ### App lifecycle handlers
 
@@ -37,12 +37,13 @@ All handlers live at module scope and gate on `isTrustedSender(event, win)` as t
 
 - `files:renderer-ready`: `isTrustedSender`, then marks the renderer ready, flushes queued open-file events, triggers the smoke test when enabled.
 - `app:info`: returns `{ locale, name, platform }` (or `undefined` for an untrusted sender).
-- `dialog:open-files`: native open dialog (files and directories), returns the selected paths (or `[]` for an untrusted sender).
+- `dialog:open-files`: native open dialog, returns the selected paths. Takes a kind validated by `normalizeOpenDialogKind`: `"files"` (the default when the argument is omitted, e.g. by the macOS menu) or `"folder"`. `"folder"` shows a directory picker; `"files"` shows a file picker that on macOS also allows directories (one dialog can do both there), while Windows/Linux degrade combined pickers to folder-only, so `"files"` stays file-only on those platforms and Home offers a separate Select Folder button. Both kinds allow multi-selection. Returns `[]` for an untrusted sender or an unrecognized kind.
 - `shell:open-external`: opens a URL after `validateExternalUrl` (https + hardcoded allowlist only).
-- `crypto:encrypt`: trust check, `normalizeCryptoPayload`, `assertEncryptSource`, then registers the operation locking the source path and the predicted `<name>.dino` output path, and runs `Crypto.encrypt`. Progress and status are pushed back on `crypto:progress` / `crypto:status` with the operationId attached.
+- `crypto:encrypt`: trust check, `normalizeCryptoPayload`, `assertEncryptSource`, then registers the operation locking the source path and the predicted `<name>.dino` output path, and runs `Crypto.encrypt`. Progress and status are pushed back on `crypto:progress` / `crypto:status` with the operationId attached. On a fully completed (not cancelled, not failed) encrypt, the source path is recorded in the module-level `deletableOriginals` set, making it eligible for one `files:confirm-delete-original` prompt.
 - `crypto:decrypt`: same shape with `assertDecryptSource`; only the input path is locked (the output name is unknown until the header is parsed, and output placement is atomic). Fallback failure message is the fixed wrong-password string.
 - `crypto:cancel`: trust check + `validateOperationId`, then `OperationRegistry.cancel`. Resolves `{ ok: true, cancelled: <bool> }`; a late cancel for a finished id resolves `cancelled: false`.
 - `files:confirm-delete-encrypted`: `validateDeletePath` (must end in `.dino` or the legacy `.ctx`), native confirm dialog defaulting to Keep, unlinks only on explicit Delete. Returns whether the file was deleted.
+- `files:confirm-delete-original`: the post-encrypt mirror of the prompt above. `validateOriginalDeletePath` against the `deletableOriginals` set (paths recorded by `crypto:encrypt` on success); the entry is consumed before the dialog, so a path can be prompted for at most once per completed encrypt. Native confirm dialog defaulting to Keep; on explicit Delete it re-lstats the target, refuses symlinks and anything that is not a regular file or directory, then removes it permanently with `fs.rm({ recursive: true })` (deliberately not the system trash: parked plaintext would defeat the encryption). Returns whether the original was deleted.
 - `log:error`: writes a renderer-supplied message to electron-log.
 
 ## src/main/ipcValidation.js
@@ -50,10 +51,12 @@ All handlers live at module scope and gate on `isTrustedSender(event, win)` as t
 Pure validation helpers shared by the IPC handlers. All throw on invalid input; crypto-payload failures throw `IpcValidationError` with a stable code from `Constants.CRYPTO_ERROR_CODES`.
 
 - `validateDeletePath(value)`: non-empty string ending in one of `Constants.ENCRYPTED_POINT_EXTS` (`.dino` or the legacy `.ctx`), otherwise throws a fixed-string error. Gate for the delete handler.
+- `validateOriginalDeletePath(value, allowedPaths)`: non-empty string that is a member of the caller-owned `allowedPaths` set, otherwise throws a fixed-string error (the path never appears in it). Gate for the delete-original handler; membership, not extension, is the allowlist, because originals can have any name.
 - `validateExternalUrl(value)`: parses the URL, requires `https:` and membership in `ALLOWED_EXTERNAL_URLS` (the two GitHub repo URLs); returns the normalized href without a trailing slash.
 - `isTrustedSender(event, win)`: true only when the event sender is exactly the app window's own `webContents` and the window is alive. Rejects devtools, other windows, webviews.
 - `normalizeCryptoPayload(payload)`: requires `{ file: { path }, password, operationId }` with non-empty string path and password; returns `{ filePath, password, operationId }` with the id validated.
 - `validateOperationId(value)`: must match `/^[A-Za-z0-9_-]{1,64}$/`; returns it.
+- `normalizeOpenDialogKind(value)`: allowlist for the open-dialog kind: `"files"` and `"folder"` pass through, `undefined` defaults to `"files"`, anything else returns `null` (the handler then answers with an inert `[]` instead of throwing).
 - `statSource(filePath)` (internal): lstats (does NOT follow symlinks, matching `Utils.isDirectory`) with fixed-string errors (`FILE_NOT_FOUND` for ENOENT/ENOTDIR, `OPERATION_FAILED` otherwise). The path never appears in the message.
 - `assertEncryptSource(filePath)`: must be a regular file or directory and must not already end in `.dino` or `.ctx` (both rejected, or a legacy file could be re-encrypted into a nested `.ctx.dino`). Symlinks are rejected (lstat), so a symlinked source can never be encrypted as its link target.
 - `assertDecryptSource(filePath)`: must be a regular file (lstat, so symlinks are rejected) and end in `.dino` or the legacy `.ctx`.

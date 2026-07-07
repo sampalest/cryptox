@@ -9,8 +9,8 @@ import TempManager from "@main/temp.js";
 // Large-payload suite: generates ~1 GB inputs and verifies the UI contract
 // (progress/status event stream) against real output visibility on disk.
 // Excluded from test:unit; run with `npm run test:large`. Size is overridable
-// for quicker local runs: CRYPTOX_LARGE_SIZE_MB=128 npm run test:large.
-const SIZE_MB = parseInt(process.env.CRYPTOX_LARGE_SIZE_MB || "1024", 10);
+// for quicker local runs: LOCKASAUR_LARGE_SIZE_MB=128 npm run test:large.
+const SIZE_MB = parseInt(process.env.LOCKASAUR_LARGE_SIZE_MB || "1024", 10);
 const CHUNK_MB = 16;
 const PASSWORD = "correct horse battery staple";
 
@@ -118,7 +118,7 @@ describe(`large payloads (${SIZE_MB} MB) on ${process.platform}`, () => {
     let workDir;
 
     beforeEach(() => {
-        workDir = fs.mkdtempSync(path.join(os.tmpdir(), "cryptox-large-"));
+        workDir = fs.mkdtempSync(path.join(os.tmpdir(), "lockasaur-large-"));
     });
 
     afterEach(() => {
@@ -128,7 +128,7 @@ describe(`large payloads (${SIZE_MB} MB) on ${process.platform}`, () => {
 
     afterAll(() => {
         const lines = [
-            `### Cryptox large payload metrics (${SIZE_MB} MB, ${process.platform} ${os.arch()}, Node ${process.version})`,
+            `### Lockasaur large payload metrics (${SIZE_MB} MB, ${process.platform} ${os.arch()}, Node ${process.version})`,
             "",
             "| Operation | Total | KDF | Tar | Finishing | Extract | Progress events |",
             "| --- | --- | --- | --- | --- | --- | --- |",
@@ -139,8 +139,8 @@ describe(`large payloads (${SIZE_MB} MB) on ${process.platform}`, () => {
             ""
         ];
         console.log(lines.join("\n"));
-        if (process.env.CRYPTOX_METRICS_FILE) {
-            fs.writeFileSync(process.env.CRYPTOX_METRICS_FILE, lines.join("\n"));
+        if (process.env.LOCKASAUR_METRICS_FILE) {
+            fs.writeFileSync(process.env.LOCKASAUR_METRICS_FILE, lines.join("\n"));
         }
     });
 

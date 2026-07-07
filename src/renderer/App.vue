@@ -34,7 +34,7 @@ export default {
         return { theme, ui: useUiStore() };
     },
     async beforeMount() {
-        const appInfo = await window.cryptox.app.getInfo();
+        const appInfo = await window.lockasaur.app.getInfo();
         this.isMac = appInfo.platform === "darwin";
         this.isFrameless = appInfo.platform === "win32" || appInfo.platform === "linux";
     }

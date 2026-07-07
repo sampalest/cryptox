@@ -1,19 +1,17 @@
 <br>
 <div align="center">
-<img src="screenshots/logo.png" width="400"/>
+<img src="screenshots/logo.svg" width="800"/>
 <p><> with ❤️ by Sam</p>
 </div>
 <hr>
 
-## Version 2.0.0
-
 ## Description
 * Lockasaur: simple app to encrypt files and folders with a password (encryption with bite)
-* Encrypted files use the `.dino` extension; files from older Cryptox versions (`.ctx`) still decrypt
-* Runs on macOS, Windows, and Linux
+* Encrypted files use the `.dino` extension; files from older releases (`.ctx`) still decrypt
+* Runs on macOS, Windows, and Linux (x64 and arm64)
 
 ## Install
-- Download latest release from https://github.com/sampalest/cryptox/releases
+- Download the latest release from https://github.com/sampalest/cryptox/releases
 
 Beta builds are not code signed:
 
@@ -49,7 +47,7 @@ npm run test:large
 
 `test:e2e` runs a real Electron smoke test for startup, renderer load, and preload bridge availability.
 
-`test:large` generates a 1 GB file and a 1 GB folder and verifies the UI progress/status contract against real output visibility, printing timing metrics. Override the payload size with `CRYPTOX_LARGE_SIZE_MB` (e.g. `CRYPTOX_LARGE_SIZE_MB=128 npm run test:large`). The "Large payload tests" GitHub Actions workflow runs this suite on Linux, macOS and Windows via manual dispatch.
+`test:large` generates a 1 GB file and a 1 GB folder and verifies the UI progress/status contract against real output visibility, printing timing metrics. Override the payload size with `LOCKASAUR_LARGE_SIZE_MB` (e.g. `LOCKASAUR_LARGE_SIZE_MB=128 npm run test:large`). The "Large payload tests" GitHub Actions workflow runs this suite on Linux, macOS and Windows via manual dispatch.
 
 ### Build and packaging
 
@@ -64,8 +62,8 @@ The renderer is built with Vite into `dist/`. Electron main and preload bundles 
 See [CHANGELOG.md](CHANGELOG.md) for release history and upgrade notes.
 
 ## Use this app
-Just drag file or folder you want to encrypt, set a password and that's it. Easy!
-Support all files.
+Just drag the file or folder you want to encrypt, set a password and that's it. Easy!
+All file types are supported.
 
 <div align="center">
 <img src="screenshots/encrypt.gif" width="600"/>
@@ -77,14 +75,12 @@ Support all files.
 - Vue.js (Pinia, Vue Router)
 - libsodium (Argon2id, AES-256-GCM)
 - tar-fs
-- Materialize
-- Animate.css
 - Node libs
 
 ## Author
 Samuel P.E.
 
 ## License
-**Lockasaur** (formerly Cryptox) is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+**Lockasaur** is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
 
 It is free for personal and noncommercial use: you can use it, modify it, share it, and contribute. Commercial use by companies is not permitted. See the full terms in the [LICENSE](LICENSE) file or at [polyformproject.org](https://polyformproject.org/licenses/noncommercial/1.0.0/).

@@ -25,10 +25,10 @@ function deferred() {
     return { promise, resolve };
 }
 
-function stubCryptox(overrides) {
+function stubLockasaur(overrides) {
     global.window = {
         crypto: { randomUUID: () => `op-${Math.random().toString(16).slice(2)}` },
-        cryptox: Object.assign({
+        lockasaur: Object.assign({
             crypto: {
                 onProgress: jest.fn(() => jest.fn()),
                 onStatus: jest.fn(() => jest.fn()),
@@ -37,7 +37,8 @@ function stubCryptox(overrides) {
                 cancel: jest.fn(() => Promise.resolve())
             },
             files: {
-                confirmDeleteEncrypted: jest.fn(() => Promise.resolve())
+                confirmDeleteEncrypted: jest.fn(() => Promise.resolve()),
+                confirmDeleteOriginal: jest.fn(() => Promise.resolve())
             },
             log: { error: jest.fn() }
         }, overrides)
@@ -46,7 +47,7 @@ function stubCryptox(overrides) {
 
 describe("filecryto mixin", () => {
     beforeEach(() => {
-        stubCryptox();
+        stubLockasaur();
         global.alert = jest.fn();
     });
 
@@ -72,7 +73,7 @@ describe("filecryto mixin", () => {
         it("logs only the stable code, never the result message", () => {
             const ctx = makeContext([]);
             ctx.handleCryptoFailure("decrypt", { code: "OPERATION_FAILED", message: "/tmp/secret-path" });
-            for (const call of global.window.cryptox.log.error.mock.calls) {
+            for (const call of global.window.lockasaur.log.error.mock.calls) {
                 expect(String(call[0])).not.toContain("/tmp/secret-path");
             }
         });
@@ -83,7 +84,7 @@ describe("filecryto mixin", () => {
             const first = deferred();
             const second = deferred();
             const results = [first.promise, second.promise];
-            global.window.cryptox.crypto.decrypt = jest.fn(() => results.shift());
+            global.window.lockasaur.crypto.decrypt = jest.fn(() => results.shift());
 
             const files = [{ path: "/a.ctx" }, { path: "/b.ctx" }];
             const ctx = makeContext(files);
@@ -100,12 +101,49 @@ describe("filecryto mixin", () => {
         });
 
         it("does not count a cancelled decrypt as a completion", async () => {
-            global.window.cryptox.crypto.decrypt = jest.fn(() => Promise.resolve({ ok: true, cancelled: true }));
+            global.window.lockasaur.crypto.decrypt = jest.fn(() => Promise.resolve({ ok: true, cancelled: true }));
             const files = [{ path: "/a.ctx" }];
             const ctx = makeContext(files);
             ctx.decryptFile(files[0]);
             await new Promise(res => setImmediate(res));
             expect(ctx.finish).toBe(false);
+        });
+    });
+
+    describe("post-encrypt delete-original prompt", () => {
+        it("offers to delete the original after a successful encrypt", async () => {
+            const files = [{ path: "/a.txt" }];
+            const ctx = makeContext(files);
+            ctx.encryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.window.lockasaur.files.confirmDeleteOriginal).toHaveBeenCalledWith("/a.txt");
+            expect(ctx.finish).toBe(true);
+        });
+
+        it("never prompts for a cancelled or failed encrypt", async () => {
+            global.window.lockasaur.crypto.encrypt = jest.fn(() => Promise.resolve({ ok: true, cancelled: true }));
+            const files = [{ path: "/a.txt" }];
+            let ctx = makeContext(files);
+            ctx.encryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.window.lockasaur.files.confirmDeleteOriginal).not.toHaveBeenCalled();
+
+            global.window.lockasaur.crypto.encrypt = jest.fn(() => Promise.resolve({ ok: false, code: "OPERATION_FAILED" }));
+            ctx = makeContext(files);
+            ctx.encryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.window.lockasaur.files.confirmDeleteOriginal).not.toHaveBeenCalled();
+        });
+
+        it("does not report a failed prompt as an encrypt error", async () => {
+            global.window.lockasaur.files.confirmDeleteOriginal = jest.fn(() => Promise.reject(new Error("boom")));
+            const files = [{ path: "/a.txt" }];
+            const ctx = makeContext(files);
+            ctx.encryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.alert).not.toHaveBeenCalled();
+            expect(ctx.cancel).not.toHaveBeenCalled();
+            expect(ctx.finish).toBe(true);
         });
     });
 

@@ -6,9 +6,11 @@ import {
     assertEncryptSource,
     isTrustedSender,
     normalizeCryptoPayload,
+    normalizeOpenDialogKind,
     validateDeletePath,
     validateExternalUrl,
-    validateOperationId
+    validateOperationId,
+    validateOriginalDeletePath
 } from "@main/ipcValidation.js";
 
 async function expectCode(promise, code) {
@@ -50,6 +52,21 @@ describe("IPC validation", () => {
             password: "correct horse",
             operationId: ""
         })).toThrow("operation id");
+    });
+
+    describe("normalizeOpenDialogKind", () => {
+        it("accepts the allowlisted kinds and defaults undefined to files", () => {
+            expect(normalizeOpenDialogKind("files")).toBe("files");
+            expect(normalizeOpenDialogKind("folder")).toBe("folder");
+            expect(normalizeOpenDialogKind(undefined)).toBe("files");
+        });
+
+        it("returns null for anything outside the allowlist", () => {
+            const cases = ["Files", "folders", "openDirectory", "", 42, null, {}, []];
+            for (const value of cases) {
+                expect(normalizeOpenDialogKind(value)).toBeNull();
+            }
+        });
     });
 
     describe("validateOperationId", () => {
@@ -104,7 +121,7 @@ describe("IPC validation", () => {
         let tempDir;
 
         beforeEach(() => {
-            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cryptox-ipc-"));
+            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "lockasaur-ipc-"));
         });
 
         afterEach(() => {
@@ -206,6 +223,44 @@ describe("IPC validation", () => {
             const error = (() => {
                 try {
                     validateDeletePath("/tmp/some-user-path.txt");
+                    return null;
+                } catch (e) {
+                    return e;
+                }
+            })();
+            expect(error).not.toBeNull();
+            expect(error.message).not.toContain("some-user-path");
+        });
+    });
+
+    describe("validateOriginalDeletePath", () => {
+        it("accepts only paths recorded in the allowed set", () => {
+            const allowed = new Set(["/tmp/original.txt"]);
+            expect(validateOriginalDeletePath("/tmp/original.txt", allowed)).toBe("/tmp/original.txt");
+        });
+
+        it("rejects paths outside the allowed set, regardless of extension", () => {
+            const allowed = new Set(["/tmp/original.txt"]);
+            expect(() => validateOriginalDeletePath("/tmp/other.txt", allowed)).toThrow("just-encrypted");
+            expect(() => validateOriginalDeletePath("/tmp/original.txt/../original.txt", allowed)).toThrow("just-encrypted");
+        });
+
+        it("rejects everything when the allowed set is empty or missing", () => {
+            expect(() => validateOriginalDeletePath("/tmp/original.txt", new Set())).toThrow("just-encrypted");
+            expect(() => validateOriginalDeletePath("/tmp/original.txt", undefined)).toThrow("just-encrypted");
+        });
+
+        it("rejects non-string and empty paths", () => {
+            const allowed = new Set([""]);
+            for (const value of ["", "   ", 42, null, undefined, {}]) {
+                expect(() => validateOriginalDeletePath(value, allowed)).toThrow();
+            }
+        });
+
+        it("keeps the user-supplied path out of the error message", () => {
+            const error = (() => {
+                try {
+                    validateOriginalDeletePath("/tmp/some-user-path.txt", new Set());
                     return null;
                 } catch (e) {
                     return e;

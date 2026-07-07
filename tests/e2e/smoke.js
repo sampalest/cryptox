@@ -8,7 +8,7 @@ const child = spawn(electronPath, [path.resolve(__dirname, "..", "..")], {
         ...process.env,
         NODE_ENV: "production",
         IS_TEST: "true",
-        CRYPTOX_SMOKE_TEST: "true"
+        LOCKASAUR_SMOKE_TEST: "true"
     }
 });
 

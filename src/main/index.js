@@ -14,9 +14,11 @@ import {
     assertEncryptSource,
     isTrustedSender,
     normalizeCryptoPayload,
+    normalizeOpenDialogKind,
     validateDeletePath,
     validateExternalUrl,
-    validateOperationId
+    validateOperationId,
+    validateOriginalDeletePath
 } from "./ipcValidation.js";
 const isDevelopment = process.env.NODE_ENV !== "production";
 import logger from "electron-log";
@@ -212,7 +214,7 @@ ipcMain.handle("files:renderer-ready", event => {
     if (!isTrustedSender(event, win)) return;
     rendererReady = true;
     flushPendingOpenFiles();
-    if (process.env.CRYPTOX_SMOKE_TEST) {
+    if (process.env.LOCKASAUR_SMOKE_TEST) {
         runSmokeTest();
     }
 });
@@ -236,10 +238,23 @@ ipcMain.handle("window:close", event => {
     win.close();
 });
 
-ipcMain.handle("dialog:open-files", async event => {
+ipcMain.handle("dialog:open-files", async (event, kind) => {
     if (!isTrustedSender(event, win)) return [];
+    const dialogKind = normalizeOpenDialogKind(kind);
+    if (!dialogKind) return [];
+
+    // One dialog can select both files and folders only on macOS; Windows and
+    // Linux degrade ["openFile", "openDirectory"] to a folder-only picker, so
+    // there "files" stays file-only and folders come in via the "folder" kind
+    // (the Select Folder button).
+    const properties = dialogKind === "folder"
+        ? ["openDirectory", "multiSelections"]
+        : process.platform === "darwin"
+            ? ["openFile", "openDirectory", "multiSelections"]
+            : ["openFile", "multiSelections"];
+
     const files = await dialog.showOpenDialog(win, {
-        properties: ["openFile", "openDirectory"],
+        properties,
         filters: [{
             name: "All Files", extensions: ["*"]
         }]
@@ -288,6 +303,12 @@ async function runRegisteredOperation(operationId, run, fallbackMessage) {
     }
 }
 
+// Sources of successfully completed encrypt operations, eligible for the
+// post-encrypt delete prompt. Recorded only by the main process and consumed
+// one prompt per entry, so the renderer can never request deletion of a path
+// it did not just encrypt.
+const deletableOriginals = new Set();
+
 ipcMain.handle("crypto:encrypt", async (event, payload) => {
     if (!isTrustedSender(event, win)) return failure(Codes.SENDER_REJECTED, "Request was rejected.");
     const fallbackMessage = "Encryption failed.";
@@ -312,12 +333,16 @@ ipcMain.handle("crypto:encrypt", async (event, payload) => {
     } catch (error) {
         return toCryptoFailure(error, fallbackMessage);
     }
-    return runRegisteredOperation(operationId, () =>
+    const result = await runRegisteredOperation(operationId, () =>
         crypto.encrypt(normalizedFile, { value: 0 }, {}, {
             onProgress: value => event.sender.send("crypto:progress", { operationId, value }),
             onStatus: status => event.sender.send("crypto:status", { operationId, status })
         }), fallbackMessage
     );
+    // Only a fully completed encrypt makes its source deletable; a cancelled
+    // or failed operation must leave the original untouchable.
+    if (result.ok && !result.cancelled) deletableOriginals.add(filePath);
+    return result;
 });
 
 ipcMain.handle("crypto:decrypt", async (event, payload) => {
@@ -375,6 +400,34 @@ ipcMain.handle("files:confirm-delete-encrypted", async (event, filePath) => {
     return true;
 });
 
+ipcMain.handle("files:confirm-delete-original", async (event, filePath) => {
+    if (!isTrustedSender(event, win)) return false;
+    const target = validateOriginalDeletePath(filePath, deletableOriginals);
+    // Single-use: whatever the user answers, the same path cannot be
+    // prompted for again without another completed encrypt.
+    deletableOriginals.delete(target);
+    const { response } = await dialog.showMessageBox(win, {
+        type: "question",
+        buttons: ["Delete", "Keep"],
+        defaultId: 1,
+        cancelId: 1,
+        title: "Delete original",
+        message: "Encryption successful.",
+        detail: "Do you want to permanently delete the original? The encrypted file will be kept."
+    });
+
+    if (response !== 0) return false;
+
+    // Re-lstat at delete time: the recorded path must still be the regular
+    // file or folder that was encrypted, not a symlink swapped in afterwards.
+    const stats = await fs.promises.lstat(target);
+    if (stats.isSymbolicLink() || (!stats.isFile() && !stats.isDirectory())) return false;
+    // Permanent removal rather than the system trash: parking the plaintext
+    // in the trash would defeat the point of encrypting it.
+    await fs.promises.rm(target, { recursive: true });
+    return true;
+});
+
 ipcMain.handle("log:error", (event, error) => {
     if (!isTrustedSender(event, win)) return;
     logger.error(error);
@@ -383,7 +436,7 @@ ipcMain.handle("log:error", (event, error) => {
 async function runSmokeTest() {
     try {
         const hasBridge = await win.webContents.executeJavaScript(
-            "Boolean(window.cryptox && window.cryptox.app && window.cryptox.crypto && window.cryptox.files)"
+            "Boolean(window.lockasaur && window.lockasaur.app && window.lockasaur.crypto && window.lockasaur.files)"
         );
         if (!hasBridge) {
             throw new Error("Preload bridge is unavailable.");
@@ -393,7 +446,7 @@ async function runSmokeTest() {
         if (BrowserWindow.getAllWindows().length !== 1) {
             throw new Error("Renderer was able to open a new window.");
         }
-        logger.info("Cryptox smoke test passed.");
+        logger.info("Lockasaur smoke test passed.");
         app.exit(0);
     } catch (error) {
         logger.error(error);

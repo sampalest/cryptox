@@ -50,7 +50,7 @@ export default {
     },
     methods: {
         goGithub() {
-            window.cryptox.shell.openExternal("https://github.com/sampalest/cryptox");
+            window.lockasaur.shell.openExternal("https://github.com/sampalest/cryptox");
         },
         onKeydown(event) {
             if (event.key === "Escape") this.ui.closeOverlays();

@@ -76,10 +76,10 @@ export default {
     },
     methods: {
         minimizeWindow() {
-            window.cryptox.window.minimize();
+            window.lockasaur.window.minimize();
         },
         closeWindow() {
-            window.cryptox.window.close();
+            window.lockasaur.window.close();
         }
     }
 };

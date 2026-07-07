@@ -11,18 +11,26 @@
         <div class="lk-pass-fields">
             <div class="lk-input">
                 <svg width="15" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
-                <input type="password" name="password" id="password" v-model="password"
+                <input :type="showPassword ? 'text' : 'password'" name="password" id="password" v-model="password"
                     placeholder="Password"
                     :autocomplete="isDecrypt ? 'current-password' : 'new-password'"
                     autocapitalize="off" autocorrect="off" spellcheck="false"
                     @input="error = ''">
+                <button type="button" class="lk-eye" :aria-label="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword">
+                    <svg v-if="showPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" x2="22" y1="2" y2="22"></line></svg>
+                    <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                </button>
             </div>
             <div v-if="!isDecrypt" class="lk-input">
                 <svg width="15" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
-                <input type="password" name="newpassword" id="newpassword" v-model="newPassword"
+                <input :type="showNewPassword ? 'text' : 'password'" name="newpassword" id="newpassword" v-model="newPassword"
                     placeholder="Retype password"
                     autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"
                     @input="error = ''">
+                <button type="button" class="lk-eye" :aria-label="showNewPassword ? 'Hide password' : 'Show password'" @click="showNewPassword = !showNewPassword">
+                    <svg v-if="showNewPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" x2="22" y1="2" y2="22"></line></svg>
+                    <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                </button>
             </div>
         </div>
         <div v-if="error" class="lk-error">{{ error }}</div>
@@ -49,6 +57,8 @@ export default {
         return {
             password: "",
             newPassword: "",
+            showPassword: false,
+            showNewPassword: false,
             error: ""
         };
     },
@@ -95,6 +105,8 @@ export default {
             } catch (error) {
                 this.password = "";
                 this.newPassword = "";
+                this.showPassword = false;
+                this.showNewPassword = false;
                 this.error = error.message;
             }
         },
@@ -106,6 +118,8 @@ export default {
             // matching the error path above.
             this.password = "";
             this.newPassword = "";
+            this.showPassword = false;
+            this.showNewPassword = false;
         }
     }
 };
@@ -133,9 +147,29 @@ export default {
     flex-shrink: 0;
 }
 
-.lk-input svg {
+.lk-input > svg {
     color: var(--faint);
     flex-shrink: 0;
+}
+
+.lk-eye {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: none;
+    color: var(--faint);
+    cursor: pointer;
+    line-height: 0;
+    flex-shrink: 0;
+    transition: color 0.2s ease;
+
+    &:hover,
+    &:focus-visible {
+        color: var(--text);
+    }
 }
 
 .lk-pass-fields {

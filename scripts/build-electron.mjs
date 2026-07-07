@@ -1,3 +1,8 @@
+// Bundles the Electron main process (src/main/index.js -> dist-electron/background.cjs)
+// and preload (src/preload/index.js -> dist-electron/preload.cjs) as two separate Vite
+// library builds. Everything in package.json dependencies plus Node builtins and
+// electron stays external, so runtime deps must live in dependencies. Invoked by
+// "npm run build:electron" and imported by electron-dev.mjs.
 import { builtinModules } from "node:module";
 import { createRequire } from "node:module";
 import path from "node:path";

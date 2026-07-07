@@ -9,6 +9,16 @@ const ALLOWED_EXTERNAL_URLS = new Set([
     "https://github.com/sampalest/cryptox"
 ]);
 
+// The open-dialog kind is renderer-supplied, so it is allowlisted. Undefined
+// (the menu's plain "open" invoke) means "files"; anything else unexpected
+// returns null and the handler answers with an inert empty selection.
+const OPEN_DIALOG_KINDS = new Set(["files", "folder"]);
+
+export function normalizeOpenDialogKind(value) {
+    if (value === undefined) return "files";
+    return OPEN_DIALOG_KINDS.has(value) ? value : null;
+}
+
 export function validateDeletePath(value) {
     if (typeof value !== "string" || value.trim() === "") {
         throw new TypeError("Delete path must be a non-empty string.");
@@ -18,6 +28,22 @@ export function validateDeletePath(value) {
     // post-decrypt prompt may offer to delete.
     if (!Constants.ENCRYPTED_POINT_EXTS.some(ext => value.endsWith(ext))) {
         throw new Error("Only encrypted files may be deleted.");
+    }
+
+    return value;
+}
+
+// The post-encrypt delete prompt may only target a source path the main
+// process itself recorded from a successfully completed encrypt operation,
+// so a hostile renderer can never steer deletion toward an arbitrary path.
+// The caller owns the recorded set and consumes entries once prompted.
+export function validateOriginalDeletePath(value, allowedPaths) {
+    if (typeof value !== "string" || value.trim() === "") {
+        throw new TypeError("Delete path must be a non-empty string.");
+    }
+
+    if (!allowedPaths || !allowedPaths.has(value)) {
+        throw new Error("Only just-encrypted originals may be deleted.");
     }
 
     return value;

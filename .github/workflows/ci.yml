@@ -155,7 +155,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           # Shipping an unhardened AppImage must fail the build, never warn.
-          CRYPTOX_REQUIRE_APPIMAGE_HARDEN: ${{ runner.os == 'Linux' && '1' || '' }}
+          LOCKASAUR_REQUIRE_APPIMAGE_HARDEN: ${{ runner.os == 'Linux' && '1' || '' }}
       # Each runner produces only its own arch's artifacts; upload them for the
       # release job to aggregate. Foreign globs match nothing (if-no-files-found).
       - name: ⬆️ Upload artifacts

@@ -7,7 +7,7 @@
 // The AppImage layout is the launcher runtime ELF followed by a squashfs at
 // the ELF's end. The runtime bytes of the input artifact are reused verbatim,
 // so the only external tools needed are unsquashfs/mksquashfs. When those are
-// missing the script skips with a warning unless CRYPTOX_REQUIRE_APPIMAGE_HARDEN
+// missing the script skips with a warning unless LOCKASAUR_REQUIRE_APPIMAGE_HARDEN
 // is set (CI sets it on Linux legs so artifacts can never ship unhardened).
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, openSync, writeSync, closeSync } from "node:fs";
@@ -42,7 +42,7 @@ function hardenOne(artifact) {
     const buf = readFileSync(artifact);
     const offset = runtimeLength(buf);
     const runtime = buf.subarray(0, offset);
-    const workDir = mkdtempSync(path.join(os.tmpdir(), "cryptox-appimage-"));
+    const workDir = mkdtempSync(path.join(os.tmpdir(), "lockasaur-appimage-"));
     try {
         const treeDir = path.join(workDir, "squashfs-root");
         execFileSync("unsquashfs", ["-o", String(offset), "-d", treeDir, artifact], { stdio: ["ignore", "ignore", "inherit"] });
@@ -93,7 +93,7 @@ export default function hardenAppImages() {
     }
     if (!toolAvailable("mksquashfs") || !toolAvailable("unsquashfs")) {
         const message = "harden-appimage: squashfs-tools not available; AppImages left with the stock AppRun";
-        if (process.env.CRYPTOX_REQUIRE_APPIMAGE_HARDEN) {
+        if (process.env.LOCKASAUR_REQUIRE_APPIMAGE_HARDEN) {
             throw new Error(message);
         }
         console.warn(`${message} (install squashfs-tools to harden locally)`);
