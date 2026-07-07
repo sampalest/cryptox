@@ -110,6 +110,40 @@ describe("filecryto mixin", () => {
         });
     });
 
+    describe("post-decrypt delete-encrypted prompt", () => {
+        it("offers to delete the encrypted file after a successful decrypt", async () => {
+            const files = [{ path: "/a.dino" }];
+            const ctx = makeContext(files);
+            ctx.decryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.window.lockasaur.files.confirmDeleteEncrypted).toHaveBeenCalledWith("/a.dino");
+            expect(ctx.finish).toBe(true);
+        });
+
+        it("notifies (without failing the decrypt) when the encrypted file could not be deleted", async () => {
+            global.window.lockasaur.files.confirmDeleteEncrypted = jest.fn(() => Promise.resolve({ deleted: false, error: true }));
+            const files = [{ path: "/a.dino" }];
+            const ctx = makeContext(files);
+            ctx.decryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.alert).toHaveBeenCalledTimes(1);
+            // A refused deletion is a notice, not a decrypt error: no cancel, still finishes.
+            expect(ctx.cancel).not.toHaveBeenCalled();
+            expect(ctx.finish).toBe(true);
+        });
+
+        it("does not report a rejected delete prompt as a decrypt error", async () => {
+            global.window.lockasaur.files.confirmDeleteEncrypted = jest.fn(() => Promise.reject(new Error("boom")));
+            const files = [{ path: "/a.dino" }];
+            const ctx = makeContext(files);
+            ctx.decryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.alert).not.toHaveBeenCalled();
+            expect(ctx.cancel).not.toHaveBeenCalled();
+            expect(ctx.finish).toBe(true);
+        });
+    });
+
     describe("post-encrypt delete-original prompt", () => {
         it("offers to delete the original after a successful encrypt", async () => {
             const files = [{ path: "/a.txt" }];

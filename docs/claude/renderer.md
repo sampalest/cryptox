@@ -113,7 +113,7 @@ The renderer side of the crypto contract. Tracks active operation ids (`activeOp
 - `encryptFile(file)` / `decryptFile(file)`: subscribe to progress/status filtered by operationId (tracked via `addHandlers`), invoke the IPC call, then:
   - structured failure (`!result || result.ok === false`) -> `handleCryptoFailure`;
   - `result.cancelled` -> silently ignored (a cancelled operation must never count as success);
-  - success: both kinds increment `fileEvent.counter` and set `finish` only when every selected file is done, after first offering the matching native delete prompt (encrypt: `confirmDeleteOriginal` for the plaintext source; decrypt: `confirmDeleteEncrypted` for the `.dino`/`.ctx` input), its failure isolated and only logged since the crypto operation already succeeded;
+  - success: both kinds increment `fileEvent.counter` and set `finish` only when every selected file is done, after first offering the matching native delete prompt (encrypt: `confirmDeleteOriginal` for the plaintext source; decrypt: `confirmDeleteEncrypted` for the `.dino`/`.ctx` input), its failure isolated and only logged since the crypto operation already succeeded. Decrypt additionally checks the prompt result: `{ error: true }` (the encrypted file could not be removed) shows a dedicated notice so the refused deletion is never mistaken for a decrypt failure nor silently dropped;
   - `.catch` is the transport-level safety net only (logs `IPC_TRANSPORT`, generic alert, cancel);
   - `.finally` untracks the id and releases that operation's two listeners.
 

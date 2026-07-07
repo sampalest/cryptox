@@ -125,9 +125,13 @@ export default {
                     // A cancelled operation must never count as a success.
                     if (result.cancelled) return;
                     // Decryption already succeeded; a failed delete prompt must not be reported
-                    // as a decrypt error, so keep it isolated from the catch below.
+                    // as a decrypt error, so keep it isolated from the catch below. A refused
+                    // deletion (the file could not be removed) is surfaced as its own notice,
+                    // never as a decrypt failure, so the user is not left thinking the app
+                    // silently ignored their choice.
                     try {
-                        await window.lockasaur.files.confirmDeleteEncrypted(file.path);
+                        const res = await window.lockasaur.files.confirmDeleteEncrypted(file.path);
+                        if (res && res.error) alert("The encrypted file could not be deleted. You can remove it manually.");
                     } catch (deleteErr) {
                         window.lockasaur.log.error(deleteErr);
                     }

@@ -430,7 +430,7 @@ ipcMain.handle("crypto:cancel", (event, payload) => {
 });
 
 ipcMain.handle("files:confirm-delete-encrypted", async (event, filePath) => {
-    if (!isTrustedSender(event, win)) return false;
+    if (!isTrustedSender(event, win)) return { deleted: false };
     const target = validateDeletePath(filePath);
     const { response } = await dialog.showMessageBox(win, {
         type: "question",
@@ -442,10 +442,28 @@ ipcMain.handle("files:confirm-delete-encrypted", async (event, filePath) => {
         detail: "Do you want to delete the encrypted file?"
     });
 
-    if (response !== 0) return false;
+    if (response !== 0) return { deleted: false };
 
-    await fs.promises.unlink(target);
-    return true;
+    // The encrypted file is ciphertext, so the system Trash is safe to use
+    // here (unlike the plaintext original in files:confirm-delete-original,
+    // which must be removed permanently). Trash is the native, iCloud- and
+    // permission-aware deletion path: a raw unlink fails on files Finder itself
+    // cannot remove (iCloud-managed, restricted), which previously left the
+    // file silently in place. Fall back to a permanent unlink where Trash is
+    // unavailable (e.g. some Linux setups), and report failure so the renderer
+    // can tell the user rather than pretending the file was removed.
+    try {
+        await shell.trashItem(target);
+        return { deleted: true };
+    } catch (trashError) {
+        try {
+            await fs.promises.unlink(target);
+            return { deleted: true };
+        } catch (unlinkError) {
+            logger.error("files:confirm-delete-encrypted could not remove the file");
+            return { deleted: false, error: true };
+        }
+    }
 });
 
 ipcMain.handle("files:confirm-delete-original", async (event, filePath) => {

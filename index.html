@@ -13,7 +13,12 @@
   <noscript>
     <strong>Lockasaur requires JavaScript to run.</strong>
   </noscript>
-  <div id="app"></div>
+  <!-- Mount container only. It must NOT be id="app": App.vue's root div is
+       id="app" (the CSS-styled visible window), and Vue mounts inside this
+       container, so a duplicate id would make this outer element match every
+       #app style and paint an opaque light background behind the themed one
+       (which broke dark mode). -->
+  <div id="root"></div>
   <script type="module" src="/src/renderer/main.js"></script>
 </body>
 

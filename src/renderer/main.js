@@ -7,4 +7,4 @@ import "./sass/main.scss";
 createApp(App)
     .use(createPinia())
     .use(router)
-    .mount("#app");
+    .mount("#root");

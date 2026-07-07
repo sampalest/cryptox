@@ -102,7 +102,13 @@ export default {
     }
 }
 
-:global(#app.dark) .lk-drop {
+/* Scope the dark override to .lk-drop, not #app. The ancestor #app.dark needs no
+   scope attribute, so a plain descendant selector is correct here; wrapping the
+   ancestor in :global() made the scoped compiler drop the .lk-drop compound and
+   emit a bare "#app.dark { background }" rule, which (id + class) outranked
+   "#app { background: var(--page-bg) }" and painted the whole window with the
+   drop-zone glass in dark mode. */
+#app.dark .lk-drop {
     /* Same intent in dark mode: a faint dark tint plus a soft top sheen keeps the
        glass transparent enough for the blur behind it to show. */
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02) 62%), rgba(24, 28, 36, 0.26);

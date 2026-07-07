@@ -1,0 +1,11 @@
+{
+    "version": "0.0.1",
+    "configurations": [
+        {
+            "name": "renderer-dev",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["run", "serve"],
+            "port": 5173
+        }
+    ]
+}

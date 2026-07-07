@@ -9,8 +9,16 @@
 // 1024 px Icon Composer exports in "design/lockasaur_icon_v2 Exports". Requires macOS with a
 // full Xcode 26+ install (actool understands .icon documents), iconutil and sips; the generated
 // outputs are committed and consumed on every platform.
+//
+// The Icon Composer exports are full-bleed: the rounded-square body fills the whole 1024 canvas.
+// macOS renders the app's own icon (from Assets.car/icns) inside its standard icon grid, insetting
+// the body, but app.dock.setIcon shows a raw PNG as-is and fills the Dock tile with it, so a
+// full-bleed PNG lands ~23% larger than neighboring apps. The runtime variants are therefore
+// inset to ICON_BODY_FRACTION (the body proportion measured off stock macOS 26 app icons: Notes,
+// Maps and Reminders all sit at ~81% of the canvas with a ~9.4% transparent margin), so the Dock
+// icon matches the system. The icns/Assets.car keep the full-bleed art (macOS insets those itself).
 import { execFileSync } from "node:child_process";
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,8 +45,37 @@ for (const required of [iconDocument, ...variants.map(([variant]) => exportFor(v
     }
 }
 
+// The visible body proportion of a stock macOS 26 app icon (measured off Notes,
+// Maps and Reminders: body ~81.3% of the canvas, ~9.4% margin each side).
+const ICON_BODY_FRACTION = 0.815;
+
 const resize = (source, size, out) =>
     execFileSync("sips", ["-z", String(size), String(size), source, "--out", out], { stdio: "ignore" });
+
+// Draws the source scaled to ICON_BODY_FRACTION of a transparent square canvas,
+// centered, so a full-bleed export gains the standard macOS icon margin. sips
+// cannot pad with transparency, so this uses AppKit via JXA (selector names
+// follow the bridge convention: colons dropped, argument labels camel-cased).
+const insetScript = `
+ObjC.import("Cocoa");
+function run(argv) {
+    const inPath = argv[0], outPath = argv[1], size = parseInt(argv[2], 10), frac = parseFloat(argv[3]);
+    const data = $.NSData.dataWithContentsOfFile(inPath);
+    const srcRep = $.NSBitmapImageRep.imageRepWithData(data);
+    const srcW = srcRep.pixelsWide, srcH = srcRep.pixelsHigh;
+    const rep = $.NSBitmapImageRep.alloc.initWithBitmapDataPlanesPixelsWidePixelsHighBitsPerSampleSamplesPerPixelHasAlphaIsPlanarColorSpaceNameBytesPerRowBitsPerPixel(
+        null, size, size, 8, 4, true, false, $.NSCalibratedRGBColorSpace, 0, 0);
+    $.NSGraphicsContext.setCurrentContext($.NSGraphicsContext.graphicsContextWithBitmapImageRep(rep));
+    const body = Math.round(size * frac);
+    const scale = Math.min(body / srcW, body / srcH);
+    const w = Math.round(srcW * scale), h = Math.round(srcH * scale);
+    const x = Math.round((size - w) / 2), y = Math.round((size - h) / 2);
+    srcRep.drawInRectFromRectOperationFractionRespectFlippedHints(
+        $.NSMakeRect(x, y, w, h), $.NSZeroRect, 2, 1.0, false, $.NSDictionary.dictionary);
+    const png = rep.representationUsingTypeProperties(4, $.NSDictionary.dictionary);
+    png.writeToFileAtomically(outPath, true);
+}
+`;
 
 // actool ships only with full Xcode. xcode-select may still point at the
 // CommandLineTools, so fall back to the default Xcode.app location before
@@ -98,12 +135,18 @@ try {
     }
     copyFileSync(compiledCar, path.join(rootDir, "build", "Assets.car"));
 
-    // Runtime picker variants. 512 px keeps the bundle small while staying
-    // sharp at every Dock size (128 pt @2x plus magnification headroom).
+    // Runtime picker/dock variants, inset to the system icon grid (see the
+    // header note). 512 px keeps the bundle small while staying sharp at every
+    // Dock size (128 pt @2x plus magnification headroom).
+    const insetJs = path.join(tempDir, "inset.js");
+    writeFileSync(insetJs, insetScript);
     const appIconsDir = path.join(rootDir, "public", "appicons");
     mkdirSync(appIconsDir, { recursive: true });
     for (const [variant, id] of variants) {
-        resize(exportFor(variant), 512, path.join(appIconsDir, `${id}.png`));
+        execFileSync("osascript", [
+            "-l", "JavaScript", insetJs,
+            exportFor(variant), path.join(appIconsDir, `${id}.png`), "512", String(ICON_BODY_FRACTION)
+        ], { stdio: "ignore" });
     }
 } finally {
     rmSync(tempDir, { recursive: true, force: true });
