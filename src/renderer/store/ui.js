@@ -1,12 +1,11 @@
 import { defineStore } from "pinia";
 
-// In-window overlay visibility (About and Settings glass sheets).
-// binaryRainActive drives the easter-egg rain overlay (hold the Home dino).
 export const useUiStore = defineStore("ui", {
     state: () => ({
         aboutOpen: false,
         settingsOpen: false,
-        binaryRainActive: false
+        binaryRainActive: false,
+        dropOpen: false
     }),
     actions: {
         openAbout() {
@@ -21,6 +20,12 @@ export const useUiStore = defineStore("ui", {
             this.aboutOpen = false;
             this.settingsOpen = false;
             this.binaryRainActive = false;
+        },
+        showDrop() {
+            this.dropOpen = true;
+        },
+        hideDrop() {
+            this.dropOpen = false;
         },
         startBinaryRain() {
             this.binaryRainActive = true;

@@ -1,6 +1,6 @@
 "use strict";
 
-import { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, shell } from "electron";
+import { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, screen, shell } from "electron";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath, pathToFileURL } from "url";
@@ -16,6 +16,7 @@ import {
     normalizeAppIconId,
     normalizeCryptoPayload,
     normalizeOpenDialogKind,
+    normalizeWindowSizeId,
     validateDeletePath,
     validateExternalUrl,
     validateOperationId,
@@ -27,6 +28,67 @@ import logger from "electron-log";
 const runtimeDir = typeof __dirname === "string"
     ? __dirname
     : path.dirname(fileURLToPath(import.meta.url));
+
+// The fixed window presets the renderer may pick from by allowlisted id
+// (window:set-size). Dimensions never cross the IPC boundary: each preset is
+// only a zoom factor over the 700x660 design (618px content + 42px titlebar),
+// so every size is the same layout scaled proportionally and the CSS viewport
+// stays at the design size. L (756x713 visible) still fits a 1366x768 work
+// area with a taskbar; XL (875x825) targets larger displays and is refused
+// where it cannot fit.
+const WINDOW_DESIGN_SIZE = { width: 700, height: 660 };
+const WINDOW_SIZE_PRESETS = {
+    "default": { zoom: 1 },
+    "l": { zoom: 1.08 },
+    "xl": { zoom: 1.25 }
+};
+
+// The last preset the main process accepted; a recreated window (macOS dock
+// activate) comes back at the same size without waiting for the renderer.
+let appliedWindowSize = "default";
+
+// OS window bounds for a preset: the visible design plus, on Win/Linux, the
+// FRAMELESS_GUTTER on every side (room for the CSS shadow, see createWindow).
+// The gutter scales with the zoom like everything else in the CSS viewport.
+function windowBoundsForPreset(preset) {
+    const gutter = (process.platform === "win32" || process.platform === "linux")
+        ? Constants.FRAMELESS_GUTTER : 0;
+    return {
+        width: Math.round((WINDOW_DESIGN_SIZE.width + gutter * 2) * preset.zoom),
+        height: Math.round((WINDOW_DESIGN_SIZE.height + gutter * 2) * preset.zoom)
+    };
+}
+
+function applyWindowSize(id) {
+    if (!win || win.isDestroyed()) return false;
+    const preset = WINDOW_SIZE_PRESETS[id];
+    const target = windowBoundsForPreset(preset);
+    const bounds = win.getBounds();
+    const area = screen.getDisplayMatching(bounds).workArea;
+    // Refuse presets the current display cannot hold: the renderer store rolls
+    // the choice back, so an oversized preset is unavailable rather than broken.
+    if (target.width > area.width || target.height > area.height) return false;
+    // Keep the window's center where it is, clamped into the work area.
+    const x = Math.round(Math.max(area.x, Math.min(bounds.x + (bounds.width - target.width) / 2, area.x + area.width - target.width)));
+    const y = Math.round(Math.max(area.y, Math.min(bounds.y + (bounds.height - target.height) / 2, area.y + area.height - target.height)));
+    // Zoom first, resize second: Chromium can take a beat to propagate a zoom
+    // change, and an unscaled layout inside the already-resized window reads
+    // as broken, while the reverse transient hides inside the resize itself.
+    win.webContents.setZoomFactor(preset.zoom);
+    // min == max pins the size (see createWindow), so the limits must widen
+    // before the resize and re-lock after it, with the window kept
+    // non-resizable throughout.
+    win.setMinimumSize(1, 1);
+    win.setMaximumSize(0, 0);
+    win.setBounds({ x, y, width: target.width, height: target.height });
+    win.setMinimumSize(target.width, target.height);
+    win.setMaximumSize(target.width, target.height);
+    win.setResizable(false);
+    win.setMaximizable(false);
+    win.setFullScreenable(false);
+    appliedWindowSize = id;
+    return true;
+}
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
@@ -127,14 +189,17 @@ function createWindow () {
     // fully frameless with custom controls in the renderer titlebar. On the
     // frameless platforms the window is FRAMELESS_GUTTER larger than #app on
     // every side so the CSS window shadow can paint without being clipped at
-    // the window bounds; the visible app stays 700x660.
-    const framelessGutter = useCustomFrame ? Constants.FRAMELESS_GUTTER : 0;
+    // the window bounds; the visible app stays at the preset's design size
+    // (windowBoundsForPreset adds the gutter).
+    const initialPreset = WINDOW_SIZE_PRESETS[appliedWindowSize];
+    const initial = windowBoundsForPreset(initialPreset);
     win = new BrowserWindow({
-        width: 700 + framelessGutter * 2,
-        // 660 = the design's 618px content area + the 42px in-app titlebar, so
-        // the tallest screen (home) keeps top/bottom margin without clipping
-        // (the window is fixed-size, so content must fit).
-        height: 660 + framelessGutter * 2,
+        width: initial.width,
+        height: initial.height,
+        minWidth: initial.width,
+        maxWidth: initial.width,
+        minHeight: initial.height,
+        maxHeight: initial.height,
         title: "Lockasaur",
         show: false,
         frame: !useCustomFrame,
@@ -147,11 +212,15 @@ function createWindow () {
         trafficLightPosition: { x: 14, y: 14 },
         resizable: false,
         maximizable: false,
+        fullscreenable: false,
         webPreferences: {
             contextIsolation: true,
             nodeIntegration: false,
             sandbox: true,
             webSecurity: true,
+            // A recreated window (macOS dock activate) keeps the applied
+            // preset's zoom without waiting for the renderer to reapply it.
+            zoomFactor: initialPreset.zoom,
             preload: path.join(runtimeDir, "preload.cjs")
         }
     });
@@ -182,6 +251,15 @@ function createWindow () {
 
     win.once("ready-to-show", showWindowWhenReady);
     const showFallbackTimer = setTimeout(showWindowWhenReady, 2000);
+
+    // Chromium persists per-origin zoom in the profile, which can disagree
+    // with the applied preset (e.g. a saved larger preset that no longer fits
+    // the display leaves the window at default bounds while the persisted
+    // zoom restores the larger factor). The applied preset owns the zoom, so
+    // re-assert it on every load.
+    win.webContents.on("did-finish-load", () => {
+        win.webContents.setZoomFactor(WINDOW_SIZE_PRESETS[appliedWindowSize].zoom);
+    });
 
     if (process.env.VITE_DEV_SERVER_URL) {
         win.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -302,6 +380,19 @@ ipcMain.handle("window:minimize", event => {
 ipcMain.handle("window:close", event => {
     if (!isTrustedSender(event, win)) return;
     win.close();
+});
+
+ipcMain.handle("window:set-size", (event, sizeId) => {
+    if (!isTrustedSender(event, win)) return false;
+    const id = normalizeWindowSizeId(sizeId);
+    if (!id) return false;
+    try {
+        return applyWindowSize(id);
+    } catch {
+        // Fixed string: the renderer-supplied value stays out of the log.
+        logger.error("window:set-size failed");
+        return false;
+    }
 });
 
 ipcMain.handle("dialog:open-files", async (event, kind) => {
@@ -545,6 +636,15 @@ async function runSmokeTest() {
         const [contentWidth, contentHeight] = win.getContentSize();
         if (contentWidth !== 700 + gutter * 2 || contentHeight !== 660 + gutter * 2) {
             throw new Error("Window content size does not match the expected design size.");
+        }
+        // window:set-size applies only allowlisted preset ids; the default
+        // preset is a size-preserving reapply, so the bounds check above
+        // still holds afterwards.
+        const [validSize, invalidSize] = await win.webContents.executeJavaScript(
+            "Promise.all([window.lockasaur.window.setSize(\"default\"), window.lockasaur.window.setSize(\"9999x9999\")])"
+        );
+        if (validSize !== true || invalidSize !== false) {
+            throw new Error("window:set-size did not behave as expected.");
         }
         logger.info("Lockasaur smoke test passed.");
         app.exit(0);

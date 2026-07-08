@@ -8,6 +8,7 @@ import {
     normalizeAppIconId,
     normalizeCryptoPayload,
     normalizeOpenDialogKind,
+    normalizeWindowSizeId,
     validateDeletePath,
     validateExternalUrl,
     validateOperationId,
@@ -83,6 +84,23 @@ describe("IPC validation", () => {
             const cases = ["Default", "dark.png", "../dark", "appicons/dark", "", 42, null, undefined, {}, []];
             for (const value of cases) {
                 expect(normalizeAppIconId(value)).toBeNull();
+            }
+        });
+    });
+
+    describe("normalizeWindowSizeId", () => {
+        it("accepts the allowlisted size ids", () => {
+            for (const id of ["default", "l", "xl"]) {
+                expect(normalizeWindowSizeId(id)).toBe(id);
+            }
+        });
+
+        it("returns null for anything outside the allowlist", () => {
+            // Ids resolve to main-process presets, so raw dimensions or any
+            // other renderer-supplied value must never survive normalization.
+            const cases = ["Default", "L", "XL", "800x600", "xxl", "", 700, null, undefined, {}, []];
+            for (const value of cases) {
+                expect(normalizeWindowSizeId(value)).toBeNull();
             }
         });
     });

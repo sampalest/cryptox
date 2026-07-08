@@ -31,6 +31,15 @@ export function normalizeAppIconId(value) {
     return APP_ICON_IDS.has(value) ? value : null;
 }
 
+// The window:set-size handler resolves the id to a preset in its own map, so
+// the renderer can never supply dimensions; anything unexpected returns null
+// and the handler answers with an inert false.
+const WINDOW_SIZE_IDS = new Set(["default", "l", "xl"]);
+
+export function normalizeWindowSizeId(value) {
+    return WINDOW_SIZE_IDS.has(value) ? value : null;
+}
+
 export function validateDeletePath(value) {
     if (typeof value !== "string" || value.trim() === "") {
         throw new TypeError("Delete path must be a non-empty string.");

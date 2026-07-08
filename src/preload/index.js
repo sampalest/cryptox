@@ -7,7 +7,8 @@ contextBridge.exposeInMainWorld("lockasaur", {
     },
     window: {
         minimize: () => ipcRenderer.invoke("window:minimize"),
-        close: () => ipcRenderer.invoke("window:close")
+        close: () => ipcRenderer.invoke("window:close"),
+        setSize: sizeId => ipcRenderer.invoke("window:set-size", sizeId)
     },
     crypto: {
         encrypt: (file, password, operationId) => ipcRenderer.invoke("crypto:encrypt", { file: { path: file?.path }, password, operationId }),

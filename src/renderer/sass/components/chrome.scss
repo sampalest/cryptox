@@ -18,6 +18,14 @@
     border-bottom-color: var(--chrome-bd);
 }
 
+#app.lk-zoom-l .lk-titlebar {
+    zoom: 0.9259; /* 1 / 1.08 */
+}
+
+#app.lk-zoom-xl .lk-titlebar {
+    zoom: 0.8; /* 1 / 1.25 */
+}
+
 .lk-titlebar-title {
     text-align: center;
     font-family: Montserrat, sans-serif;

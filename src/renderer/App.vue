@@ -1,5 +1,5 @@
 <template>
-  <div id="app" :class="{ 'dark': theme.effectiveDark, 'platform-darwin': appStore.isMac, 'platform-frameless': appStore.isFrameless, 'lk-hidden': windowHidden }">
+  <div id="app" :class="{ 'dark': theme.effectiveDark, 'platform-darwin': appStore.isMac, 'platform-frameless': appStore.isFrameless, 'lk-hidden': windowHidden, 'lk-drop-active': ui.dropOpen, 'lk-zoom-l': windowSize.applied === 'l', 'lk-zoom-xl': windowSize.applied === 'xl' }">
     <TitleBar :title="appTitle" :show-window-controls="appStore.isFrameless" />
     <BackgroundBlobs />
     <div class="page-block" :class="{ 'page-block-muted': ui.aboutOpen || ui.settingsOpen }">
@@ -18,6 +18,7 @@ import { useAppIconStore } from "@/store/appIcon";
 import { useAppStore } from "@/store/app";
 import { useThemeStore } from "@/store/theme";
 import { useUiStore } from "@/store/ui";
+import { useWindowSizeStore } from "@/store/windowSize";
 
 export default {
     components: {
@@ -41,7 +42,9 @@ export default {
     setup() {
         const theme = useThemeStore();
         theme.init();
-        return { theme, appIcon: useAppIconStore(), appStore: useAppStore(), ui: useUiStore() };
+        // windowSize is initialized in main.js before mount; here it only
+        // drives the lk-zoom-* classes that keep the titlebar unscaled.
+        return { theme, appIcon: useAppIconStore(), appStore: useAppStore(), ui: useUiStore(), windowSize: useWindowSizeStore() };
     },
     watch: {
         // An "auto" icon selection resolves through the theme store, so a

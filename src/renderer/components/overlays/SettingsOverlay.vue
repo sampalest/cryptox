@@ -20,6 +20,23 @@
             </div>
             <div class="lk-settings-hint">{{ appearanceHint }}</div>
         </div>
+        <div class="lk-settings-section">
+            <div class="lk-settings-label">WINDOW SIZE</div>
+            <div class="lk-settings-seg">
+                <button
+                    v-for="option in sizes"
+                    :key="option.id"
+                    type="button"
+                    class="lk-settings-seg-btn"
+                    :class="{ active: windowSize.size === option.id }"
+                    @click="windowSize.setSize(option.id)"
+                >
+                    <svg :width="sizeIconPx(option.id)" :height="sizeIconPx(option.id)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M3 9h18"></path><circle cx="6.2" cy="6.6" r="0.4"></circle><circle cx="9" cy="6.6" r="0.4"></circle></svg>
+                    {{ option.label }}
+                </button>
+            </div>
+            <div class="lk-settings-hint">Scales the whole window. It stays this size until you change it.</div>
+        </div>
         <div v-if="isMac" class="lk-settings-section">
             <div class="lk-settings-label">APP ICON</div>
             <div class="lk-settings-icons">
@@ -32,9 +49,6 @@
                     :title="icon.label"
                     @click="appIcon.setIcon(icon.id)"
                 >
-                    <!-- Bound (not static) src, so the compiler leaves these as
-                         runtime paths into the bundled public assets instead of
-                         trying to resolve them as module imports. -->
                     <span v-if="icon.id === 'auto'" class="lk-settings-icon-preview">
                         <img class="lk-settings-icon-img" :src="'appicons/default.png'" :alt="icon.label">
                         <img class="lk-settings-icon-img lk-settings-icon-img-half" :src="'appicons/dark.png'" alt="" aria-hidden="true">
@@ -57,6 +71,7 @@ import { APP_ICONS, useAppIconStore } from "@/store/appIcon";
 import { useAppStore } from "@/store/app";
 import { useThemeStore } from "@/store/theme";
 import { useUiStore } from "@/store/ui";
+import { WINDOW_SIZES, useWindowSizeStore } from "@/store/windowSize";
 
 export default {
     name: "settings-overlay",
@@ -64,7 +79,7 @@ export default {
         "glass-button": GlassButton
     },
     setup() {
-        return { appIcon: useAppIconStore(), appStore: useAppStore(), theme: useThemeStore(), ui: useUiStore() };
+        return { appIcon: useAppIconStore(), appStore: useAppStore(), theme: useThemeStore(), ui: useUiStore(), windowSize: useWindowSizeStore() };
     },
     computed: {
         isMac() {
@@ -80,6 +95,9 @@ export default {
         icons() {
             return APP_ICONS;
         },
+        sizes() {
+            return WINDOW_SIZES;
+        },
         appearanceHint() {
             if (this.theme.mode === "system") return "Follows your OS appearance.";
             return this.theme.mode === "dark" ? "Always dark, day or night." : "Always light and airy.";
@@ -90,6 +108,9 @@ export default {
         }
     },
     methods: {
+        sizeIconPx(id) {
+            return { "default": 12, "l": 15, "xl": 18 }[id];
+        },
         onKeydown(event) {
             if (event.key === "Escape") this.ui.closeOverlays();
         }
@@ -142,17 +163,33 @@ export default {
     cursor: pointer;
     background: none;
     color: var(--dim);
-    transition: background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+    transition: background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 
     &:focus {
         outline: none;
+    }
+
+    &:hover:not(.active) {
+        color: var(--text);
+        transform: translateY(-1px);
+    }
+
+    &:active {
+        transform: scale(0.93);
     }
 
     &.active {
         background: var(--surface);
         color: var(--text);
         box-shadow: 0 2px 8px rgba(20, 24, 32, 0.14);
+        animation: lkSettingsPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
+}
+
+@keyframes lkSettingsPop {
+    0% { transform: scale(1); }
+    45% { transform: scale(1.08); }
+    100% { transform: scale(1); }
 }
 
 .lk-settings-hint {
@@ -181,16 +218,26 @@ export default {
     cursor: pointer;
     background: none;
     color: var(--dim);
-    transition: background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+    transition: background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 
     &:focus {
         outline: none;
+    }
+
+    &:hover:not(.active) {
+        color: var(--text);
+        transform: translateY(-1px);
+    }
+
+    &:active {
+        transform: scale(0.93);
     }
 
     &.active {
         background: var(--surface);
         color: var(--text);
         box-shadow: 0 2px 8px rgba(20, 24, 32, 0.14), inset 0 0 0 1.5px var(--accent);
+        animation: lkSettingsPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
 }
 
@@ -199,8 +246,6 @@ export default {
     height: 52px;
 }
 
-/* The Auto tile previews both appearances: the dark artwork is stacked on the
-   default one and clipped to the lower-right diagonal half. */
 .lk-settings-icon-preview {
     position: relative;
     display: block;

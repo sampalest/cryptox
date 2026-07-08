@@ -12,7 +12,8 @@
 }
 
 html,
-body {
+body,
+#root {
     width: 100%;
     height: 100%;
     margin: 0;
@@ -66,4 +67,16 @@ body {
 #app.lk-hidden .lk-dino-halo,
 #app.lk-hidden .lk-dino-svg svg {
     animation-play-state: paused;
+}
+
+#app.platform-frameless > .lk-titlebar,
+#app.platform-frameless > .lk-blobs,
+#app.platform-frameless > .page-block {
+    transition: filter 0.25s ease-in-out, opacity 0.3s ease;
+}
+
+#app.platform-frameless.lk-drop-active > .lk-titlebar,
+#app.platform-frameless.lk-drop-active > .lk-blobs,
+#app.platform-frameless.lk-drop-active > .page-block {
+    filter: blur(14px) saturate(1.18);
 }
