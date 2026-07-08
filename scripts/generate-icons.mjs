@@ -15,7 +15,7 @@
 // Document icons use the full document artwork (build/dino-document.png) at
 // 128 px and up, and the app icon (build/icon.svg) below that: the DINO page is
 // illegible at list-view sizes.
-// build/icon.svg is 1749x1623 (non-square): the "Fondo App" rounded-square
+// build/icon.svg is 1749x1640 (non-square): the "Fondo App" rounded-square
 // body sits at SVG_BODY within the viewBox, and the dino's head and spines
 // (Aletas) overhang it on the top and left. Renders anchor the BODY rect: the
 // body targets a fraction of the canvas, near-centered, and the overhang
@@ -52,10 +52,10 @@ const appIconsDir = path.join(rootDir, "public", "appicons");
 const ICON_BODY_FRACTION = 0.815;
 
 // The "Fondo App" rounded-square body of build/icon.svg, in viewBox
-// coordinates (viewBox 0 0 1749 1623). Recompute if the SVG is re-exported:
+// coordinates (viewBox 0 0 1749 1640). Recompute if the SVG is re-exported:
 // it is the on-canvas rect of the path inside the group with
 // serif:id="Fondo App" after all ancestor transforms.
-const SVG_BODY = { x: 219.94, y: 152.39, w: 1507.9, h: 1452.4 };
+const SVG_BODY = { x: 219.94, y: 113.39, w: 1508, h: 1508 };
 
 // Linux wants a range of sizes; ICO entries max out at 256 px.
 const pngSizes = [16, 24, 32, 48, 64, 128, 256, 512];

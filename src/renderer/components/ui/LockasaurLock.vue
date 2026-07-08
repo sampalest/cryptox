@@ -12,15 +12,16 @@
 // build-time content) so CSS can reach the #Arco shackle group and pose it by
 // a vertical translation alone. 0 is the open hook; dropping it straight down
 // (see $closed-drop in the styles) sinks the arrow-tipped right leg behind the
-// body so the loop reads shut. No image swap ever happens between states.
-// The #Arco id must sit on a group with NO transform attribute (a CSS
-// transform replaces the attribute instead of composing with it); the export's
-// positioning matrix lives on a parent wrapper group. Re-exports of the asset
-// must preserve that structure.
+// dino body so the loop reads shut. No image swap ever happens between states.
+// In the current export the shackle is a raster <use> drawn behind the body;
+// #Arco is the hand-added group wrapping it, and it must sit on a group with
+// NO transform attribute (a CSS transform replaces the attribute instead of
+// composing with it); the export's positioning matrix lives on the parent
+// wrapper group. Re-exports of the asset must restore that structure.
 import lockSvg from "@/assets/lockasaur-lock.svg?raw";
 
-// The artwork fills its 1804x2407 viewBox.
-const ASPECT = 2407 / 1804;
+// The artwork fills its 1749x2325 viewBox.
+const ASPECT = 2325 / 1749;
 
 export default {
     name: "LockasaurLock",
@@ -47,9 +48,10 @@ export default {
 </script>
 <style lang="scss" scoped>
 // The shackle pose for locked/locking: enough straight-down travel (in SVG
-// user units, so it scales with the artwork) that the open hook's right leg
-// sinks behind the lock body and the loop reads closed.
-$closed-drop: 80px;
+// user units, so it scales with the artwork; in the current export #Arco's
+// units map 1:1 to viewBox units) that the open hook's right leg sinks
+// behind the dino body and the loop reads closed.
+$closed-drop: 180px;
 
 .lk-lock {
     display: flex;
@@ -79,7 +81,7 @@ $closed-drop: 80px;
 
 @keyframes arcoLock {
     0% { transform: translateY(0); }
-    70% { transform: translateY($closed-drop + 9px); }
+    70% { transform: translateY($closed-drop + 25px); }
     100% { transform: translateY($closed-drop); }
 }
 
@@ -90,7 +92,7 @@ $closed-drop: 80px;
 
 @keyframes arcoUnlock {
     0% { transform: translateY($closed-drop); }
-    68% { transform: translateY(-12px); }
+    68% { transform: translateY(-34px); }
     100% { transform: translateY(0); }
 }
 </style>

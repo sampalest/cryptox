@@ -32,6 +32,8 @@ yarn-error.log*
 /dist-electron
 
 # Design
-/design
 yarn.lock
 vue.config.js
+
+# AI
+/.claude
