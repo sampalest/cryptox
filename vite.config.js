@@ -10,7 +10,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf8
 // index.html ships a production CSP with connect-src 'self' only. Vite HMR needs
 // a websocket back to the dev server, so add ws:// origins to connect-src in dev
 // only; this transform runs solely under `vite serve`, so the bundled
-// dist/index.html never carries the dev websocket origins (APP-06).
+// dist/index.html never carries the dev websocket origins.
 function devCspHmr() {
     return {
         name: "lockasaur-dev-csp-hmr",

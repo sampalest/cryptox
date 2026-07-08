@@ -1,4 +1,4 @@
-// Lockasaur design system (APP-12). @use (not @import) per Dart Sass 3.0;
+// Lockasaur design system. @use (not @import) per Dart Sass 3.0;
 // these modules are independent (no shared Sass variables/mixins), so each is
 // loaded once and its CSS is emitted in this order.
 @use "components/fonts";

@@ -52,7 +52,7 @@ jobs:
   # Aggregates the unit matrix under the exact name the develop branch
   # protection requires ("🧪 Unit tests"); the matrix legs report as
   # "🧪 Unit tests (<os>)", which the protection rule does not match, so PRs
-  # hung on "Expected: waiting for status" after the matrix split (APP-11).
+  # hung on "Expected: waiting for status" after the matrix split.
   # always() keeps the gate reporting on failed legs too: a skipped required
   # check would satisfy branch protection and let a red matrix through.
   unit-gate:
@@ -140,22 +140,15 @@ jobs:
         uses: ./.github/actions/setup-electron
         with:
           extra-arch: ${{ matrix.arch }}
-      # AppImage hardening (the first-run AppArmor helper, APP-11) repacks the
-      # squashfs, so the Linux legs need squashfs-tools.
-      - name: 🧰 Install squashfs-tools
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y squashfs-tools
       # electron:build builds the app + electron bundle internally, then packages
-      # the matrix arch (mac dmg/zip, Windows nsis+portable, Linux AppImage/deb).
-      # The explicit --<arch> flag reaches electron-builder; it is a no-op on the
-      # native runners and makes the mac x64 leg cross-compile on macos-15
+      # the matrix arch (mac dmg, Windows nsis installer, Linux deb). The explicit
+      # --<arch> flag reaches electron-builder; it is a no-op on the native
+      # runners and makes the mac x64 leg cross-compile on macos-15
       # (electron-builder downloads the darwin-x64 Electron dist itself).
       - name: 🏗️ Build & package app
         run: npm run electron:build -- --${{ matrix.arch }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-          # Shipping an unhardened AppImage must fail the build, never warn.
-          LOCKASAUR_REQUIRE_APPIMAGE_HARDEN: ${{ runner.os == 'Linux' && '1' || '' }}
       # Each runner produces only its own arch's artifacts; upload them for the
       # release job to aggregate. Foreign globs match nothing (if-no-files-found).
       - name: ⬆️ Upload artifacts
@@ -165,9 +158,7 @@ jobs:
           if-no-files-found: ignore
           path: |
             dist_electron/*.dmg
-            dist_electron/*.zip
             dist_electron/*.exe
-            dist_electron/*.AppImage
             dist_electron/*.deb
 
   release:
@@ -184,7 +175,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       # Aggregate every OS's artifacts into dist_electron so one release carries
-      # dmg/zip/exe/AppImage/deb together.
+      # dmg/exe/deb together.
       - name: ⬇️ Download packaged artifacts
         uses: actions/download-artifact@v4
         with:

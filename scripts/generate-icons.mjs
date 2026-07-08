@@ -1,4 +1,4 @@
-// APP-10/APP-12: regenerate the app and document icons.
+// Regenerate the app and document icons.
 //   build/icon.ico                multi-resolution Windows app icon (electron-builder win.icon), from build/icon.svg
 //   build/icons/*.png             PNG set for the Linux icon directory (electron-builder linux.icon), from build/icon.svg
 //   public/appicons/locked.png    the "Locked" macOS Dock-icon variant (Settings picker + app:set-icon), from build/icon.svg
@@ -122,7 +122,7 @@ function run(argv) {
 // scale shrinks below the target when the full composition would overflow
 // the canvas (frac 1 therefore yields the largest body the overhang allows,
 // ~86%), and the placement is clamped to keep the artwork on canvas rather
-// than cutting the fins off (APP-12 follow-up). The body rect is passed in
+// than cutting the fins off. The body rect is passed in
 // viewBox units (argv 4..8: bx by bw bh vbw), converted to NSImage points via
 // the reported image width. NSImage is the only AppKit path that decodes SVG,
 // so the source is loaded and drawn as a vector and stays crisp at any size;

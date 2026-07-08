@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { useThemeStore } from "@/store/theme";
 
-// CTX-17: the macOS Dock icon choice. The concrete ids mirror ipcValidation's
+// The macOS Dock icon choice. The concrete ids mirror ipcValidation's
 // APP_ICON_IDS allowlist and the PNGs written to public/appicons: the six
 // appearance variants come from scripts/generate-appicon.mjs, and "locked"
 // (the padlock-dino) from scripts/generate-icons.mjs (build/icon.svg).

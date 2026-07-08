@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 /**
- * Per-operation temporary directory lifecycle (CTX-7). Each crypto operation
+ * Per-operation temporary directory lifecycle. Each crypto operation
  * owns one unpredictable mkdtemp directory under the OS temp location, keyed
  * by its operationId, so concurrent operations can never share temp paths and
  * cleanup only ever touches the operation-owned directory.

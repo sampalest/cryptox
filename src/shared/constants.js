@@ -1,4 +1,4 @@
-// Extension (APP-12): Lockasaur writes .dino; .ctx stays readable and
+// Extension: Lockasaur writes .dino; .ctx stays readable and
 // deletable as the extension of pre-rebrand releases. Format detection is magic-byte
 // based, so the extension only drives routing, validation and output naming.
 const POINT_EXT = ".dino";

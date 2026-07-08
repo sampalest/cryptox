@@ -1,4 +1,4 @@
-// APP-11: post-process built AppImages so the wrapper in
+// Post-process built AppImages so the wrapper in
 // build/appimage/AppRun.sh becomes the entry point (the original generated
 // AppRun is kept as AppRun.orig and exec'd by the wrapper). The wrapper
 // handles the Ubuntu 24.04+ user-namespace restriction with a one-time

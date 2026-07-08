@@ -1,4 +1,4 @@
-// CTX-17: regenerate the macOS app icon set from the Icon Composer document.
+// Regenerate the macOS app icon set from the Icon Composer document.
 //   build/icon.icns        full-resolution fallback app icon (CFBundleIconFile) for macOS < 26,
 //                          built from the Default appearance export
 //   build/Assets.car       compiled appearance-aware icon (CFBundleIconName "AppIcon"), the icon

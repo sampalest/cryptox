@@ -1,5 +1,5 @@
 #!/bin/sh
-# Lockasaur AppImage launcher (APP-11). Ubuntu 24.04+ restricts unprivileged
+# Lockasaur AppImage launcher. Ubuntu 24.04+ restricts unprivileged
 # user namespaces to binaries whose AppArmor profile grants "userns"; an
 # AppImage cannot ship system policy and its chrome-sandbox cannot be setuid
 # root on a FUSE mount, so Chromium's sandbox init aborts with a FATAL. This

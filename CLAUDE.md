@@ -16,7 +16,7 @@ npm run test:e2e         # builds, then real Electron smoke test (tests/e2e/smok
 npm run test:large       # 1 GB payload tests; override size with LOCKASAUR_LARGE_SIZE_MB=128
 npm run build            # Vite renderer build into dist/
 npm run build:electron   # bundle main + preload into dist-electron/ (background.cjs, preload.cjs)
-npm run electron:build   # full package: dmg/zip artifacts via electron-builder
+npm run electron:build   # full package: dmg (macOS), deb (Linux), exe installer (Windows) via electron-builder
 ```
 
 Run a single test file: `npx jest tests/unit/crypto.spec.js --runInBand`

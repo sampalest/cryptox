@@ -5,8 +5,8 @@ import Constants from "@shared/constants.js";
  * The mixin is a plain object, so it is testable without mounting components:
  * build a fake component context carrying the mixin's data() plus the state the
  * methods touch, and call the methods with that context. Regression guards for
- * APP-11 (PR #17 dropped error-code mappings, the handler bookkeeping used by
- * EncryptLoader.beforeUnmount, and the multi-file decrypt completion counter).
+ * what PR #17 dropped: error-code mappings, the handler bookkeeping used by
+ * EncryptLoader.beforeUnmount, and the multi-file decrypt completion counter.
  */
 function makeContext(files) {
     const ctx = Object.assign({}, fileCrypto.methods, fileCrypto.data(), {

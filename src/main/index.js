@@ -121,7 +121,7 @@ function showWindowWhenReady() {
 function createWindow () {
     rendererReady = false;
     const useCustomFrame = process.platform === "win32" || process.platform === "linux";
-    // APP-12: every platform runs a transparent window whose visible frame is
+    // Every platform runs a transparent window whose visible frame is
     // the CSS-rounded #app. macOS keeps its native traffic lights ("hidden"
     // titlebar style, repositioned into the 42px chrome bar); Win/Linux are
     // fully frameless with custom controls in the renderer titlebar.
@@ -129,7 +129,7 @@ function createWindow () {
         width: 700,
         // 660 = the design's 618px content area + the 42px in-app titlebar, so
         // the tallest screen (home) keeps top/bottom margin without clipping
-        // (the window is fixed-size, so content must fit; APP-12).
+        // (the window is fixed-size, so content must fit).
         height: 660,
         title: "Lockasaur",
         show: false,
@@ -246,7 +246,7 @@ ipcMain.handle("app:info", event => {
     };
 });
 
-// CTX-17: the Settings icon picker (macOS Dock icon only). The renderer sends
+// The Settings icon picker (macOS Dock icon only). The renderer sends
 // an allowlisted id, never a path; it resolves against the PNGs bundled under
 // dist/appicons (public/appicons in dev, mirroring how index.html is located).
 const appIconsDir = process.env.VITE_DEV_SERVER_URL
@@ -524,7 +524,7 @@ async function runSmokeTest() {
             throw new Error("Renderer was able to open a new window.");
         }
         // app:set-icon applies an allowlisted id on macOS (an inert false
-        // elsewhere) and rejects anything outside the allowlist (CTX-17).
+        // elsewhere) and rejects anything outside the allowlist.
         const [validIcon, invalidIcon] = await win.webContents.executeJavaScript(
             "Promise.all([window.lockasaur.app.setIcon(\"dark\"), window.lockasaur.app.setIcon(\"../evil\")])"
         );

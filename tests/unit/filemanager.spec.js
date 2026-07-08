@@ -9,7 +9,7 @@ describe("FileManager", () => {
         expect(file.extension()).toBe("ctx");
     });
 
-    it("derives the name from a Windows path too (CODE-02)", () => {
+    it("derives the name from a Windows path too", () => {
         const file = new FileManager("C:\\Users\\me\\secret.txt");
 
         expect(file.name).toBe("secret.txt");

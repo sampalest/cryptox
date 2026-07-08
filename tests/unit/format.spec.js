@@ -73,7 +73,7 @@ describe("Format (CTX1 header parser/writer)", () => {
         });
     });
 
-    describe("Argon2id memory ceiling (CODE-01)", () => {
+    describe("Argon2id memory ceiling", () => {
         // The clamp ceiling is libsodium's MODERATE preset (256 MiB), exactly
         // what the encrypt path writes. A crafted header asking for more is
         // rejected before the KDF runs.

@@ -191,7 +191,7 @@ describe("IPC validation", () => {
             await expectCode(assertDecryptSource(dinoDir), "INVALID_FILE_TYPE");
         });
 
-        it("rejects symlinked sources so a link target is never silently processed (CODE-03)", async () => {
+        it("rejects symlinked sources so a link target is never silently processed", async () => {
             const realFile = path.join(tempDir, "real.txt");
             fs.writeFileSync(realFile, "hello");
             const realDir = path.join(tempDir, "realdir");
