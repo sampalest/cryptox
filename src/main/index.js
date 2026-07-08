@@ -265,7 +265,18 @@ ipcMain.handle("app:set-icon", (event, iconId) => {
             app.dock.setIcon(null);
             return true;
         }
-        const image = nativeImage.createFromPath(path.join(appIconsDir, `${id}.png`));
+        // Electron cannot decode .icns (createFromPath returns an empty
+        // image), so the icns equivalent is built by hand: one NativeImage
+        // carrying the 512 px file as the 1x representation and the 1024 px
+        // @2x file as the retina one, letting macOS pick the right scale
+        // instead of upscaling a single bitmap.
+        const image = nativeImage.createEmpty();
+        for (const [scaleFactor, file] of [[1, `${id}.png`], [2, `${id}@2x.png`]]) {
+            const variantPath = path.join(appIconsDir, file);
+            if (fs.existsSync(variantPath)) {
+                image.addRepresentation({ scaleFactor, buffer: fs.readFileSync(variantPath) });
+            }
+        }
         if (image.isEmpty()) return false;
         app.dock.setIcon(image);
         return true;

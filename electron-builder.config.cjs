@@ -55,6 +55,27 @@ const mac = {
     }
 };
 
+const dmg = {
+    background: "build/dmg_background.jpg",
+    window: {
+        width: 900,
+        height: 600
+    },
+    contents: [
+        {
+            x: 222,
+            y: 328,
+            type: "file"
+        },
+        {
+            x: 735,
+            y: 328,
+            type: "link",
+            path: "/Applications"
+        }
+    ]
+};
+
 // Unsigned for the alpha (matches the deferred macOS signing). NSIS installs
 // per-user (no elevation) and registers the .ctx association; portable is a
 // no-install exe. Windows shows a SmartScreen prompt for the unsigned build.
@@ -173,6 +194,7 @@ module.exports = {
         enableEmbeddedAsarIntegrityValidation: true
     },
     mac,
+    dmg,
     win,
     nsis,
     linux,

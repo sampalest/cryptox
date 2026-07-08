@@ -22,9 +22,9 @@ describe("appIcon store", () => {
         delete global.window;
     });
 
-    it("exposes auto plus the six concrete icon options", () => {
+    it("exposes auto plus the seven concrete icon options", () => {
         expect(APP_ICONS.map(icon => icon.id)).toEqual(
-            ["auto", "default", "dark", "clear-light", "clear-dark", "tinted-light", "tinted-dark"]
+            ["auto", "default", "dark", "clear-light", "clear-dark", "tinted-light", "tinted-dark", "locked"]
         );
     });
 

@@ -3,8 +3,11 @@
 //                          built from the Default appearance export
 //   build/Assets.car       compiled appearance-aware icon (CFBundleIconName "AppIcon"), the icon
 //                          macOS 26+ renders with real Dark/Clear/Tinted variants
-//   public/appicons/*.png  512 px appearance variants consumed at runtime by the Settings
-//                          icon picker and the app:set-icon dock icon handler
+//   public/appicons/*.png  appearance variants consumed at runtime: <id>.png (512 px) feeds the
+//                          Settings icon picker and the 1x Dock representation, <id>@2x.png
+//                          (1024 px) the retina Dock representation. app:set-icon combines the
+//                          pair into one multi-representation NativeImage, the closest Electron
+//                          gets to an .icns (nativeImage cannot decode .icns files).
 // Inputs live under design/ (local only, gitignored): design/lockasaur_icon_v2.icon plus the
 // 1024 px Icon Composer exports in "design/lockasaur_icon_v2 Exports". Requires macOS with a
 // full Xcode 26+ install (actool understands .icon documents), iconutil and sips; the generated
@@ -136,17 +139,20 @@ try {
     copyFileSync(compiledCar, path.join(rootDir, "build", "Assets.car"));
 
     // Runtime picker/dock variants, inset to the system icon grid (see the
-    // header note). 512 px keeps the bundle small while staying sharp at every
-    // Dock size (128 pt @2x plus magnification headroom).
+    // header note). The 512 px 1x file feeds the Settings picker and standard
+    // displays; the 1024 px @2x file is the retina representation, matching
+    // the largest rep an .icns would carry (512 pt @2x).
     const insetJs = path.join(tempDir, "inset.js");
     writeFileSync(insetJs, insetScript);
     const appIconsDir = path.join(rootDir, "public", "appicons");
     mkdirSync(appIconsDir, { recursive: true });
     for (const [variant, id] of variants) {
-        execFileSync("osascript", [
-            "-l", "JavaScript", insetJs,
-            exportFor(variant), path.join(appIconsDir, `${id}.png`), "512", String(ICON_BODY_FRACTION)
-        ], { stdio: "ignore" });
+        for (const [suffix, pixels] of [["", "512"], ["@2x", "1024"]]) {
+            execFileSync("osascript", [
+                "-l", "JavaScript", insetJs,
+                exportFor(variant), path.join(appIconsDir, `${id}${suffix}.png`), pixels, String(ICON_BODY_FRACTION)
+            ], { stdio: "ignore" });
+        }
     }
 } finally {
     rmSync(tempDir, { recursive: true, force: true });

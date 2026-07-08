@@ -72,7 +72,7 @@ describe("IPC validation", () => {
 
     describe("normalizeAppIconId", () => {
         it("accepts the allowlisted icon ids", () => {
-            for (const id of ["default", "dark", "clear-light", "clear-dark", "tinted-light", "tinted-dark"]) {
+            for (const id of ["default", "dark", "clear-light", "clear-dark", "tinted-light", "tinted-dark", "locked"]) {
                 expect(normalizeAppIconId(id)).toBe(id);
             }
         });
