@@ -124,18 +124,25 @@ function createWindow () {
     // Every platform runs a transparent window whose visible frame is
     // the CSS-rounded #app. macOS keeps its native traffic lights ("hidden"
     // titlebar style, repositioned into the 42px chrome bar); Win/Linux are
-    // fully frameless with custom controls in the renderer titlebar.
+    // fully frameless with custom controls in the renderer titlebar. On the
+    // frameless platforms the window is FRAMELESS_GUTTER larger than #app on
+    // every side so the CSS window shadow can paint without being clipped at
+    // the window bounds; the visible app stays 700x660.
+    const framelessGutter = useCustomFrame ? Constants.FRAMELESS_GUTTER : 0;
     win = new BrowserWindow({
-        width: 700,
+        width: 700 + framelessGutter * 2,
         // 660 = the design's 618px content area + the 42px in-app titlebar, so
         // the tallest screen (home) keeps top/bottom margin without clipping
         // (the window is fixed-size, so content must fit).
-        height: 660,
+        height: 660 + framelessGutter * 2,
         title: "Lockasaur",
         show: false,
         frame: !useCustomFrame,
         transparent: true,
         backgroundColor: "#00000000",
+        // The shadow on Win/Linux is drawn by the renderer (see master.scss);
+        // the OS must not add a rectangular one tracing the transparent bounds.
+        hasShadow: !useCustomFrame,
         titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
         trafficLightPosition: { x: 14, y: 14 },
         resizable: false,
@@ -530,6 +537,14 @@ async function runSmokeTest() {
         );
         if (validIcon !== (process.platform === "darwin") || invalidIcon !== false) {
             throw new Error("app:set-icon did not behave as expected.");
+        }
+        // Window bounds must include the frameless shadow gutter on Win/Linux
+        // and stay at the bare design size on macOS.
+        const gutter = (process.platform === "win32" || process.platform === "linux")
+            ? Constants.FRAMELESS_GUTTER : 0;
+        const [contentWidth, contentHeight] = win.getContentSize();
+        if (contentWidth !== 700 + gutter * 2 || contentHeight !== 660 + gutter * 2) {
+            throw new Error("Window content size does not match the expected design size.");
         }
         logger.info("Lockasaur smoke test passed.");
         app.exit(0);

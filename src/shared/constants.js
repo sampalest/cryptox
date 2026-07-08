@@ -27,6 +27,12 @@ const CRYPTO_ERROR_CODES = Object.freeze({
 // only documented defaults. AES-256 needs a 32-byte key.
 const KEY_LEN = 32;
 
+// Transparent gutter (px) reserved around #app on frameless platforms
+// (win32/linux) so the CSS window shadow can paint without being clipped
+// at the window bounds. Mirrored in sass/components/master.scss
+// (#app.platform-frameless); keep the two values in sync.
+const FRAMELESS_GUTTER = 32;
+
 export default {
     EXT: EXT,
     POINT_EXT: POINT_EXT,
@@ -35,5 +41,6 @@ export default {
     CTX_MAGIC: CTX_MAGIC,
     CTX_FORMAT_VERSION: CTX_FORMAT_VERSION,
     CRYPTO_ERROR_CODES: CRYPTO_ERROR_CODES,
-    KEY_LEN: KEY_LEN
+    KEY_LEN: KEY_LEN,
+    FRAMELESS_GUTTER: FRAMELESS_GUTTER
 };

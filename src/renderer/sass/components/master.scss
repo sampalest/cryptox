@@ -29,7 +29,6 @@ body {
     flex-direction: column;
     overflow: hidden;
     border-radius: 14px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
     font-family: Poppins, sans-serif;
     letter-spacing: 0.4px;
     -webkit-font-smoothing: antialiased;
@@ -41,8 +40,11 @@ body {
     transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease;
 }
 
-#app.platform-darwin {
-    box-shadow: none;
+#app.platform-frameless {
+    width: calc(100% - 64px);
+    height: calc(100% - 64px);
+    margin: 32px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
 }
 
 .page-block {
