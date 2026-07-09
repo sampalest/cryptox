@@ -24,6 +24,7 @@ import {
     validateOriginalDeletePath
 } from "./ipcValidation.js";
 import { removeEncrypted, removeOriginal } from "./deletion.js";
+import { handleFailedAttempt, resetCounter } from "./erasePolicy.js";
 const isDevelopment = process.env.NODE_ENV !== "production";
 import logger from "electron-log";
 
@@ -419,7 +420,43 @@ ipcMain.handle("dialog:open-files", async (event, kind) => {
         }]
     });
 
-    return files.filePaths;
+    return files.filePaths.map(filePath => ({ path: filePath, isDirectory: lstatIsDirectory(filePath) }));
+});
+
+// lstat so a symlink never reports as a directory; the crypto source
+// validation rejects symlinks anyway, this only drives the chip icon.
+function lstatIsDirectory(target) {
+    try {
+        return fs.lstatSync(target).isDirectory();
+    } catch {
+        return false;
+    }
+}
+
+// Directory flag for paths that reach the renderer as bare strings (drag and
+// drop, macOS open-file events). Inert false on anything unexpected; the
+// renderer-supplied path never goes into logs or dialogs.
+ipcMain.handle("files:is-directory", (event, filePath) => {
+    if (!isTrustedSender(event, win)) return false;
+    if (typeof filePath !== "string" || filePath.trim() === "") return false;
+    return lstatIsDirectory(filePath);
+});
+
+// Native confirmation shown before the Settings toggle enables the erase
+// policy. Payload-free and fixed strings only: the dialog is UX, the actual
+// policy bounds are enforced by normalizeCryptoPayload on every encrypt.
+ipcMain.handle("dialog:confirm-erase-policy", async event => {
+    if (!isTrustedSender(event, win)) return false;
+    const { response } = await dialog.showMessageBox(win, {
+        type: "warning",
+        buttons: ["Enable", "Cancel"],
+        defaultId: 1,
+        cancelId: 1,
+        title: "Erase after failed attempts",
+        message: "This can permanently destroy your data.",
+        detail: "Files encrypted while this is enabled are permanently removed from the filesystem after too many wrong password attempts. There is no Trash, no undo and no recovery. Anyone who mistypes the password too often destroys the file."
+    });
+    return response === 0;
 });
 
 ipcMain.handle("shell:open-external", (event, url) => {
@@ -449,12 +486,21 @@ function toCryptoFailure(error, fallbackMessage) {
     return failure(Codes.OPERATION_FAILED, fallbackMessage);
 }
 
-async function runRegisteredOperation(operationId, run, fallbackMessage) {
+// `run` may resolve extra fields to merge into the success result (e.g. the
+// decrypt handler's policyError). `mapError` runs inside the catch, before the
+// finally releases the path lock, so erase-policy counter writes can never
+// race a second operation on the same file; returning a falsy value falls
+// through to the generic failure.
+async function runRegisteredOperation(operationId, run, fallbackMessage, mapError) {
     try {
-        await run();
-        return { ok: true, cancelled: false };
+        const extras = await run();
+        return { ok: true, cancelled: false, ...(extras || {}) };
     } catch (error) {
         if (error && error.name === "CancelledError") return { ok: true, cancelled: true };
+        if (mapError) {
+            const mapped = await mapError(error);
+            if (mapped) return mapped;
+        }
         logger.error(`crypto operation failed: ${error && error.name}`);
         return failure(Codes.OPERATION_FAILED, fallbackMessage);
     } finally {
@@ -477,14 +523,14 @@ const deletableEncrypted = new Set();
 ipcMain.handle("crypto:encrypt", async (event, payload) => {
     if (!isTrustedSender(event, win)) return failure(Codes.SENDER_REJECTED, "Request was rejected.");
     const fallbackMessage = "Encryption failed.";
-    let filePath, password, operationId;
+    let filePath, password, operationId, erasePolicy;
     try {
-        ({ filePath, password, operationId } = normalizeCryptoPayload(payload));
+        ({ filePath, password, operationId, erasePolicy } = normalizeCryptoPayload(payload));
         await assertEncryptSource(filePath);
     } catch (error) {
         return toCryptoFailure(error, fallbackMessage);
     }
-    const crypto = new Crypto(password, operationId);
+    const crypto = new Crypto(password, operationId, { erasePolicy });
     const normalizedFile = new FileManager(filePath);
     // Lock the source and the predicted primary output. uniquePath/"wx" already
     // make output collisions non-destructive; the lock keeps a second operation
@@ -529,12 +575,44 @@ ipcMain.handle("crypto:decrypt", async (event, payload) => {
     } catch (error) {
         return toCryptoFailure(error, fallbackMessage);
     }
-    const result = await runRegisteredOperation(operationId, () =>
-        crypto.decrypt(normalizedFile, { value: 0 }, {
+    const result = await runRegisteredOperation(operationId, async () => {
+        await crypto.decrypt(normalizedFile, { value: 0 }, {
             onProgress: value => event.sender.send("crypto:progress", { operationId, value }),
             onStatus: status => event.sender.send("crypto:status", { operationId, status })
-        }), fallbackMessage
-    );
+        });
+        // Successful decrypt: clear the failed-attempt counter while the path
+        // lock is still held. A failed reset is surfaced (policyError), or the
+        // next typo could erase a file the user believed was reset.
+        if (crypto.eraseInfo && crypto.eraseInfo.attempts > 0) {
+            const reset = await resetCounter(filePath, crypto.eraseInfo);
+            if (reset.error) {
+                logger.error("crypto:decrypt could not reset the failed-attempt counter");
+                return { policyError: true };
+            }
+        }
+    }, fallbackMessage, async error => {
+        // Only GCM authentication failures reach this branch; I/O errors,
+        // cancels and pre-flight failures keep their existing handling and
+        // never count against the erase policy.
+        if (!error || error.name !== "WrongPasswordError") return null;
+        if (!crypto.eraseInfo) return failure(Codes.WRONG_PASSWORD, fallbackMessage);
+        const attempt = await handleFailedAttempt(filePath, crypto.eraseInfo);
+        if (!attempt.counted) {
+            logger.error("crypto:decrypt could not update the failed-attempt counter");
+            return { ...failure(Codes.WRONG_PASSWORD, fallbackMessage), policyError: true };
+        }
+        if (attempt.erased) {
+            logger.error("crypto:decrypt erased the file after reaching the failed-attempt limit");
+            return failure(Codes.FILE_ERASED, "This file was erased because the failed-attempt limit was reached.");
+        }
+        if (attempt.attemptsRemaining === 0) {
+            // Limit reached but the erase failed: report the wrong password
+            // and the policy failure, never a successful erase.
+            logger.error("crypto:decrypt secure erase failed");
+            return { ...failure(Codes.WRONG_PASSWORD, fallbackMessage), attemptsRemaining: 0, policyError: true };
+        }
+        return { ...failure(Codes.WRONG_PASSWORD, fallbackMessage), attemptsRemaining: attempt.attemptsRemaining };
+    });
     // Only a fully completed decrypt makes its encrypted source deletable; a
     // cancelled or failed operation must leave the ciphertext untouchable.
     if (result.ok && !result.cancelled) deletableEncrypted.add(filePath);

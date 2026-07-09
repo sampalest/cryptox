@@ -39,7 +39,44 @@ describe("IPC validation", () => {
         })).toEqual({
             filePath: "/tmp/example.txt",
             password: "correct horse",
+            operationId: "operation-1",
+            erasePolicy: null
+        });
+    });
+
+    describe("erase policy payload", () => {
+        const basePayload = overrides => Object.assign({
+            file: { path: "/tmp/example.txt" },
+            password: "correct horse",
             operationId: "operation-1"
+        }, overrides);
+
+        it("accepts the offered attempt counts and keeps only maxAttempts", () => {
+            for (const maxAttempts of [3, 5, 10]) {
+                expect(normalizeCryptoPayload(basePayload({
+                    erasePolicy: { maxAttempts, extra: "dropped" }
+                })).erasePolicy).toEqual({ maxAttempts });
+            }
+        });
+
+        it("normalizes an absent policy to null", () => {
+            expect(normalizeCryptoPayload(basePayload({})).erasePolicy).toBeNull();
+            expect(normalizeCryptoPayload(basePayload({ erasePolicy: null })).erasePolicy).toBeNull();
+        });
+
+        it.each([
+            ["zero", { maxAttempts: 0 }],
+            ["outside the allowlist", { maxAttempts: 4 }],
+            ["above the format ceiling", { maxAttempts: 11 }],
+            ["non-integer", { maxAttempts: 2.5 }],
+            ["string", { maxAttempts: "5" }],
+            ["missing maxAttempts", {}],
+            ["array", [5]],
+            ["boolean", true],
+            ["number", 5]
+        ])("rejects an erase policy that is %s with INVALID_PAYLOAD", (label, erasePolicy) => {
+            expect(() => normalizeCryptoPayload(basePayload({ erasePolicy })))
+                .toThrow(expect.objectContaining({ code: "INVALID_PAYLOAD" }));
         });
     });
 

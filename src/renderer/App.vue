@@ -17,6 +17,7 @@ import BackgroundBlobs from "@/components/BackgroundBlobs.vue";
 import { useAppIconStore } from "@/store/appIcon";
 import { useAppStore } from "@/store/app";
 import { useDeleteBehaviorStore } from "@/store/deleteBehavior";
+import { useErasePolicyStore } from "@/store/erasePolicy";
 import { useThemeStore } from "@/store/theme";
 import { useUiStore } from "@/store/ui";
 import { useWindowSizeStore } from "@/store/windowSize";
@@ -44,6 +45,7 @@ export default {
         const theme = useThemeStore();
         theme.init();
         useDeleteBehaviorStore().init();
+        useErasePolicyStore().init();
         // windowSize is initialized in main.js before mount; here it only
         // drives the lk-zoom-* classes that keep the titlebar unscaled.
         return { theme, appIcon: useAppIconStore(), appStore: useAppStore(), ui: useUiStore(), windowSize: useWindowSizeStore() };

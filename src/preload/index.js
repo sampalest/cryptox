@@ -11,7 +11,12 @@ contextBridge.exposeInMainWorld("lockasaur", {
         setSize: sizeId => ipcRenderer.invoke("window:set-size", sizeId)
     },
     crypto: {
-        encrypt: (file, password, operationId) => ipcRenderer.invoke("crypto:encrypt", { file: { path: file?.path }, password, operationId }),
+        encrypt: (file, password, operationId, erasePolicy) => ipcRenderer.invoke("crypto:encrypt", {
+            file: { path: file?.path },
+            password,
+            operationId,
+            erasePolicy: erasePolicy ? { maxAttempts: erasePolicy.maxAttempts } : undefined
+        }),
         decrypt: (file, password, operationId) => ipcRenderer.invoke("crypto:decrypt", { file: { path: file?.path }, password, operationId }),
         cancel: operationId => ipcRenderer.invoke("crypto:cancel", operationId),
         onProgress: callback => {
@@ -26,7 +31,8 @@ contextBridge.exposeInMainWorld("lockasaur", {
         }
     },
     dialog: {
-        openFiles: kind => ipcRenderer.invoke("dialog:open-files", kind)
+        openFiles: kind => ipcRenderer.invoke("dialog:open-files", kind),
+        confirmErasePolicy: () => ipcRenderer.invoke("dialog:confirm-erase-policy")
     },
     menu: {
         onOpenFile: callback => {
@@ -43,6 +49,7 @@ contextBridge.exposeInMainWorld("lockasaur", {
     files: {
         ready: () => ipcRenderer.invoke("files:renderer-ready"),
         getPathForFile: file => webUtils.getPathForFile(file),
+        isDirectory: path => ipcRenderer.invoke("files:is-directory", path),
         confirmDeleteEncrypted: (path, mode, requested) => ipcRenderer.invoke("files:confirm-delete-encrypted", path, mode, requested),
         confirmDeleteOriginal: (path, mode, requested) => ipcRenderer.invoke("files:confirm-delete-original", path, mode, requested),
         onOpenFile: callback => {

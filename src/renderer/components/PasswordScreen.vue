@@ -5,7 +5,8 @@
             <div class="lk-sub">{{ isDecrypt ? "Enter the password this file was locked with." : "Choose a password. The dino guards the rest." }}</div>
         </div>
         <div v-if="fileLabel" class="lk-chip">
-            <svg width="14" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg>
+            <svg v-if="isFolder" width="14" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+            <svg v-else width="14" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg>
             <span>{{ fileLabel }}</span>
         </div>
         <div class="lk-pass-fields">
@@ -92,6 +93,11 @@ export default {
             if (!this.files || !this.files.length) return "";
             if (this.files.length === 1) return this.files[0].name;
             return `${this.files.length} files`;
+        },
+        // Folder icon only for a single selected directory; multi-selections
+        // keep the generic file icon.
+        isFolder() {
+            return Boolean(this.files && this.files.length === 1 && this.files[0].isDirectory);
         },
         deleteChecked() {
             return this.isDecrypt ? this.deleteBehavior.deleteEncrypted : this.deleteBehavior.deleteOriginal;

@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import sodium from "libsodium-wrappers-sumo";
-import { CancelledError } from "@shared/exceptions.js";
+import { CancelledError, WrongPasswordError } from "@shared/exceptions.js";
 import Crypto from "@main/crypto.js";
 import Format from "@main/format.js";
 import FileManager from "@shared/filemanager.js";
@@ -114,16 +114,17 @@ function leftoverTempNames(dir) {
     return fs.readdirSync(dir).filter(name => name.startsWith(".lockasaur-"));
 }
 
-/** Parse the header of a CTX1 file written by encrypt(). */
-function readCtx1Header(ctxPath) {
-    const buf = fs.readFileSync(ctxPath);
+/** Parse the header of a DINO file written by encrypt(). */
+function readDinoHeader(dinoPath) {
+    const buf = fs.readFileSync(dinoPath);
     const headerLen = buf.readUInt16BE(6);
     return {
         magic: buf.slice(0, 4).toString("utf-8"),
         version: buf.readUInt8(4),
         flags: buf.readUInt8(5),
         headerLen: headerLen,
-        meta: JSON.parse(buf.slice(8, 8 + headerLen).toString("utf-8")),
+        counter: buf.readUInt32BE(8),
+        meta: JSON.parse(buf.slice(16, 16 + headerLen).toString("utf-8")),
         raw: buf
     };
 }
@@ -191,7 +192,7 @@ describe("Crypto", () => {
 
         await expect(
             new Crypto("wrong horse").decrypt(new FileManager(encryptedPath), { value: 0 })
-        ).rejects.toThrow();
+        ).rejects.toThrow(WrongPasswordError);
 
         // The partial/garbage output must be cleaned up, not left on disk,
         // and no staged temp file may remain either.
@@ -199,32 +200,122 @@ describe("Crypto", () => {
         expect(leftoverTempNames(tempDir)).toEqual([]);
     });
 
-    it("writes the CTX1 format and never the old layouts", async () => {
+    it("writes the DINO format and never the old layouts", async () => {
         const sourcePath = path.join(tempDir, "sample.txt");
         const plaintext = "hello lockasaur";
         fs.writeFileSync(sourcePath, plaintext);
 
         await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
 
-        const { magic, version, flags, headerLen, meta, raw } = readCtx1Header(path.join(tempDir, "sample.dino"));
-        expect(magic).toBe("CTX1");
+        const { magic, version, flags, headerLen, counter, meta, raw } = readDinoHeader(path.join(tempDir, "sample.dino"));
+        expect(magic).toBe("DINO");
         expect(version).toBe(1);
         expect(flags).toBe(0);
+        expect(counter).toBe(0);
         expect(headerLen).toBeGreaterThan(0);
         expect(headerLen).toBeLessThanOrEqual(Format.MAX_HEADER_JSON);
         expect(meta.alg).toBe("aes-256-gcm");
         expect(meta.kdf).toBe("argon2id");
         expect(meta.name).toBe("sample.txt");
         expect(meta.keyLen).toBe(32);
+        expect(meta.erase).toBeUndefined();
         expect(Buffer.from(meta.salt, "base64").length).toBe(16);
         expect(meta.opslimit).toBeGreaterThan(0);
         expect(meta.memlimit).toBeGreaterThan(0);
 
-        // Pin the exact layout: [header][IV 16][ciphertext][tag 16] with no
-        // trailing 8-byte '*'-padded extension field (the old layouts' marker).
+        // Pin the exact layout: [prefix 8][mutable 8][JSON][IV 16][ciphertext]
+        // [tag 16] with no trailing 8-byte '*'-padded extension field (the old
+        // layouts' marker) and a zeroed mutable block.
+        expect(raw.slice(0, 4).toString("utf-8")).not.toBe("CTX1");
         expect(raw.slice(0, 6).toString("utf-8")).not.toBe("CTXBOX");
-        expect(raw.length).toBe(8 + headerLen + 16 + plaintext.length + 16);
+        expect(raw.slice(8, 16).equals(Buffer.alloc(8))).toBe(true);
+        expect(raw.length).toBe(16 + headerLen + 16 + plaintext.length + 16);
         expect(raw.slice(raw.length - 24, raw.length - 16).toString("utf-8")).not.toBe("*****txt");
+    });
+
+    describe("erase policy", () => {
+        it("bakes the policy into the header and still round-trips", async () => {
+            const sourcePath = path.join(tempDir, "sample.txt");
+            const encryptedPath = path.join(tempDir, "sample.dino");
+            fs.writeFileSync(sourcePath, "guarded payload");
+
+            await new Crypto("correct horse", undefined, { erasePolicy: { maxAttempts: 3 } })
+                .encrypt(new FileManager(sourcePath), { value: 0 }, {});
+
+            const { magic, counter, meta } = readDinoHeader(encryptedPath);
+            expect(magic).toBe("DINO");
+            expect(counter).toBe(0);
+            expect(meta.erase).toEqual({ maxAttempts: 3 });
+
+            fs.unlinkSync(sourcePath);
+            const cryptoOp = new Crypto("correct horse");
+            await cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 });
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("guarded payload");
+            expect(cryptoOp.eraseInfo).toMatchObject({ maxAttempts: 3, attempts: 0, counterOffset: Format.COUNTER_OFFSET });
+        });
+
+        it("rejects a wrong password with WrongPasswordError and populated eraseInfo", async () => {
+            const sourcePath = path.join(tempDir, "sample.txt");
+            const encryptedPath = path.join(tempDir, "sample.dino");
+            fs.writeFileSync(sourcePath, "guarded payload");
+            await new Crypto("correct horse", undefined, { erasePolicy: { maxAttempts: 5 } })
+                .encrypt(new FileManager(sourcePath), { value: 0 }, {});
+
+            const cryptoOp = new Crypto("wrong horse");
+            await expect(
+                cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 })
+            ).rejects.toThrow(WrongPasswordError);
+
+            const stats = fs.lstatSync(encryptedPath);
+            expect(cryptoOp.eraseInfo).toEqual({
+                maxAttempts: 5,
+                attempts: 0,
+                counterOffset: Format.COUNTER_OFFSET,
+                dev: stats.dev,
+                ino: stats.ino
+            });
+            expect(leftoverTempNames(tempDir)).toEqual([]);
+        });
+
+        it("leaves eraseInfo null for files without a policy, in every format", async () => {
+            const dinoSource = path.join(tempDir, "plain.txt");
+            fs.writeFileSync(dinoSource, "plain payload");
+            await new Crypto("correct horse").encrypt(new FileManager(dinoSource), { value: 0 }, {});
+            const legacyPath = path.join(tempDir, "legacy.ctx");
+            writeLegacyCtx(legacyPath, "correct horse", "legacy payload", "txt");
+            const ctx1Path = path.join(tempDir, "old.ctx");
+            await writeCtx1File(ctx1Path, "correct horse", "ctx1 payload", { metaOverrides: { name: "old.txt" } });
+
+            for (const target of [path.join(tempDir, "plain.dino"), legacyPath, ctx1Path]) {
+                const cryptoOp = new Crypto("wrong horse");
+                await expect(
+                    cryptoOp.decrypt(new FileManager(target), { value: 0 })
+                ).rejects.toThrow(WrongPasswordError);
+                expect(cryptoOp.eraseInfo).toBeNull();
+            }
+        });
+
+        it("still decrypts with the right password when the on-disk counter is nonzero", async () => {
+            const sourcePath = path.join(tempDir, "sample.txt");
+            const encryptedPath = path.join(tempDir, "sample.dino");
+            fs.writeFileSync(sourcePath, "counted payload");
+            await new Crypto("correct horse", undefined, { erasePolicy: { maxAttempts: 5 } })
+                .encrypt(new FileManager(sourcePath), { value: 0 }, {});
+            fs.unlinkSync(sourcePath);
+
+            // Bump the counter in place: the mutable block is outside the AAD,
+            // so authentication must still succeed.
+            const handle = fs.openSync(encryptedPath, "r+");
+            const bumped = Buffer.alloc(4);
+            bumped.writeUInt32BE(2, 0);
+            fs.writeSync(handle, bumped, 0, 4, Format.COUNTER_OFFSET);
+            fs.closeSync(handle);
+
+            const cryptoOp = new Crypto("correct horse");
+            await cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 });
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("counted payload");
+            expect(cryptoOp.eraseInfo.attempts).toBe(2);
+        });
     });
 
     it("uses a different random salt per file", async () => {
@@ -236,8 +327,8 @@ describe("Crypto", () => {
         await new Crypto("same password").encrypt(new FileManager(firstSource), { value: 0 }, {});
         await new Crypto("same password").encrypt(new FileManager(secondSource), { value: 0 }, {});
 
-        const firstSalt = readCtx1Header(path.join(tempDir, "first.dino")).meta.salt;
-        const secondSalt = readCtx1Header(path.join(tempDir, "second.dino")).meta.salt;
+        const firstSalt = readDinoHeader(path.join(tempDir, "first.dino")).meta.salt;
+        const secondSalt = readDinoHeader(path.join(tempDir, "second.dino")).meta.salt;
         expect(firstSalt).not.toBe(secondSalt);
     });
 
@@ -381,7 +472,7 @@ describe("Crypto", () => {
         expect(fs.existsSync(acquiredDirs[0])).toBe(false);
 
         // Directory payloads carry the flag bit and the tar name in the header.
-        const { flags, meta } = readCtx1Header(`${dirPath}.dino`);
+        const { flags, meta } = readDinoHeader(`${dirPath}.dino`);
         expect(flags & Format.FLAG_DIRECTORY).toBe(Format.FLAG_DIRECTORY);
         expect(meta.name).toBe("folder.tar");
 
@@ -503,8 +594,8 @@ describe("Crypto", () => {
         // Only the last extension is replaced; the old first-dot truncation
         // would have produced report.dino.
         expect(fs.existsSync(path.join(tempDir, "report.dino"))).toBe(false);
-        expect(readCtx1Header(path.join(tempDir, "report.2024.backup.dino")).meta.name).toBe("report.2024.backup.txt");
-        expect(readCtx1Header(path.join(tempDir, "naïve café.dino")).meta.name).toBe("naïve café.txt");
+        expect(readDinoHeader(path.join(tempDir, "report.2024.backup.dino")).meta.name).toBe("report.2024.backup.txt");
+        expect(readDinoHeader(path.join(tempDir, "naïve café.dino")).meta.name).toBe("naïve café.txt");
     });
 
     it("round-trips a Unicode multi-dot name with a long extension from the header", async () => {
@@ -528,7 +619,7 @@ describe("Crypto", () => {
 
         await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
 
-        expect(readCtx1Header(encryptedPath).meta.name).toBe("my report (final) v2.txt");
+        expect(readDinoHeader(encryptedPath).meta.name).toBe("my report (final) v2.txt");
 
         fs.unlinkSync(sourcePath);
         await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
@@ -543,7 +634,7 @@ describe("Crypto", () => {
 
         await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
 
-        expect(readCtx1Header(encryptedPath).meta.name).toBe("README");
+        expect(readDinoHeader(encryptedPath).meta.name).toBe("README");
 
         fs.unlinkSync(sourcePath);
         await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
@@ -560,8 +651,8 @@ describe("Crypto", () => {
         await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
 
         expect(fs.readFileSync(takenPath, "utf-8")).toBe("pre-existing");
-        const deflected = readCtx1Header(path.join(tempDir, "sample (1).dino"));
-        expect(deflected.magic).toBe("CTX1");
+        const deflected = readDinoHeader(path.join(tempDir, "sample (1).dino"));
+        expect(deflected.magic).toBe("DINO");
         expect(deflected.meta.name).toBe("sample.txt");
     });
 
@@ -574,7 +665,7 @@ describe("Crypto", () => {
         await new Crypto("correct horse").encrypt(new FileManager(dirPath), { value: 0 }, {});
 
         expect(fs.readFileSync(`${dirPath}.dino`, "utf-8")).toBe("pre-existing");
-        expect(readCtx1Header(path.join(tempDir, "folder (1).dino")).meta.name).toBe("folder.tar");
+        expect(readDinoHeader(path.join(tempDir, "folder (1).dino")).meta.name).toBe("folder.tar");
     });
 
     it("does not overwrite an existing file when decrypting", async () => {

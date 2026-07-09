@@ -22,18 +22,17 @@ export default {
         // one picker, so Home offers a button per kind there. On macOS the
         // "files" dialog picks both, so Home shows a single merged button.
         async onOpen(kind = "files") {
-            const paths = await window.lockasaur.dialog.openFiles(kind);
-            if (paths && paths.length) {
-                let fileList = [];
-                paths.forEach(path => {
-                    fileList.push(new FileManager(path));
-                });
-                this.selectFile(fileList);
+            const entries = await window.lockasaur.dialog.openFiles(kind);
+            if (entries && entries.length) {
+                this.selectFile(entries.map(entry => new FileManager(entry.path, entry.isDirectory)));
             }
         },
         openFileListener() {
-            this.unsubscribeOpenFile = window.lockasaur.files.onOpenFile(file => {
-                this.selectFile([new FileManager(file)]);
+            // macOS open-file events deliver a bare path; resolve the
+            // directory flag through the bridge for the chip icon.
+            this.unsubscribeOpenFile = window.lockasaur.files.onOpenFile(async file => {
+                const isDirectory = await window.lockasaur.files.isDirectory(file);
+                this.selectFile([new FileManager(file, isDirectory)]);
             });
         }
     },

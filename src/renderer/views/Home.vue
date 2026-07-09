@@ -93,13 +93,16 @@ export default {
             this.password = password;
             this.showPassword = false;
         },
-        selectFile(files) {
+        async selectFile(files) {
             let ctx = 0;
-            this.files = Array.from(files).map(file => {
+            this.files = await Promise.all(Array.from(files).map(async file => {
                 if (file.path) return file;
+                // Dropped DOM File objects only yield a path; the directory
+                // flag (chip icon) comes from the bridge.
                 const filePath = window.lockasaur.files.getPathForFile(file);
-                return new FileManager(filePath);
-            });
+                const isDirectory = await window.lockasaur.files.isDirectory(filePath);
+                return new FileManager(filePath, isDirectory);
+            }));
             this.files.forEach(file => {
                 if (Constants.ENCRYPTED_POINT_EXTS.some(ext => file.name.endsWith(ext))) {
                     this.encrypted = true;
@@ -145,7 +148,7 @@ export default {
     async beforeMount() {
         const filesStore = useFilesStore();
         const path = filesStore.files;
-        if (path) this.selectFile([new FileManager(path)]);
+        if (path) this.selectFile([new FileManager(path, await window.lockasaur.files.isDirectory(path))]);
         filesStore.clearFiles();
 
         // macOS is the only platform whose native dialog picks files and

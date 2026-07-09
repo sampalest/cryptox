@@ -1,26 +1,40 @@
 import path from "node:path";
+import Constants from "../shared/constants.js";
 
-// CTX1 versioned encrypted file format.
+// DINO versioned encrypted file format (written by every new encrypt).
 //
-//   offset 0  magic "CTX1" (4 bytes)
-//   offset 4  version u8 = 1
-//   offset 5  flags u8            bit 0 = payload is a tar'd directory; other bits must be 0
-//   offset 6  headerLen u16BE     byte length of the JSON blob only
-//   offset 8  JSON meta (headerLen bytes)
-//             [IV 16][ciphertext][GCM auth tag 16]
+//   offset 0   magic "DINO" (4 bytes)               in AAD
+//   offset 4   version u8 = 1                       in AAD
+//   offset 5   flags u8            bit 0 = payload is a tar'd directory      in AAD
+//   offset 6   headerLen u16BE     byte length of the JSON blob only         in AAD
+//   offset 8   attempts u32BE      MUTABLE, NOT in AAD
+//   offset 12  reserved u32BE = 0  MUTABLE, NOT in AAD
+//   offset 16  JSON meta (headerLen bytes)          in AAD
+//              [IV 16][ciphertext][GCM auth tag 16]
 //
-// JSON meta: { alg, kdf, salt (base64), opslimit, memlimit, keyLen, name }.
-// The raw header bytes (offset 0 through the end of the JSON) are passed to
-// AES-256-GCM as associated data, so the auth tag covers the header: any
-// tampering with the metadata fails decryption.
+// JSON meta: { alg, kdf, salt (base64), opslimit, memlimit, keyLen, name,
+// erase: { maxAttempts } (optional) }. AAD = bytes 0..7 + the JSON: the
+// 8-byte mutable block is deliberately excluded so the failed-attempt counter
+// can be rewritten in place without invalidating the auth tag; everything
+// else, including the erase policy itself, is authenticated.
+//
+// CTX1 is the pre-rebrand layout (same prefix, no mutable block, JSON at
+// offset 8, whole header in AAD). It is decrypt-only: never write it.
 //
 // This module is pure (no fs, no sodium, no node:crypto) so the parser/writer
 // is trivially unit-testable and never triggers KDF work.
+
+const MAGIC_DINO = Buffer.from("DINO", "utf-8");
+const VERSION_DINO = 1;
+const COUNTER_OFFSET = 8;
+const MUTABLE_LEN = 8;
 
 const MAGIC_V1 = Buffer.from("CTX1", "utf-8");
 const VERSION_V1 = 1;
 // magic (4) + version (1) + flags (1) + headerLen (2)
 const PREFIX_LEN_V1 = MAGIC_V1.length + 1 + 1 + 2;
+// the DINO prefix adds the mutable block before the JSON
+const PREFIX_LEN_DINO = PREFIX_LEN_V1 + MUTABLE_LEN;
 const MAX_HEADER_JSON = 4096;
 const FLAG_DIRECTORY = 0x01;
 const KNOWN_FLAGS = FLAG_DIRECTORY;
@@ -95,51 +109,121 @@ function validateKdfParams(meta) {
 }
 
 /**
- * Full validation of CTX1 header metadata.
+ * Full validation of header metadata. The erase policy is DINO-only: CTX1
+ * files have no counter region, so a CTX1 header carrying one is crafted.
  * @function _validateMeta
  * @param {Object} meta Header metadata.
+ * @param {Boolean} allowErase Whether an erase policy may be present.
  */
-function _validateMeta(meta) {
+function _validateMeta(meta, allowErase) {
     if (typeof meta !== "object" || meta === null || Array.isArray(meta)) throw new FormatError("header meta must be an object");
     if (meta.alg !== ALG_AES_256_GCM) throw new FormatError("unsupported algorithm");
     validateKdfParams(meta);
     sanitizeName(meta.name);
+    if (meta.erase === undefined) return;
+    if (!allowErase) throw new FormatError("erase policy not allowed in this format");
+    if (typeof meta.erase !== "object" || meta.erase === null || Array.isArray(meta.erase)) {
+        throw new FormatError("header erase must be an object");
+    }
+    const max = meta.erase.maxAttempts;
+    if (!Number.isInteger(max) || max < Constants.ERASE_MAX_ATTEMPTS_MIN || max > Constants.ERASE_MAX_ATTEMPTS_MAX) {
+        throw new FormatError("header erase maxAttempts out of range");
+    }
 }
 
 /**
  * Identify the on-disk format from the first bytes of a file.
- * "CTX1" and "CTXBOX" diverge at byte 3, so CTX1 is checked first; anything
- * else is treated as the raw legacy layout (IV-first, no header).
+ * "CTX1" and "CTXBOX" diverge at byte 3, so CTX1 is checked first among the
+ * CTX pair; anything without a known magic is treated as the raw legacy
+ * layout (IV-first, no header).
  * @function detectFormat
  * @param {Buffer} firstBytes Up to the first 9 bytes of the file.
- * @return {String} "ctx1" | "ctxbox" | "legacy"
+ * @return {String} "dino" | "ctx1" | "ctxbox" | "legacy"
  */
 function detectFormat(firstBytes) {
     if (!Buffer.isBuffer(firstBytes)) return "legacy";
+    if (firstBytes.length >= MAGIC_DINO.length && firstBytes.slice(0, MAGIC_DINO.length).equals(MAGIC_DINO)) return "dino";
     if (firstBytes.length >= MAGIC_V1.length && firstBytes.slice(0, MAGIC_V1.length).equals(MAGIC_V1)) return "ctx1";
     if (firstBytes.length >= CTXBOX_MAGIC.length && firstBytes.slice(0, CTXBOX_MAGIC.length).toString("utf-8") === CTXBOX_MAGIC) return "ctxbox";
     return "legacy";
 }
 
 /**
- * Build a CTX1 header. Runs the same validation as the parser so the encrypt
+ * Build a DINO header. Runs the same validation as the parser so the encrypt
  * path can never emit a header the decrypt path would reject.
- * @function buildHeaderV1
- * @param {Object} meta Header metadata ({ alg, kdf, salt, opslimit, memlimit, keyLen, name }).
+ * @function buildHeaderDino
+ * @param {Object} meta Header metadata ({ alg, kdf, salt, opslimit, memlimit,
+ *                      keyLen, name, erase? }).
  * @param {Number} flags Flags byte (FLAG_DIRECTORY or 0).
- * @return {Buffer} The complete header bytes (prefix + JSON).
+ * @return {Object} { aad, disk }: `disk` is what goes on disk (prefix +
+ *                  zeroed mutable block + JSON); `aad` is `disk` without the
+ *                  mutable block and is what the cipher authenticates.
  */
-function buildHeaderV1(meta, flags) {
+function buildHeaderDino(meta, flags) {
     if (!Number.isInteger(flags) || (flags & ~KNOWN_FLAGS) !== 0) throw new FormatError("unknown flag bits");
-    _validateMeta(meta);
+    _validateMeta(meta, true);
     const json = Buffer.from(JSON.stringify(meta), "utf-8");
     if (json.length > MAX_HEADER_JSON) throw new FormatError("header too large");
     const prefix = Buffer.alloc(PREFIX_LEN_V1);
-    MAGIC_V1.copy(prefix, 0);
-    prefix.writeUInt8(VERSION_V1, MAGIC_V1.length);
-    prefix.writeUInt8(flags, MAGIC_V1.length + 1);
-    prefix.writeUInt16BE(json.length, MAGIC_V1.length + 2);
-    return Buffer.concat([prefix, json]);
+    MAGIC_DINO.copy(prefix, 0);
+    prefix.writeUInt8(VERSION_DINO, MAGIC_DINO.length);
+    prefix.writeUInt8(flags, MAGIC_DINO.length + 1);
+    prefix.writeUInt16BE(json.length, MAGIC_DINO.length + 2);
+    return {
+        aad: Buffer.concat([prefix, json]),
+        disk: Buffer.concat([prefix, Buffer.alloc(MUTABLE_LEN), json])
+    };
+}
+
+/**
+ * Parse and bound-check the fixed 16-byte DINO prefix (including the mutable
+ * block), so callers can read the JSON blob with a known, bounded length.
+ * @function parsePrefixDino
+ * @param {Buffer} buf At least the first 16 bytes of the file.
+ * @return {Object} { version, flags, headerLen, counter }
+ */
+function parsePrefixDino(buf) {
+    if (!Buffer.isBuffer(buf) || buf.length < PREFIX_LEN_DINO) throw new FormatError("file too short for DINO header");
+    if (!buf.slice(0, MAGIC_DINO.length).equals(MAGIC_DINO)) throw new FormatError("bad magic");
+    const version = buf.readUInt8(MAGIC_DINO.length);
+    if (version !== VERSION_DINO) throw new FormatError(`unsupported format version: ${version}`);
+    const flags = buf.readUInt8(MAGIC_DINO.length + 1);
+    if ((flags & ~KNOWN_FLAGS) !== 0) throw new FormatError("unknown flag bits");
+    const headerLen = buf.readUInt16BE(MAGIC_DINO.length + 2);
+    if (headerLen < 2 || headerLen > MAX_HEADER_JSON) throw new FormatError("header length out of range");
+    const counter = buf.readUInt32BE(COUNTER_OFFSET);
+    return { version, flags, headerLen, counter };
+}
+
+/**
+ * Parse and validate a complete DINO header.
+ * @function parseHeaderDino
+ * @param {Buffer} headerBuf The raw prefix + mutable block + JSON bytes as read from disk.
+ * @param {Number} fileSize Total file size, to reject truncated files early.
+ * @return {Object} { flags, headerLen, meta, aadBytes, counter, payloadStart }
+ *                  `aadBytes` excludes the mutable block; `payloadStart` is
+ *                  the file offset of the IV.
+ */
+function parseHeaderDino(headerBuf, fileSize) {
+    const { flags, headerLen, counter } = parsePrefixDino(headerBuf);
+    if (headerBuf.length < PREFIX_LEN_DINO + headerLen) throw new FormatError("truncated header");
+    if (fileSize < PREFIX_LEN_DINO + headerLen + IV_LEN + TAG_LEN) throw new FormatError("file too short for DINO payload");
+    const json = headerBuf.slice(PREFIX_LEN_DINO, PREFIX_LEN_DINO + headerLen);
+    let meta;
+    try {
+        meta = JSON.parse(json.toString("utf-8"));
+    } catch (error) {
+        throw new FormatError("header is not valid JSON");
+    }
+    _validateMeta(meta, true);
+    return {
+        flags,
+        headerLen,
+        meta,
+        aadBytes: Buffer.concat([headerBuf.slice(0, PREFIX_LEN_V1), json]),
+        counter,
+        payloadStart: PREFIX_LEN_DINO + headerLen
+    };
 }
 
 /**
@@ -179,11 +263,16 @@ function parseHeaderV1(headerBuf, fileSize) {
     } catch (error) {
         throw new FormatError("header is not valid JSON");
     }
-    _validateMeta(meta);
+    _validateMeta(meta, false);
     return { flags, headerLen, meta, headerBytes };
 }
 
 export default {
+    MAGIC_DINO,
+    VERSION_DINO,
+    PREFIX_LEN_DINO,
+    COUNTER_OFFSET,
+    MUTABLE_LEN,
     MAGIC_V1,
     VERSION_V1,
     PREFIX_LEN_V1,
@@ -202,7 +291,9 @@ export default {
     CTXBOX_MAGIC,
     FormatError,
     detectFormat,
-    buildHeaderV1,
+    buildHeaderDino,
+    parsePrefixDino,
+    parseHeaderDino,
     parsePrefixV1,
     parseHeaderV1,
     validateKdfParams,

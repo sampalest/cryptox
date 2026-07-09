@@ -56,6 +56,24 @@
             </div>
             <div class="lk-settings-hint">{{ deleteHint }}</div>
         </div>
+        <div class="lk-settings-section">
+            <div class="lk-settings-label">ERASE AFTER FAILED ATTEMPTS</div>
+            <div class="lk-settings-seg">
+                <button
+                    v-for="option in eraseOptions"
+                    :key="option.id"
+                    type="button"
+                    class="lk-settings-seg-btn"
+                    :class="{ active: eraseActive === option.id }"
+                    @click="erasePolicy.choose(option.id)"
+                >
+                    <svg v-if="option.id === 'off'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.7 14a6.9 6.9 0 0 0 .3-2V5l-8-3-3.2 1.2"></path><path d="m2 2 20 20"></path><path d="M4.7 4.7 4 5v7c0 6 8 10 8 10a20.3 20.3 0 0 0 5.6-4.4"></path></svg>
+                    <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.7 9a.6.6 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+                    {{ option.label }}
+                </button>
+            </div>
+            <div class="lk-settings-hint">{{ eraseHint }}</div>
+        </div>
         <div v-if="isMac" class="lk-settings-section">
             <div class="lk-settings-label">APP ICON</div>
             <div class="lk-settings-icons">
@@ -89,6 +107,7 @@ import GlassButton from "@/components/ui/GlassButton.vue";
 import { APP_ICONS, useAppIconStore } from "@/store/appIcon";
 import { useAppStore } from "@/store/app";
 import { DELETE_MODES, useDeleteBehaviorStore } from "@/store/deleteBehavior";
+import { ERASE_ATTEMPT_OPTIONS, useErasePolicyStore } from "@/store/erasePolicy";
 import { useThemeStore } from "@/store/theme";
 import { useUiStore } from "@/store/ui";
 import { WINDOW_SIZES, useWindowSizeStore } from "@/store/windowSize";
@@ -99,7 +118,7 @@ export default {
         "glass-button": GlassButton
     },
     setup() {
-        return { appIcon: useAppIconStore(), appStore: useAppStore(), deleteBehavior: useDeleteBehaviorStore(), theme: useThemeStore(), ui: useUiStore(), windowSize: useWindowSizeStore() };
+        return { appIcon: useAppIconStore(), appStore: useAppStore(), deleteBehavior: useDeleteBehaviorStore(), erasePolicy: useErasePolicyStore(), theme: useThemeStore(), ui: useUiStore(), windowSize: useWindowSizeStore() };
     },
     computed: {
         isMac() {
@@ -120,6 +139,19 @@ export default {
         },
         deleteModes() {
             return DELETE_MODES;
+        },
+        eraseOptions() {
+            return [
+                { id: "off", label: "Off" },
+                ...ERASE_ATTEMPT_OPTIONS.map(count => ({ id: count, label: String(count) }))
+            ];
+        },
+        eraseActive() {
+            return this.erasePolicy.enabled ? this.erasePolicy.maxAttempts : "off";
+        },
+        eraseHint() {
+            if (!this.erasePolicy.enabled) return "Nothing is ever erased after a wrong password.";
+            return `New encrypted files are permanently erased after ${this.erasePolicy.maxAttempts} wrong passwords. This cannot be undone.`;
         },
         deleteHint() {
             if (this.deleteBehavior.mode === "ask") return "Asks what to do with the source file after each operation.";

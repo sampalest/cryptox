@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from "pinia";
 import fileCrypto from "@/components/mixins/filecryto.js";
 import Constants from "@shared/constants.js";
 import { useDeleteBehaviorStore } from "@/store/deleteBehavior.js";
+import { useErasePolicyStore } from "@/store/erasePolicy.js";
 
 /**
  * The mixin is a plain object, so it is testable without mounting components:
@@ -222,6 +223,81 @@ describe("filecryto mixin", () => {
             expect(global.alert).not.toHaveBeenCalled();
             expect(ctx.cancel).not.toHaveBeenCalled();
             expect(ctx.finish).toBe(true);
+        });
+    });
+
+    describe("erase policy messaging", () => {
+        it("shows the attempts-remaining warning for WRONG_PASSWORD with a policy", () => {
+            const ctx = makeContext([]);
+            ctx.handleCryptoFailure("decrypt", { code: "WRONG_PASSWORD", attemptsRemaining: 2 });
+            expect(global.alert).toHaveBeenCalledWith("Incorrect password. 2 attempts remaining before this file is permanently erased.");
+        });
+
+        it("uses the singular form for one remaining attempt", () => {
+            const ctx = makeContext([]);
+            ctx.handleCryptoFailure("decrypt", { code: "WRONG_PASSWORD", attemptsRemaining: 1 });
+            expect(global.alert).toHaveBeenCalledWith("Incorrect password. 1 attempt remaining before this file is permanently erased.");
+        });
+
+        it("shows the plain wrong-password message without a policy", () => {
+            const ctx = makeContext([]);
+            ctx.handleCryptoFailure("decrypt", { code: "WRONG_PASSWORD" });
+            expect(global.alert).toHaveBeenCalledWith("Incorrect password or the file is corrupted.");
+        });
+
+        it("appends the policy note when the counter could not be updated", () => {
+            const ctx = makeContext([]);
+            ctx.handleCryptoFailure("decrypt", { code: "WRONG_PASSWORD", policyError: true });
+            const shown = global.alert.mock.calls.pop()[0];
+            expect(shown).toContain("Incorrect password or the file is corrupted.");
+            expect(shown).toContain("The failed-attempt protection could not update this file.");
+        });
+
+        it("shows the exact erased message and never the delete prompt", async () => {
+            global.window.lockasaur.crypto.decrypt = jest.fn(() => Promise.resolve({ ok: false, code: "FILE_ERASED", message: "raw" }));
+            const files = [{ path: "/a.dino" }];
+            const ctx = makeContext(files);
+            ctx.decryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.alert).toHaveBeenCalledWith("This file was erased because the failed-attempt limit was reached.");
+            expect(global.window.lockasaur.files.confirmDeleteEncrypted).not.toHaveBeenCalled();
+            expect(ctx.finish).toBe(false);
+        });
+
+        it("warns when a successful decrypt could not reset the counter", async () => {
+            global.window.lockasaur.crypto.decrypt = jest.fn(() => Promise.resolve({ ok: true, cancelled: false, policyError: true }));
+            const files = [{ path: "/a.dino" }];
+            const ctx = makeContext(files);
+            ctx.decryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.alert).toHaveBeenCalledWith("The failed-attempt protection could not update this file.");
+            expect(ctx.cancel).not.toHaveBeenCalled();
+            expect(ctx.finish).toBe(true);
+        });
+    });
+
+    describe("erase policy encrypt payload", () => {
+        it("passes the policy as the fourth encrypt argument when enabled", async () => {
+            const store = useErasePolicyStore();
+            store.enabled = true;
+            store.maxAttempts = 3;
+            const files = [{ path: "/a.txt" }];
+            const ctx = makeContext(files);
+            ctx.encryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.window.lockasaur.crypto.encrypt).toHaveBeenCalledWith(
+                { path: "/a.txt" }, "secret", expect.any(String), { maxAttempts: 3 }
+            );
+        });
+
+        it("passes no policy when disabled", async () => {
+            const files = [{ path: "/a.txt" }];
+            const ctx = makeContext(files);
+            ctx.encryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.window.lockasaur.crypto.encrypt).toHaveBeenCalledWith(
+                { path: "/a.txt" }, "secret", expect.any(String), undefined
+            );
         });
     });
 

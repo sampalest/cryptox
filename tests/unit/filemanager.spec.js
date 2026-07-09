@@ -15,5 +15,11 @@ describe("FileManager", () => {
         expect(file.name).toBe("secret.txt");
         expect(file.extension()).toBe("txt");
     });
+
+    it("defaults isDirectory to false and coerces the given flag", () => {
+        expect(new FileManager("/tmp/file.txt").isDirectory).toBe(false);
+        expect(new FileManager("/tmp/folder", true).isDirectory).toBe(true);
+        expect(new FileManager("/tmp/folder", undefined).isDirectory).toBe(false);
+    });
 });
 

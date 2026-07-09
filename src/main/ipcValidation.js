@@ -132,8 +132,20 @@ export function normalizeCryptoPayload(payload) {
     return {
         filePath,
         password: payload.password,
-        operationId: validateOperationId(payload.operationId)
+        operationId: validateOperationId(payload.operationId),
+        erasePolicy: normalizeErasePolicy(payload.erasePolicy)
     };
+}
+
+// Optional encrypt-time erase policy. The renderer may only request the exact
+// attempt counts the UI offers; anything else is an invalid payload, never a
+// clamped or defaulted policy. Only maxAttempts survives normalization.
+export function normalizeErasePolicy(value) {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "object" || Array.isArray(value) || !Constants.ERASE_ATTEMPT_OPTIONS.includes(value.maxAttempts)) {
+        throw new IpcValidationError(Codes.INVALID_PAYLOAD, "Erase policy must use one of the offered attempt counts.");
+    }
+    return { maxAttempts: value.maxAttempts };
 }
 
 export function validateOperationId(value) {

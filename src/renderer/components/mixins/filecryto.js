@@ -1,24 +1,41 @@
 import { useDeleteBehaviorStore } from "@/store/deleteBehavior";
+import { useErasePolicyStore } from "@/store/erasePolicy";
 
 // Every CRYPTO_ERROR_CODES value maps to a deliberate string for both kinds, so
 // no code ever falls through to a generic message (SENDER_REJECTED and
-// INVALID_PAYLOAD were previously unmapped).
+// INVALID_PAYLOAD were previously unmapped). WRONG_PASSWORD and FILE_ERASED
+// are decrypt-only in practice; the encrypt entries exist to keep the map total.
 const FAILURE_MESSAGES = {
     encrypt: {
         SENDER_REJECTED: "The request was rejected.",
         INVALID_PAYLOAD: "The request was invalid.",
         FILE_NOT_FOUND: "The file could not be found.",
         INVALID_FILE_TYPE: "This file cannot be encrypted.",
-        OPERATION_FAILED: "Encryption failed."
+        OPERATION_FAILED: "Encryption failed.",
+        WRONG_PASSWORD: "Encryption failed.",
+        FILE_ERASED: "Encryption failed."
     },
     decrypt: {
         SENDER_REJECTED: "The request was rejected.",
         INVALID_PAYLOAD: "The request was invalid.",
         FILE_NOT_FOUND: "The file could not be found.",
         INVALID_FILE_TYPE: "Only .dino and .ctx files can be decrypted.",
-        OPERATION_FAILED: "Incorrect password or the file is corrupted."
+        OPERATION_FAILED: "Incorrect password or the file is corrupted.",
+        WRONG_PASSWORD: "Incorrect password or the file is corrupted.",
+        FILE_ERASED: "This file was erased because the failed-attempt limit was reached."
     }
 };
+
+// The attempts count is computed by the main process, never user content.
+function wrongPasswordAlert(result) {
+    if (Number.isInteger(result.attemptsRemaining) && result.attemptsRemaining > 0) {
+        const plural = result.attemptsRemaining === 1 ? "attempt" : "attempts";
+        return `Incorrect password. ${result.attemptsRemaining} ${plural} remaining before this file is permanently erased.`;
+    }
+    return FAILURE_MESSAGES.decrypt.WRONG_PASSWORD;
+}
+
+const POLICY_ERROR_NOTE = "The failed-attempt protection could not update this file.";
 
 export default {
     name: "file-crypto",
@@ -72,7 +89,10 @@ export default {
             const code = result && result.code;
             window.lockasaur.log.error(`crypto ${kind} failed: ${code || "NO_RESULT"}`);
             const messages = FAILURE_MESSAGES[kind];
-            alert(messages[code] || (result && result.message) || "The operation failed.");
+            let message = messages[code] || (result && result.message) || "The operation failed.";
+            if (kind === "decrypt" && code === "WRONG_PASSWORD") message = wrongPasswordAlert(result);
+            if (result && result.policyError) message = `${message} ${POLICY_ERROR_NOTE}`;
+            alert(message);
             this.cancel();
         },
         encryptFile(file) {
@@ -86,7 +106,7 @@ export default {
             this.addHandlers(offProgress, offStatus);
 
             this.trackOperation(operationId);
-            window.lockasaur.crypto.encrypt({ path: file.path }, this.password, operationId).then(async result => {
+            window.lockasaur.crypto.encrypt({ path: file.path }, this.password, operationId, useErasePolicyStore().policyPayload).then(async result => {
                 if (!result || result.ok === false) return this.handleCryptoFailure("encrypt", result);
                 // A cancelled operation must never count as a success.
                 if (result.cancelled) return;
@@ -128,6 +148,9 @@ export default {
                     if (!result || result.ok === false) return this.handleCryptoFailure("decrypt", result);
                     // A cancelled operation must never count as a success.
                     if (result.cancelled) return;
+                    // Decrypt succeeded but the failed-attempt counter could not
+                    // be reset: warn, or the next typo could erase the file.
+                    if (result.policyError) alert(POLICY_ERROR_NOTE);
                     // Decryption already succeeded; a failed delete must not be reported
                     // as a decrypt error, so keep it isolated from the catch below.
                     try {
