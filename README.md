@@ -78,7 +78,7 @@ All file types are supported.
 - Node libs
 
 ## Author
-Samuel P.E.
+Sampalest
 
 ## License
 **Lockasaur** is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).

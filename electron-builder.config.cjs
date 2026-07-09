@@ -139,7 +139,7 @@ module.exports = {
     toolsets: {
         appimage: "1.0.2"
     },
-    copyright: "Copyright © 2026 Samuel P.E.",
+    copyright: "Copyright © 2026 Sampalest",
     // Each platform is built for both x64 and arm64 on native-architecture CI
     // runners; the arch in the name keeps the per-arch artifacts distinct when a
     // single release aggregates them all. The version is intentionally left out
