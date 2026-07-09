@@ -1,23 +1,15 @@
 import crypto from "node:crypto";
 
-// AES-SIV-CMAC-256 (RFC 5297), implemented on node:crypto AES-128 primitives
-// because neither Node's OpenSSL build nor Electron's BoringSSL exposes an SIV
-// cipher. Used ONLY to authenticate NTS time packets (RFC 8915); it never
-// touches file encryption, which stays AES-256-GCM in crypto.js.
-//
-// The 32-byte AEAD_AES_SIV_CMAC_256 key splits into two AES-128 halves:
-// K1 (first 16 bytes) keys S2V/CMAC, K2 (last 16 bytes) keys CTR.
+// AES-SIV-CMAC-256 (RFC 5297) on node:crypto AES-128 primitives: neither Node
+// nor Electron exposes an SIV cipher. Authenticates NTS time packets (RFC 8915)
+// only; file encryption stays AES-256-GCM in crypto.js. The 32-byte key splits
+// into K1 (CMAC/S2V) and K2 (CTR).
 
 const BLOCK = 16;
 
 const ZERO_BLOCK = Buffer.alloc(BLOCK);
 
-/**
- * GF(2^128) doubling as defined by RFC 4493/5297.
- * @function dbl
- * @param {Buffer} block 16 bytes.
- * @return {Buffer} 16 bytes.
- */
+// GF(2^128) doubling (RFC 4493/5297).
 function dbl(block) {
     const out = Buffer.alloc(BLOCK);
     let carry = 0;
@@ -41,13 +33,7 @@ function aesEcbBlock(key16, block) {
     return Buffer.concat([cipher.update(block), cipher.final()]);
 }
 
-/**
- * AES-CMAC (RFC 4493) with an AES-128 key.
- * @function aesCmac
- * @param {Buffer} key16 16-byte key.
- * @param {Buffer} data Message of any length.
- * @return {Buffer} 16-byte tag.
- */
+// AES-CMAC (RFC 4493) with an AES-128 key.
 function aesCmac(key16, data) {
     const k1 = dbl(aesEcbBlock(key16, ZERO_BLOCK));
     const k2 = dbl(k1);
@@ -69,15 +55,8 @@ function aesCmac(key16, data) {
     return aesEcbBlock(key16, xorBlocks(x, last));
 }
 
-/**
- * S2V (RFC 5297 section 2.4) over an ordered vector of strings.
- * @function s2v
- * @param {Buffer} key16 CMAC key (K1).
- * @param {Buffer[]} strings The associated-data vector; the LAST entry is the
- *                   plaintext (or, in nonce-based AEAD use, the caller places
- *                   the nonce as the final AD component before the plaintext).
- * @return {Buffer} 16-byte synthetic IV.
- */
+// S2V (RFC 5297 section 2.4). The last vector entry is the plaintext; nonce-based
+// callers place the nonce as the final associated-data component before it.
 function s2v(key16, strings) {
     if (strings.length === 0) {
         const one = Buffer.alloc(BLOCK);
@@ -103,8 +82,8 @@ function s2v(key16, strings) {
     return aesCmac(key16, t);
 }
 
-// RFC 5297: the CTR IV is the SIV with bit 31 of each of the last two 32-bit
-// words cleared, so the counter cannot carry into the upper half.
+// CTR IV: the SIV with bit 31 of the last two 32-bit words cleared, so the
+// counter cannot carry into the upper half (RFC 5297).
 function ctrIv(siv) {
     const q = Buffer.from(siv);
     q[8] &= 0x7f;
@@ -117,14 +96,7 @@ function ctr(key16, iv, data) {
     return Buffer.concat([cipher.update(data), cipher.final()]);
 }
 
-/**
- * SIV-encrypt: returns the 16-byte synthetic IV followed by the ciphertext.
- * @function sivSeal
- * @param {Buffer} key32 32-byte AEAD_AES_SIV_CMAC_256 key.
- * @param {Buffer[]} adList Associated-data vector (nonce last, when used).
- * @param {Buffer} plaintext Plaintext (may be empty).
- * @return {Buffer} SIV || ciphertext.
- */
+// SIV-encrypt to SIV || ciphertext. adList carries the nonce last when used.
 function sivSeal(key32, adList, plaintext) {
     if (!Buffer.isBuffer(key32) || key32.length !== 32) throw new Error("SIV key must be 32 bytes");
     const k1 = key32.slice(0, BLOCK);
@@ -133,14 +105,7 @@ function sivSeal(key32, adList, plaintext) {
     return Buffer.concat([siv, ctr(k2, ctrIv(siv), plaintext)]);
 }
 
-/**
- * SIV-decrypt and verify. Tag comparison is constant time.
- * @function sivOpen
- * @param {Buffer} key32 32-byte AEAD_AES_SIV_CMAC_256 key.
- * @param {Buffer[]} adList Associated-data vector (must match seal).
- * @param {Buffer} sealed SIV || ciphertext.
- * @return {Buffer|null} Plaintext, or null when authentication fails.
- */
+// SIV-decrypt and verify (constant-time tag compare); null when authentication fails.
 function sivOpen(key32, adList, sealed) {
     if (!Buffer.isBuffer(key32) || key32.length !== 32) throw new Error("SIV key must be 32 bytes");
     if (!Buffer.isBuffer(sealed) || sealed.length < BLOCK) return null;

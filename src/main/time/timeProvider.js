@@ -7,13 +7,12 @@ import NtsClient from "./ntsClient.js";
 // TimeUnavailableError (fail-closed NTS only). Hostnames never appear in
 // error messages or logs.
 
-// NTS results outside these bounds are treated as failures: era
-// disambiguation leans on the local clock, so an implausible verdict is
-// worthless as trusted time.
+// An NTS verdict outside these bounds is treated as a failure: era selection
+// leans on the local clock, so an implausible result is not trusted time.
 const NTS_PLAUSIBLE_MIN_MS = 1577836800000; // 2020-01-01T00:00:00Z
 const CACHE_WINDOW_MS = 60000;
-// Hard ceiling on one lookup, over and above the per-socket timeouts, so
-// now() can never hang a decrypt no matter how the network misbehaves.
+// Hard ceiling on one lookup, above the per-socket timeouts, so now() can never
+// hang a decrypt however the network misbehaves.
 const QUERY_DEADLINE_MS = 10000;
 
 function withDeadline(promise, ms) {
@@ -64,13 +63,8 @@ class NtsTimeProvider {
     }
 }
 
-/**
- * Build a provider from a normalized decrypt-payload time source. A null
- * config means the default: Cloudflare NTS with system-clock fallback.
- * @function createTimeProvider
- * @param {Object|null} config { kind, host?, port?, failClosed? } or null.
- * @return {Object} A provider with an async now() method.
- */
+// Build a provider (async now()) from a normalized decrypt-payload time source.
+// A null config means the default: Cloudflare NTS with system-clock fallback.
 function createTimeProvider(config) {
     if (config && config.kind === "system") return new SystemTimeProvider();
     return new NtsTimeProvider(config && config.kind === "nts" ? config : {});

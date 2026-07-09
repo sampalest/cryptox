@@ -86,6 +86,27 @@ What happens when the server cannot be reached (or returns anything invalid) is 
 - **Fall back to clock** (default): the check proceeds against the local system clock and the result is flagged so the UI can say so.
 - **Fail closed**: decrypting files that carry an expiration is refused with a `TIME_UNAVAILABLE` error until the server is reachable again. Files without an expiration are unaffected.
 
+## Build your own
+
+If you would rather implement the protocol than run an existing daemon, [examples/nts-server.js](examples/nts-server.js) (Node.js, no dependencies) and [examples/nts-server.py](examples/nts-server.py) (Python, `pyOpenSSL` plus `pycryptodome`) are complete minimal servers of about 250 lines each. They implement exactly the two phases above: an NTS-KE responder over TLS 1.3 that exports the c2s/s2c keys and issues cookies, and a UDP responder that authenticates the request and signs the reply. AES-SIV-CMAC-256 is built from the AES-128 primitives in the Node version (neither Node nor Electron exposes an SIV cipher) and comes from `pycryptodome` in the Python version.
+
+Both stash the two session keys inside each cookie, sealed under a per-run master key, so the stateless UDP side can recover them. Rotate and persist that key for anything beyond a demo.
+
+To run either one locally:
+
+```
+openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem \
+  -days 365 -subj "/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+
+node examples/nts-server.js
+# or
+pip install pyOpenSSL pycryptodome
+python3 examples/nts-server.py
+```
+
+That self-signed certificate is only good for local protocol testing: Lockasaur verifies the server certificate against the operating system trust store, so a deployment the app will trust needs a publicly trusted certificate (Let's Encrypt, for example) and TCP 4460 reachable. The examples default to KE on 4460 and NTP on 4461 (an unprivileged port, advertised through the NTPv4 Port Negotiation record); override with `NTS_KE_PORT` and `NTS_NTP_PORT`.
+
 ## Off-the-shelf servers
 
 Any RFC 8915 implementation works. Two known-good options:

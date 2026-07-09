@@ -19,7 +19,7 @@
             <div class="lk-work-caption">AES-256 · 100% dino-approved</div>
         </div>
         <glass-button variant="glass" @click="cancel">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+            <lk-icon name="x" :size="15" aria-hidden="true" />
             Cancel
         </glass-button>
     </div>
@@ -28,6 +28,7 @@
 import fileCrypto from "@/components/mixins/filecryto.js";
 import GlassButton from "@/components/ui/GlassButton.vue";
 import LockasaurLock from "@/components/ui/LockasaurLock.vue";
+import LkIcon from "@/components/ui/LkIcon.vue";
 
 // Floating binary digits around the lock, from the design mock.
 const BITS = [
@@ -65,7 +66,8 @@ export default {
     mixins: [fileCrypto],
     components: {
         "glass-button": GlassButton,
-        "lockasaur-lock": LockasaurLock
+        "lockasaur-lock": LockasaurLock,
+        "lk-icon": LkIcon
     },
     emits: ["finish", "cancel"],
     props: {
@@ -161,105 +163,3 @@ export default {
     }
 };
 </script>
-<style lang="scss" scoped>
-.lk-work {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 20px;
-    padding: 30px;
-    text-align: center;
-    animation: fadeScreen 0.62s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.lk-work-scene {
-    position: relative;
-    width: 210px;
-    height: 190px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    animation: zoomPop 0.45s ease both;
-}
-
-.lk-work-glow {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 150px;
-    height: 150px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(47, 225, 229, 0.42), transparent 64%);
-    animation: lockGlow 1.9s ease-in-out infinite;
-    pointer-events: none;
-}
-
-.lk-work-bits {
-    position: absolute;
-    left: 50%;
-    bottom: 6px;
-    width: 160px;
-    height: 140px;
-    margin-left: -80px;
-    pointer-events: none;
-    z-index: 3;
-    font-family: monospace;
-    font-weight: 700;
-}
-
-.lk-work-bit {
-    position: absolute;
-    animation: nomFloat 1.7s ease-in infinite;
-}
-
-.lk-work-lock {
-    position: relative;
-    z-index: 2;
-    animation: dinoMunch 2.4s ease-in-out infinite;
-    transform-origin: 50% 70%;
-}
-
-// Hold still on completion so the lock transition reads clearly.
-.lk-work-lock-done {
-    animation: none;
-}
-
-.lk-work-track {
-    width: 320px;
-    height: 9px;
-    background: var(--track);
-    border-radius: 999px;
-    overflow: hidden;
-}
-
-.lk-work-bar {
-    height: 100%;
-    background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0, rgba(255, 255, 255, 0.55) 50%, rgba(255, 255, 255, 0) 100%), linear-gradient(90deg, var(--accent2), var(--accent));
-    background-size: 46px 100%, 100% 100%;
-    background-repeat: repeat-x, no-repeat;
-    animation: progressFlow 0.9s linear infinite;
-    box-shadow: 0 0 14px rgba(17, 208, 227, 0.6);
-    border-radius: 999px;
-    transition: width 0.12s linear;
-}
-
-.lk-work-meta {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.lk-work-perc {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--accent);
-}
-
-.lk-work-caption {
-    font-family: monospace;
-    font-size: 11px;
-    color: var(--faint);
-    letter-spacing: 1px;
-}
-</style>

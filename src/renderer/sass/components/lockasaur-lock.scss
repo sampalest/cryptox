@@ -1,0 +1,49 @@
+// LockasaurLock styles
+// The shackle pose for locked/locking: enough straight-down travel (in SVG
+// user units, so it scales with the artwork; in the current export #Arco's
+// units map 1:1 to viewBox units) that the open hook's right leg sinks
+// behind the dino body and the loop reads closed.
+$closed-drop: 180px;
+
+.lk-lock {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+
+    svg {
+        width: 100%;
+        height: auto;
+        display: block;
+        overflow: visible;
+        filter: drop-shadow(0 12px 20px rgba(7, 102, 229, 0.3));
+    }
+
+}
+
+.lk-lock-locked #Arco {
+    transform: translateY($closed-drop);
+}
+
+// Locking (encrypt success): the shackle drops down past the closed pose and
+// settles shut with a soft overshoot.
+.lk-lock-locking #Arco {
+    animation: arcoLock 0.9s ease-in-out both;
+}
+
+@keyframes arcoLock {
+    0% { transform: translateY(0); }
+    70% { transform: translateY($closed-drop + 25px); }
+    100% { transform: translateY($closed-drop); }
+}
+
+// Unlocking (decrypt success): the shackle springs up from the closed pose.
+.lk-lock-unlocking #Arco {
+    animation: arcoUnlock 0.9s ease-in-out both;
+}
+
+@keyframes arcoUnlock {
+    0% { transform: translateY($closed-drop); }
+    68% { transform: translateY(-34px); }
+    100% { transform: translateY(0); }
+}

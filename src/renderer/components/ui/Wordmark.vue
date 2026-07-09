@@ -60,37 +60,3 @@ export default {
     }
 };
 </script>
-<style lang="scss" scoped>
-.lk-word {
-    font-family: DynaPuff, Montserrat, sans-serif;
-    font-weight: 600;
-    line-height: 1.05;
-    letter-spacing: 5px;
-    text-transform: uppercase;
-    padding-left: 5px;
-    filter: drop-shadow(0 4px 10px rgba(7, 102, 229, 0.28));
-    cursor: default;
-    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.35s ease;
-
-    &:hover {
-        transform: scale(1.04);
-        filter: drop-shadow(0 9px 18px rgba(7, 102, 229, 0.38));
-    }
-}
-
-.lk-word-animate {
-    animation: wordBob 2.5s ease-in-out 2 both;
-
-    .lk-word-letter {
-        animation: letterPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-    }
-}
-
-.lk-word-letter {
-    display: inline-block;
-}
-
-.lk-word-dot {
-    font-weight: 500;
-}
-</style>

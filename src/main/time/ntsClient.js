@@ -4,8 +4,8 @@ import Siv from "./aesSiv.js";
 import NtsKe from "./ntsKe.js";
 
 // NTS-protected NTPv4 (RFC 8915 section 5): one UDP request/response pair,
-// authenticated with the keys exported by ntsKe.js. Packet building and
-// parsing are pure functions so tests cover them without a socket.
+// authenticated with the keys exported by ntsKe.js. Packet build/parse are pure,
+// so tests need no socket.
 
 const NTP_HEADER_LEN = 48;
 const XMT_OFFSET = 40;
@@ -42,15 +42,10 @@ function extensionField(type, body, minBodyLen = 0) {
     return buf;
 }
 
-/**
- * Build one NTS-protected NTPv4 client packet.
- * The SIV associated data is [every packet byte preceding the authenticator
- * EF, nonce], with the nonce as the final S2V component (RFC 5297 nonce mode);
- * the same nonce is serialized into the EF body (RFC 8915 section 5.6).
- * @function buildNtsRequest
- * @param {Object} options { cookie, c2sKey }
- * @return {Object} { packet, uniqueId, transmitTimestamp }
- */
+// Build one NTS-protected NTPv4 client packet, returning { packet, uniqueId,
+// transmitTimestamp }. The SIV associated data is every packet byte preceding
+// the authenticator EF, with the nonce as the final S2V component (RFC 5297
+// nonce mode); the same nonce goes into the EF body (RFC 8915 section 5.6).
 function buildNtsRequest({ cookie, c2sKey }) {
     const header = Buffer.alloc(NTP_HEADER_LEN);
     header.writeUInt8(0x23, 0); // LI 0, VN 4, mode 3 (client)
@@ -75,13 +70,8 @@ function buildNtsRequest({ cookie, c2sKey }) {
     return { packet, uniqueId, transmitTimestamp };
 }
 
-/**
- * Verify and read one NTS-protected NTPv4 server response.
- * @function parseNtsResponse
- * @param {Buffer} buf The received datagram.
- * @param {Object} options { uniqueId, s2cKey, transmitTimestamp }
- * @return {Object} { seconds: BigInt, fraction: Number } transmit timestamp.
- */
+// Verify one NTS-protected NTPv4 response and read its transmit timestamp,
+// returning { seconds, fraction }.
 function parseNtsResponse(buf, { uniqueId, s2cKey, transmitTimestamp }) {
     if (!Buffer.isBuffer(buf) || buf.length < NTP_HEADER_LEN) throw new NtsPacketError("short NTP response");
     if ((buf.readUInt8(0) & 0x07) !== 4) throw new NtsPacketError("not a server-mode response");
@@ -127,16 +117,9 @@ function parseNtsResponse(buf, { uniqueId, s2cKey, transmitTimestamp }) {
     };
 }
 
-/**
- * Convert an NTP timestamp to Unix epoch milliseconds, picking the 136-year
- * era nearest the pivot (NTP packets carry no era number, so a system clock
- * off by more than ~68 years defeats disambiguation; callers bound the result).
- * @function ntpToEpochMs
- * @param {BigInt} seconds 32-bit NTP seconds.
- * @param {Number} fraction 32-bit NTP fraction.
- * @param {Number} pivotMs Local clock estimate, epoch ms.
- * @return {Number} Epoch milliseconds.
- */
+// Convert an NTP timestamp to Unix epoch ms, picking the 136-year era nearest
+// pivotMs. NTP carries no era number, so a system clock off by more than ~68
+// years defeats disambiguation; callers bound the result.
 function ntpToEpochMs(seconds, fraction, pivotMs) {
     const fractionMs = Math.round((fraction / 4294967296) * 1000);
     const pivotNtpSeconds = BigInt(Math.floor(pivotMs / 1000)) + NTP_UNIX_OFFSET;
@@ -172,13 +155,8 @@ function exchangeUdp({ host, port, packet, timeoutMs }) {
     });
 }
 
-/**
- * Fetch the current time from an NTS server: one KE exchange, then one
- * authenticated NTPv4 exchange (single retry on timeout).
- * @function queryNtsTime
- * @param {Object} options { host, port, timeoutMs? }
- * @return {Promise<Object>} { nowMs }
- */
+// Fetch the current time from an NTS server: one KE exchange, then one
+// authenticated NTPv4 exchange (single retry on timeout). Resolves { nowMs }.
 async function queryNtsTime({ host, port, timeoutMs = DEFAULT_TIMEOUT_MS }) {
     const ke = await NtsKe.performKe({ host, port, timeoutMs: timeoutMs + 2000 });
     let lastError = null;

@@ -3,8 +3,7 @@ import tls from "node:tls";
 
 // NTS Key Establishment (RFC 8915 section 4): a short TLS 1.3 exchange that
 // negotiates NTPv4 + AEAD_AES_SIV_CMAC_256, hands out cookies and exports the
-// c2s/s2c packet keys from the TLS session. Record building and parsing are
-// pure functions so tests cover them without a socket.
+// c2s/s2c keys. Record build/parse are pure, so tests need no socket.
 
 const CRITICAL = 0x8000;
 const REC_END_OF_MESSAGE = 0;
@@ -45,11 +44,7 @@ function u16Body(value) {
     return body;
 }
 
-/**
- * Build the client's complete NTS-KE request.
- * @function buildKeRequest
- * @return {Buffer} Wire bytes: next-protocol (NTPv4), AEAD (15), end of message.
- */
+// Build the client's NTS-KE request: next-protocol (NTPv4), AEAD (15), end of message.
 function buildKeRequest() {
     return Buffer.concat([
         record(CRITICAL | REC_NEXT_PROTOCOL, u16Body(PROTOCOL_NTPV4)),
@@ -58,12 +53,7 @@ function buildKeRequest() {
     ]);
 }
 
-/**
- * Byte length of a complete NTS-KE message in buf, or -1 while truncated.
- * @function messageLength
- * @param {Buffer} buf Accumulated response bytes.
- * @return {Number} Length through End of Message, or -1.
- */
+// Byte length through End of Message, or -1 while the response is still truncated.
 function messageLength(buf) {
     let offset = 0;
     for (;;) {
@@ -76,13 +66,9 @@ function messageLength(buf) {
     }
 }
 
-/**
- * Parse an NTS-KE response. Throws NtsKeError on error records, critical
- * unknown records, a foreign protocol/AEAD choice, or a malformed stream.
- * @function parseKeResponse
- * @param {Buffer} buf Complete response bytes (through End of Message).
- * @return {Object} { cookies: Buffer[], ntpHost: String|null, ntpPort: Number|null }
- */
+// Parse an NTS-KE response into { cookies, ntpHost, ntpPort }. Throws on error
+// records, critical unknown records, a foreign protocol/AEAD choice, or a
+// malformed stream.
 function parseKeResponse(buf) {
     const cookies = [];
     let ntpHost = null;
@@ -124,14 +110,9 @@ function parseKeResponse(buf) {
     return { cookies, ntpHost, ntpPort };
 }
 
-/**
- * Run the NTS-KE exchange against a server and export the packet keys.
- * TLS 1.3 minimum and the ntske/1 ALPN are enforced (RFC 8915 requires both);
- * certificates verify against the system trust store.
- * @function performKe
- * @param {Object} options { host, port, timeoutMs? }
- * @return {Promise<Object>} { c2sKey, s2cKey, cookies, ntpHost, ntpPort }
- */
+// Run the NTS-KE exchange and export the packet keys. TLS 1.3 and the ntske/1
+// ALPN are enforced (RFC 8915 requires both); certificates verify against the
+// system trust store. Resolves { c2sKey, s2cKey, cookies, ntpHost, ntpPort }.
 function performKe({ host, port, timeoutMs = DEFAULT_TIMEOUT_MS }) {
     return new Promise((resolve, reject) => {
         const chunks = [];

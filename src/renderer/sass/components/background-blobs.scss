@@ -1,0 +1,51 @@
+// BackgroundBlobs styles
+.lk-blobs {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    // Paint containment is visually a no-op (overflow: hidden already clips to
+    // the same bounds) but keeps the blobs' per-frame border-radius
+    // invalidations from propagating to ancestors.
+    contain: layout style paint;
+}
+
+.lk-blob {
+    position: absolute;
+    // "filter" keeps each blob's blur(32-36px) on the compositor, so the
+    // border-radius morph in the blob keyframe repaints only the small
+    // unblurred gradient instead of re-rasterizing a large blurred texture
+    // every frame.
+    will-change: transform, filter;
+}
+
+.lk-blob-1 {
+    top: -110px;
+    left: -90px;
+    width: 380px;
+    height: 380px;
+    background: radial-gradient(circle at 38% 36%, rgba(47, 225, 229, 0.3), rgba(7, 102, 229, 0.05) 70%);
+    filter: blur(32px);
+    animation: blob 17s ease-in-out infinite;
+}
+
+.lk-blob-2 {
+    bottom: -130px;
+    right: -100px;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle at 60% 42%, rgba(17, 208, 227, 0.24), rgba(7, 102, 229, 0.04) 70%);
+    filter: blur(36px);
+    animation: blob 22s ease-in-out infinite reverse;
+}
+
+.lk-blob-3 {
+    top: 34%;
+    left: 46%;
+    width: 260px;
+    height: 260px;
+    background: radial-gradient(circle, rgba(127, 189, 255, 0.2), transparent 70%);
+    filter: blur(32px);
+    animation: blob 26s ease-in-out infinite;
+}

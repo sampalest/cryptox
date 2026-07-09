@@ -1,0 +1,57 @@
+// SuccessScreen styles
+.lk-done {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 30px;
+    text-align: center;
+    animation: fadeScreen 0.62s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.lk-done-title {
+    font-size: 23px;
+}
+
+.lk-done-badge {
+    position: relative;
+    width: 88px;
+    height: 88px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: successRing 0.5s ease both;
+}
+
+.lk-done-disc {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: linear-gradient(160deg, #5fd483, #2ea65f);
+    /* Glassy top sheen so it reads with the rest of the design, not flat. */
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.45), 0 14px 30px rgba(46, 166, 95, 0.34);
+}
+
+.lk-done-mark {
+    position: relative;
+    width: 52px;
+    height: 52px;
+}
+
+/* Crisp vector check that draws itself in. Base offset is 0 (fully visible),
+   so it never disappears even if the draw animation does not run. */
+.lk-done-mark path {
+    stroke-dasharray: 36;
+    animation: lkDrawCheck 0.55s cubic-bezier(0.65, 0, 0.45, 1) 0.25s both;
+}
+
+@keyframes lkDrawCheck {
+    0% { stroke-dashoffset: 36; }
+    100% { stroke-dashoffset: 0; }
+}
+
+.lk-done-body {
+    max-width: 330px;
+    line-height: 1.55;
+}

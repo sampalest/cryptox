@@ -6,12 +6,7 @@
          so without it the #app lookup fails and the drop zone never renders. -->
     <Teleport defer to="#app">
     <div ref="dropZone" class="lk-drop vertical-align-nc hidden" aria-hidden="true">
-        <svg class="lk-drop-icon" width="56" height="56" viewBox="0 0 24 24" fill="var(--surface2)" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true">
-            <path d="M13 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9z"></path>
-            <path d="M13 3v6h6" fill="none"></path>
-            <line x1="9" y1="13" x2="15" y2="13" stroke-linecap="round"></line>
-            <line x1="9" y1="16.5" x2="15" y2="16.5" stroke-linecap="round"></line>
-        </svg>
+        <lk-icon name="file-drop" class="lk-drop-icon" :size="56" aria-hidden="true" />
         <p class="lk-drop-text">Drop your files here</p>
         <p class="lk-drop-sub">The dino locks them up tight.</p>
     </div>
@@ -24,9 +19,13 @@
 // A drag-depth counter keeps it shown while the cursor moves across child
 // elements, hiding only when the file drag actually leaves the window.
 import { useUiStore } from "@/store/ui";
+import LkIcon from "@/components/ui/LkIcon.vue";
 
 export default {
     name: "image-loader",
+    components: {
+        "lk-icon": LkIcon
+    },
     emits: ["imageFile"],
     setup() {
         return { ui: useUiStore() };
@@ -84,53 +83,3 @@ export default {
     }
 };
 </script>
-<style lang="scss" scoped>
-.lk-drop {
-    width: min(88vw, 640px);
-    height: min(54vh, 340px);
-    position: absolute;
-    margin: auto;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 999;
-    gap: 6px;
-    pointer-events: none;
-    border-radius: 28px;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.24) 62%), rgba(255, 255, 255, 0.36);
-    border: 1px solid var(--glass-edge);
-    box-shadow: inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 rgba(255, 255, 255, 0.16), inset 0 0 44px rgba(255, 255, 255, 0.1), var(--dialog-shadow);
-    opacity: 1;
-    transition: opacity 0.25s ease-in-out;
-
-    &.hidden {
-        opacity: 0;
-    }
-}
-
-#app.dark .lk-drop {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04) 62%), rgba(24, 28, 36, 0.52);
-}
-
-.lk-drop-icon {
-    pointer-events: none;
-    animation: floatSoft 3.6s ease-in-out infinite;
-    filter: drop-shadow(0 6px 12px rgba(7, 102, 229, 0.18));
-}
-
-.lk-drop-text {
-    font-family: Montserrat, sans-serif;
-    font-size: 32px;
-    font-weight: 600;
-    margin: 14px 0 0;
-    color: var(--text);
-    pointer-events: none;
-}
-
-.lk-drop-sub {
-    font-size: 14.5px;
-    margin: 5px 0 0;
-    color: var(--faint);
-    pointer-events: none;
-}
-</style>
