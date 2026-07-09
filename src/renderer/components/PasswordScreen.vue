@@ -33,6 +33,13 @@
                 </button>
             </div>
         </div>
+        <label v-if="deleteBehavior.usesCheckbox" class="lk-pass-delete" :title="deleteTitle">
+            <input class="lk-pass-delete-input" type="checkbox" :checked="deleteChecked" @change="toggleDelete($event.target.checked)">
+            <span class="lk-pass-delete-box" aria-hidden="true">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+            </span>
+            <span class="lk-pass-delete-text">{{ deleteLabel }}</span>
+        </label>
         <div v-if="error" class="lk-error">{{ error }}</div>
         <div class="lk-pass-actions">
             <glass-button variant="glass" @click="$emit('cancel')">
@@ -50,9 +57,13 @@
 <script>
 import * as e from "@shared/exceptions.js";
 import GlassButton from "@/components/ui/GlassButton.vue";
+import { useDeleteBehaviorStore } from "@/store/deleteBehavior";
 
 export default {
     name: "password-screen",
+    setup() {
+        return { deleteBehavior: useDeleteBehaviorStore() };
+    },
     data: () => {
         return {
             password: "",
@@ -81,9 +92,22 @@ export default {
             if (!this.files || !this.files.length) return "";
             if (this.files.length === 1) return this.files[0].name;
             return `${this.files.length} files`;
+        },
+        deleteChecked() {
+            return this.isDecrypt ? this.deleteBehavior.deleteEncrypted : this.deleteBehavior.deleteOriginal;
+        },
+        deleteLabel() {
+            return this.isDecrypt ? "Delete encrypted file after decrypting" : "Delete original after encrypting";
+        },
+        deleteTitle() {
+            return this.deleteBehavior.mode === "permanent" ? "Deleted permanently" : "Moved to the Trash";
         }
     },
     methods: {
+        toggleDelete(checked) {
+            if (this.isDecrypt) this.deleteBehavior.setDeleteEncrypted(checked);
+            else this.deleteBehavior.setDeleteOriginal(checked);
+        },
         checkPassword() {
             try {
                 if (!this.password) {
@@ -183,5 +207,56 @@ export default {
     display: flex;
     gap: 12px;
     margin-top: 4px;
+}
+
+.lk-pass-delete {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--dim);
+    font-size: 12.5px;
+    transition: color 0.2s ease;
+
+    &:hover {
+        color: var(--text);
+    }
+}
+
+.lk-pass-delete-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.lk-pass-delete-box {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 17px;
+    height: 17px;
+    border-radius: 5px;
+    background: var(--inp-bg);
+    box-shadow: inset 0 0 0 1px var(--inp-bd);
+    color: transparent;
+    flex-shrink: 0;
+    transition: background 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+
+.lk-pass-delete-input:checked + .lk-pass-delete-box {
+    background: var(--accent);
+    box-shadow: none;
+    color: #fff;
+}
+
+.lk-pass-delete-input:focus-visible + .lk-pass-delete-box {
+    box-shadow: 0 0 0 2px var(--accent2);
 }
 </style>

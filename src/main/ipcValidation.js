@@ -40,6 +40,14 @@ export function normalizeWindowSizeId(value) {
     return WINDOW_SIZE_IDS.has(value) ? value : null;
 }
 
+// Renderer-supplied delete mode; anything unexpected returns null and the
+// delete handlers answer inertly, never with a deletion.
+const DELETE_MODES = new Set(["trash", "permanent", "ask"]);
+
+export function normalizeDeleteMode(value) {
+    return DELETE_MODES.has(value) ? value : null;
+}
+
 export function validateDeletePath(value) {
     if (typeof value !== "string" || value.trim() === "") {
         throw new TypeError("Delete path must be a non-empty string.");
@@ -68,6 +76,19 @@ export function validateOriginalDeletePath(value, allowedPaths) {
     }
 
     return value;
+}
+
+// The post-decrypt delete may only target a .dino/.ctx path the main process
+// itself recorded from a successfully completed decrypt. Membership binds the
+// deletion to a file the app just decrypted (the extension check alone is not
+// authorization now that trash/permanent modes delete without a confirm dialog).
+export function validateEncryptedDeletePath(value, allowedPaths) {
+    const target = validateDeletePath(value);
+    if (!allowedPaths || !allowedPaths.has(target)) {
+        throw new Error("Only just-decrypted encrypted files may be deleted.");
+    }
+
+    return target;
 }
 
 export function validateExternalUrl(value) {

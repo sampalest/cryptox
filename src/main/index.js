@@ -15,13 +15,15 @@ import {
     isTrustedSender,
     normalizeAppIconId,
     normalizeCryptoPayload,
+    normalizeDeleteMode,
     normalizeOpenDialogKind,
     normalizeWindowSizeId,
-    validateDeletePath,
+    validateEncryptedDeletePath,
     validateExternalUrl,
     validateOperationId,
     validateOriginalDeletePath
 } from "./ipcValidation.js";
+import { removeEncrypted, removeOriginal } from "./deletion.js";
 const isDevelopment = process.env.NODE_ENV !== "production";
 import logger from "electron-log";
 
@@ -466,6 +468,12 @@ async function runRegisteredOperation(operationId, run, fallbackMessage) {
 // it did not just encrypt.
 const deletableOriginals = new Set();
 
+// Encrypted sources of successfully completed decrypt operations, eligible for
+// the post-decrypt delete. Same one-shot contract as deletableOriginals: the
+// renderer can never steer deletion toward a .dino/.ctx path it did not just
+// decrypt, which matters now that trash/permanent modes skip the confirm dialog.
+const deletableEncrypted = new Set();
+
 ipcMain.handle("crypto:encrypt", async (event, payload) => {
     if (!isTrustedSender(event, win)) return failure(Codes.SENDER_REJECTED, "Request was rejected.");
     const fallbackMessage = "Encryption failed.";
@@ -521,12 +529,16 @@ ipcMain.handle("crypto:decrypt", async (event, payload) => {
     } catch (error) {
         return toCryptoFailure(error, fallbackMessage);
     }
-    return runRegisteredOperation(operationId, () =>
+    const result = await runRegisteredOperation(operationId, () =>
         crypto.decrypt(normalizedFile, { value: 0 }, {
             onProgress: value => event.sender.send("crypto:progress", { operationId, value }),
             onStatus: status => event.sender.send("crypto:status", { operationId, status })
         }), fallbackMessage
     );
+    // Only a fully completed decrypt makes its encrypted source deletable; a
+    // cancelled or failed operation must leave the ciphertext untouchable.
+    if (result.ok && !result.cancelled) deletableEncrypted.add(filePath);
+    return result;
 });
 
 ipcMain.handle("crypto:cancel", (event, payload) => {
@@ -538,69 +550,58 @@ ipcMain.handle("crypto:cancel", (event, payload) => {
     }
 });
 
-ipcMain.handle("files:confirm-delete-encrypted", async (event, filePath) => {
+ipcMain.handle("files:confirm-delete-encrypted", async (event, filePath, mode, requested) => {
     if (!isTrustedSender(event, win)) return { deleted: false };
-    const target = validateDeletePath(filePath);
-    const { response } = await dialog.showMessageBox(win, {
-        type: "question",
-        buttons: ["Delete", "Keep"],
-        defaultId: 1,
-        cancelId: 1,
-        title: "Delete encrypted file",
-        message: "Decryption successful.",
-        detail: "Do you want to delete the encrypted file?"
-    });
-
-    if (response !== 0) return { deleted: false };
-
-    // The encrypted file is ciphertext, so the system Trash is safe to use
-    // here (unlike the plaintext original in files:confirm-delete-original,
-    // which must be removed permanently). Trash is the native, iCloud- and
-    // permission-aware deletion path: a raw unlink fails on files Finder itself
-    // cannot remove (iCloud-managed, restricted), which previously left the
-    // file silently in place. Fall back to a permanent unlink where Trash is
-    // unavailable (e.g. some Linux setups), and report failure so the renderer
-    // can tell the user rather than pretending the file was removed.
-    try {
-        await shell.trashItem(target);
-        return { deleted: true };
-    } catch (trashError) {
-        try {
-            await fs.promises.unlink(target);
-            return { deleted: true };
-        } catch (unlinkError) {
-            logger.error("files:confirm-delete-encrypted could not remove the file");
-            return { deleted: false, error: true };
-        }
+    const deleteMode = normalizeDeleteMode(mode);
+    if (deleteMode === null) return { deleted: false };
+    const target = validateEncryptedDeletePath(filePath, deletableEncrypted);
+    // Single-use: whatever the mode or answer, the same path cannot be
+    // offered again without another completed decrypt.
+    deletableEncrypted.delete(target);
+    if (deleteMode === "ask") {
+        const { response } = await dialog.showMessageBox(win, {
+            type: "question",
+            buttons: ["Delete", "Keep"],
+            defaultId: 1,
+            cancelId: 1,
+            title: "Delete encrypted file",
+            message: "Decryption successful.",
+            detail: "Do you want to delete the encrypted file?"
+        });
+        if (response !== 0) return { deleted: false };
+    } else if (requested !== true) {
+        return { deleted: false };
     }
+    const result = await removeEncrypted(target, deleteMode === "ask" ? "trash" : deleteMode);
+    if (result.error) logger.error("files:confirm-delete-encrypted could not remove the file");
+    return result;
 });
 
-ipcMain.handle("files:confirm-delete-original", async (event, filePath) => {
-    if (!isTrustedSender(event, win)) return false;
+ipcMain.handle("files:confirm-delete-original", async (event, filePath, mode, requested) => {
+    if (!isTrustedSender(event, win)) return { deleted: false };
+    const deleteMode = normalizeDeleteMode(mode);
+    if (deleteMode === null) return { deleted: false };
     const target = validateOriginalDeletePath(filePath, deletableOriginals);
-    // Single-use: whatever the user answers, the same path cannot be
-    // prompted for again without another completed encrypt.
+    // Single-use: whatever the mode or answer, the same path cannot be
+    // offered again without another completed encrypt.
     deletableOriginals.delete(target);
-    const { response } = await dialog.showMessageBox(win, {
-        type: "question",
-        buttons: ["Delete", "Keep"],
-        defaultId: 1,
-        cancelId: 1,
-        title: "Delete original",
-        message: "Encryption successful.",
-        detail: "Do you want to permanently delete the original? The encrypted file will be kept."
-    });
-
-    if (response !== 0) return false;
-
-    // Re-lstat at delete time: the recorded path must still be the regular
-    // file or folder that was encrypted, not a symlink swapped in afterwards.
-    const stats = await fs.promises.lstat(target);
-    if (stats.isSymbolicLink() || (!stats.isFile() && !stats.isDirectory())) return false;
-    // Permanent removal rather than the system trash: parking the plaintext
-    // in the trash would defeat the point of encrypting it.
-    await fs.promises.rm(target, { recursive: true });
-    return true;
+    if (deleteMode === "ask") {
+        const { response } = await dialog.showMessageBox(win, {
+            type: "question",
+            buttons: ["Delete", "Keep"],
+            defaultId: 1,
+            cancelId: 1,
+            title: "Delete original",
+            message: "Encryption successful.",
+            detail: "Do you want to permanently delete the original? The encrypted file will be kept."
+        });
+        if (response !== 0) return { deleted: false };
+    } else if (requested !== true) {
+        return { deleted: false };
+    }
+    const result = await removeOriginal(target, deleteMode === "ask" ? "permanent" : deleteMode);
+    if (result.error) logger.error("files:confirm-delete-original could not remove the original");
+    return result;
 });
 
 ipcMain.handle("log:error", (event, error) => {

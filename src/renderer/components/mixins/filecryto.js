@@ -1,3 +1,5 @@
+import { useDeleteBehaviorStore } from "@/store/deleteBehavior";
+
 // Every CRYPTO_ERROR_CODES value maps to a deliberate string for both kinds, so
 // no code ever falls through to a generic message (SENDER_REJECTED and
 // INVALID_PAYLOAD were previously unmapped).
@@ -88,10 +90,12 @@ export default {
                 if (!result || result.ok === false) return this.handleCryptoFailure("encrypt", result);
                 // A cancelled operation must never count as a success.
                 if (result.cancelled) return;
-                // Encryption already succeeded; a failed delete prompt must not be
+                // Encryption already succeeded; a failed delete must not be
                 // reported as an encrypt error, so keep it isolated from the catch below.
                 try {
-                    await window.lockasaur.files.confirmDeleteOriginal(file.path);
+                    const behavior = useDeleteBehaviorStore();
+                    const res = await window.lockasaur.files.confirmDeleteOriginal(file.path, behavior.mode, behavior.deleteOriginal);
+                    if (res && res.error) alert("The original could not be deleted. You can remove it manually.");
                 } catch (deleteErr) {
                     window.lockasaur.log.error(deleteErr);
                 }
@@ -124,13 +128,11 @@ export default {
                     if (!result || result.ok === false) return this.handleCryptoFailure("decrypt", result);
                     // A cancelled operation must never count as a success.
                     if (result.cancelled) return;
-                    // Decryption already succeeded; a failed delete prompt must not be reported
-                    // as a decrypt error, so keep it isolated from the catch below. A refused
-                    // deletion (the file could not be removed) is surfaced as its own notice,
-                    // never as a decrypt failure, so the user is not left thinking the app
-                    // silently ignored their choice.
+                    // Decryption already succeeded; a failed delete must not be reported
+                    // as a decrypt error, so keep it isolated from the catch below.
                     try {
-                        const res = await window.lockasaur.files.confirmDeleteEncrypted(file.path);
+                        const behavior = useDeleteBehaviorStore();
+                        const res = await window.lockasaur.files.confirmDeleteEncrypted(file.path, behavior.mode, behavior.deleteEncrypted);
                         if (res && res.error) alert("The encrypted file could not be deleted. You can remove it manually.");
                     } catch (deleteErr) {
                         window.lockasaur.log.error(deleteErr);

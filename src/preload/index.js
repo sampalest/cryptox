@@ -43,8 +43,8 @@ contextBridge.exposeInMainWorld("lockasaur", {
     files: {
         ready: () => ipcRenderer.invoke("files:renderer-ready"),
         getPathForFile: file => webUtils.getPathForFile(file),
-        confirmDeleteEncrypted: path => ipcRenderer.invoke("files:confirm-delete-encrypted", path),
-        confirmDeleteOriginal: path => ipcRenderer.invoke("files:confirm-delete-original", path),
+        confirmDeleteEncrypted: (path, mode, requested) => ipcRenderer.invoke("files:confirm-delete-encrypted", path, mode, requested),
+        confirmDeleteOriginal: (path, mode, requested) => ipcRenderer.invoke("files:confirm-delete-original", path, mode, requested),
         onOpenFile: callback => {
             const listener = (_, file) => callback(file);
             ipcRenderer.on("files:open-file", listener);

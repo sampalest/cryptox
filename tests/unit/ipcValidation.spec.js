@@ -7,9 +7,11 @@ import {
     isTrustedSender,
     normalizeAppIconId,
     normalizeCryptoPayload,
+    normalizeDeleteMode,
     normalizeOpenDialogKind,
     normalizeWindowSizeId,
     validateDeletePath,
+    validateEncryptedDeletePath,
     validateExternalUrl,
     validateOperationId,
     validateOriginalDeletePath
@@ -101,6 +103,22 @@ describe("IPC validation", () => {
             const cases = ["Default", "L", "XL", "800x600", "xxl", "", 700, null, undefined, {}, []];
             for (const value of cases) {
                 expect(normalizeWindowSizeId(value)).toBeNull();
+            }
+        });
+    });
+
+    describe("normalizeDeleteMode", () => {
+        it("accepts the allowlisted delete modes", () => {
+            for (const mode of ["trash", "permanent", "ask"]) {
+                expect(normalizeDeleteMode(mode)).toBe(mode);
+            }
+        });
+
+        it("returns null for anything outside the allowlist", () => {
+            // An unexpected mode must answer inertly, never with a deletion.
+            const cases = ["Trash", "TRASH", "delete", "", 42, null, undefined, {}, []];
+            for (const value of cases) {
+                expect(normalizeDeleteMode(value)).toBeNull();
             }
         });
     });
@@ -297,6 +315,48 @@ describe("IPC validation", () => {
             const error = (() => {
                 try {
                     validateOriginalDeletePath("/tmp/some-user-path.txt", new Set());
+                    return null;
+                } catch (e) {
+                    return e;
+                }
+            })();
+            expect(error).not.toBeNull();
+            expect(error.message).not.toContain("some-user-path");
+        });
+    });
+
+    describe("validateEncryptedDeletePath", () => {
+        it("accepts an allowlisted .dino or legacy .ctx path", () => {
+            const allowed = new Set(["/tmp/secret.dino", "/tmp/old.ctx"]);
+            expect(validateEncryptedDeletePath("/tmp/secret.dino", allowed)).toBe("/tmp/secret.dino");
+            expect(validateEncryptedDeletePath("/tmp/old.ctx", allowed)).toBe("/tmp/old.ctx");
+        });
+
+        it("rejects a path with the right extension but outside the allowed set", () => {
+            // The extension alone is not authorization: trash/permanent modes
+            // delete without a confirm dialog, so membership must gate it.
+            const allowed = new Set(["/tmp/secret.dino"]);
+            expect(() => validateEncryptedDeletePath("/tmp/other.dino", allowed)).toThrow("just-decrypted");
+            expect(() => validateEncryptedDeletePath("/tmp/secret.dino", new Set())).toThrow("just-decrypted");
+            expect(() => validateEncryptedDeletePath("/tmp/secret.dino", undefined)).toThrow("just-decrypted");
+        });
+
+        it("rejects a set member whose extension is not encrypted", () => {
+            const allowed = new Set(["/tmp/plain.txt"]);
+            expect(() => validateEncryptedDeletePath("/tmp/plain.txt", allowed)).toThrow("encrypted");
+        });
+
+        it("rejects non-string and empty paths", () => {
+            const allowed = new Set([""]);
+            for (const value of ["", "   ", 42, null, undefined, {}]) {
+                expect(() => validateEncryptedDeletePath(value, allowed)).toThrow();
+            }
+        });
+
+        it("keeps the user-supplied path out of the error message", () => {
+            const error = (() => {
+                try {
+                    validateEncryptedDeletePath("/tmp/some-user-path.dino", new Set());
                     return null;
                 } catch (e) {
                     return e;

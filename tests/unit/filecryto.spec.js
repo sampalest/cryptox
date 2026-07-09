@@ -1,5 +1,7 @@
+import { createPinia, setActivePinia } from "pinia";
 import fileCrypto from "@/components/mixins/filecryto.js";
 import Constants from "@shared/constants.js";
+import { useDeleteBehaviorStore } from "@/store/deleteBehavior.js";
 
 /**
  * The mixin is a plain object, so it is testable without mounting components:
@@ -46,12 +48,21 @@ function stubLockasaur(overrides) {
 }
 
 describe("filecryto mixin", () => {
+    let storage;
+
     beforeEach(() => {
+        setActivePinia(createPinia());
+        storage = {};
+        global.localStorage = {
+            getItem: key => (key in storage ? storage[key] : null),
+            setItem: (key, value) => { storage[key] = value; }
+        };
         stubLockasaur();
         global.alert = jest.fn();
     });
 
     afterEach(() => {
+        delete global.localStorage;
         delete global.window;
         delete global.alert;
     });
@@ -111,13 +122,24 @@ describe("filecryto mixin", () => {
     });
 
     describe("post-decrypt delete-encrypted prompt", () => {
-        it("offers to delete the encrypted file after a successful decrypt", async () => {
+        it("passes the delete mode and checkbox state after a successful decrypt", async () => {
             const files = [{ path: "/a.dino" }];
             const ctx = makeContext(files);
             ctx.decryptFile(files[0]);
             await new Promise(res => setImmediate(res));
-            expect(global.window.lockasaur.files.confirmDeleteEncrypted).toHaveBeenCalledWith("/a.dino");
+            expect(global.window.lockasaur.files.confirmDeleteEncrypted).toHaveBeenCalledWith("/a.dino", "trash", false);
             expect(ctx.finish).toBe(true);
+        });
+
+        it("passes the configured mode and a checked checkbox", async () => {
+            const behavior = useDeleteBehaviorStore();
+            behavior.mode = "permanent";
+            behavior.deleteEncrypted = true;
+            const files = [{ path: "/a.dino" }];
+            const ctx = makeContext(files);
+            ctx.decryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.window.lockasaur.files.confirmDeleteEncrypted).toHaveBeenCalledWith("/a.dino", "permanent", true);
         });
 
         it("notifies (without failing the decrypt) when the encrypted file could not be deleted", async () => {
@@ -145,12 +167,34 @@ describe("filecryto mixin", () => {
     });
 
     describe("post-encrypt delete-original prompt", () => {
-        it("offers to delete the original after a successful encrypt", async () => {
+        it("passes the delete mode and checkbox state after a successful encrypt", async () => {
             const files = [{ path: "/a.txt" }];
             const ctx = makeContext(files);
             ctx.encryptFile(files[0]);
             await new Promise(res => setImmediate(res));
-            expect(global.window.lockasaur.files.confirmDeleteOriginal).toHaveBeenCalledWith("/a.txt");
+            expect(global.window.lockasaur.files.confirmDeleteOriginal).toHaveBeenCalledWith("/a.txt", "trash", false);
+            expect(ctx.finish).toBe(true);
+        });
+
+        it("passes the configured mode and a checked checkbox", async () => {
+            const behavior = useDeleteBehaviorStore();
+            behavior.mode = "permanent";
+            behavior.deleteOriginal = true;
+            const files = [{ path: "/a.txt" }];
+            const ctx = makeContext(files);
+            ctx.encryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.window.lockasaur.files.confirmDeleteOriginal).toHaveBeenCalledWith("/a.txt", "permanent", true);
+        });
+
+        it("notifies (without failing the encrypt) when the original could not be deleted", async () => {
+            global.window.lockasaur.files.confirmDeleteOriginal = jest.fn(() => Promise.resolve({ deleted: false, error: true }));
+            const files = [{ path: "/a.txt" }];
+            const ctx = makeContext(files);
+            ctx.encryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.alert).toHaveBeenCalledTimes(1);
+            expect(ctx.cancel).not.toHaveBeenCalled();
             expect(ctx.finish).toBe(true);
         });
 
