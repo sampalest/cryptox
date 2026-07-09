@@ -13,10 +13,11 @@ import Constants from "../shared/constants.js";
 //              [IV 16][ciphertext][GCM auth tag 16]
 //
 // JSON meta: { alg, kdf, salt (base64), opslimit, memlimit, keyLen, name,
-// erase: { maxAttempts } (optional) }. AAD = bytes 0..7 + the JSON: the
-// 8-byte mutable block is deliberately excluded so the failed-attempt counter
-// can be rewritten in place without invalidating the auth tag; everything
-// else, including the erase policy itself, is authenticated.
+// erase: { maxAttempts } (optional), expires: { at } (optional, UTC epoch ms) }.
+// AAD = bytes 0..7 + the JSON: the 8-byte mutable block is deliberately
+// excluded so the failed-attempt counter can be rewritten in place without
+// invalidating the auth tag; everything else, including the erase policy and
+// the expiration instant, is authenticated.
 //
 // CTX1 is the pre-rebrand layout (same prefix, no mutable block, JSON at
 // offset 8, whole header in AAD). It is decrypt-only: never write it.
@@ -109,19 +110,15 @@ function validateKdfParams(meta) {
 }
 
 /**
- * Full validation of header metadata. The erase policy is DINO-only: CTX1
- * files have no counter region, so a CTX1 header carrying one is crafted.
- * @function _validateMeta
+ * Validate the optional erase policy. DINO-only: CTX1 files have no counter
+ * region, so a CTX1 header carrying one is crafted.
+ * @function _validateErase
  * @param {Object} meta Header metadata.
- * @param {Boolean} allowErase Whether an erase policy may be present.
+ * @param {Boolean} allow Whether an erase policy may be present.
  */
-function _validateMeta(meta, allowErase) {
-    if (typeof meta !== "object" || meta === null || Array.isArray(meta)) throw new FormatError("header meta must be an object");
-    if (meta.alg !== ALG_AES_256_GCM) throw new FormatError("unsupported algorithm");
-    validateKdfParams(meta);
-    sanitizeName(meta.name);
+function _validateErase(meta, allow) {
     if (meta.erase === undefined) return;
-    if (!allowErase) throw new FormatError("erase policy not allowed in this format");
+    if (!allow) throw new FormatError("erase policy not allowed in this format");
     if (typeof meta.erase !== "object" || meta.erase === null || Array.isArray(meta.erase)) {
         throw new FormatError("header erase must be an object");
     }
@@ -129,6 +126,42 @@ function _validateMeta(meta, allowErase) {
     if (!Number.isInteger(max) || max < Constants.ERASE_MAX_ATTEMPTS_MIN || max > Constants.ERASE_MAX_ATTEMPTS_MAX) {
         throw new FormatError("header erase maxAttempts out of range");
     }
+}
+
+/**
+ * Validate the optional expiration instant. DINO-only, like the erase policy.
+ * A past instant is valid here on purpose: an expired file must still parse so
+ * the decrypt path can report FILE_EXPIRED; only encrypt rejects past values.
+ * @function _validateExpires
+ * @param {Object} meta Header metadata.
+ * @param {Boolean} allow Whether an expiration may be present.
+ */
+function _validateExpires(meta, allow) {
+    if (meta.expires === undefined) return;
+    if (!allow) throw new FormatError("expiration not allowed in this format");
+    if (typeof meta.expires !== "object" || meta.expires === null || Array.isArray(meta.expires)) {
+        throw new FormatError("header expires must be an object");
+    }
+    const at = meta.expires.at;
+    if (!Number.isSafeInteger(at) || at < 1 || at > Constants.EXPIRES_AT_MAX) {
+        throw new FormatError("header expires.at out of range");
+    }
+}
+
+/**
+ * Full validation of header metadata.
+ * @function _validateMeta
+ * @param {Object} meta Header metadata.
+ * @param {Boolean} allowDinoFields Whether the DINO-only optional fields
+ *                  (erase policy, expiration) may be present.
+ */
+function _validateMeta(meta, allowDinoFields) {
+    if (typeof meta !== "object" || meta === null || Array.isArray(meta)) throw new FormatError("header meta must be an object");
+    if (meta.alg !== ALG_AES_256_GCM) throw new FormatError("unsupported algorithm");
+    validateKdfParams(meta);
+    sanitizeName(meta.name);
+    _validateErase(meta, allowDinoFields);
+    _validateExpires(meta, allowDinoFields);
 }
 
 /**
@@ -153,7 +186,7 @@ function detectFormat(firstBytes) {
  * path can never emit a header the decrypt path would reject.
  * @function buildHeaderDino
  * @param {Object} meta Header metadata ({ alg, kdf, salt, opslimit, memlimit,
- *                      keyLen, name, erase? }).
+ *                      keyLen, name, erase?, expires? }).
  * @param {Number} flags Flags byte (FLAG_DIRECTORY or 0).
  * @return {Object} { aad, disk }: `disk` is what goes on disk (prefix +
  *                  zeroed mutable block + JSON); `aad` is `disk` without the

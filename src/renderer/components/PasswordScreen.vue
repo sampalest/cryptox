@@ -1,62 +1,93 @@
 <template>
-    <form class="lk-pass" @submit.prevent="checkPassword">
-        <div class="lk-pass-head">
-            <div class="lk-title">{{ isDecrypt ? "Decrypt file" : "Encrypt files" }}</div>
-            <div class="lk-sub">{{ isDecrypt ? "Enter the password this file was locked with." : "Choose a password. The dino guards the rest." }}</div>
-        </div>
-        <div v-if="fileLabel" class="lk-chip">
-            <svg v-if="isFolder" width="14" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
-            <svg v-else width="14" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg>
-            <span>{{ fileLabel }}</span>
-        </div>
-        <div class="lk-pass-fields">
-            <div class="lk-input">
-                <svg width="15" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
-                <input :type="showPassword ? 'text' : 'password'" name="password" id="password" v-model="password"
-                    placeholder="Password"
-                    :autocomplete="isDecrypt ? 'current-password' : 'new-password'"
-                    autocapitalize="off" autocorrect="off" spellcheck="false"
-                    @input="error = ''">
-                <button type="button" class="lk-eye" :aria-label="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword">
-                    <svg v-if="showPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" x2="22" y1="2" y2="22"></line></svg>
-                    <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                </button>
+    <!-- novalidate: every validation surfaces through the fixed-height
+         .lk-pass-error-slot, never the browser's native bubble. -->
+    <form class="lk-pass" novalidate @submit.prevent="submitStep">
+        <transition :name="stepTransition" mode="out-in">
+            <div v-if="step === 1" key="credentials" class="lk-pass-step">
+                <div class="lk-pass-head">
+                    <div class="lk-title">{{ isDecrypt ? "Decrypt file" : "Encrypt files" }}</div>
+                    <div class="lk-sub">{{ isDecrypt ? "Enter the password this file was locked with." : "Choose a password. The dino guards the rest." }}</div>
+                </div>
+                <div v-if="fileLabel" class="lk-chip">
+                    <svg v-if="isFolder" width="14" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+                    <svg v-else width="14" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg>
+                    <span>{{ fileLabel }}</span>
+                </div>
+                <div class="lk-pass-fields">
+                    <div class="lk-input">
+                        <svg width="15" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+                        <input :type="showPassword ? 'text' : 'password'" name="password" id="password" v-model="password"
+                            placeholder="Password"
+                            :autocomplete="isDecrypt ? 'current-password' : 'new-password'"
+                            autocapitalize="off" autocorrect="off" spellcheck="false"
+                            @input="error = ''">
+                        <button type="button" class="lk-eye" :aria-label="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword">
+                            <svg v-if="showPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" x2="22" y1="2" y2="22"></line></svg>
+                            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        </button>
+                    </div>
+                    <div v-if="!isDecrypt" class="lk-input">
+                        <svg width="15" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+                        <input :type="showNewPassword ? 'text' : 'password'" name="newpassword" id="newpassword" v-model="newPassword"
+                            placeholder="Retype password"
+                            autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"
+                            @input="error = ''">
+                        <button type="button" class="lk-eye" :aria-label="showNewPassword ? 'Hide password' : 'Show password'" @click="showNewPassword = !showNewPassword">
+                            <svg v-if="showNewPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" x2="22" y1="2" y2="22"></line></svg>
+                            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        </button>
+                    </div>
+                </div>
+                <div v-if="deleteBehavior.usesCheckbox || !isDecrypt" class="lk-pass-options">
+                    <label v-if="deleteBehavior.usesCheckbox" class="lk-pass-delete" :title="deleteTitle">
+                        <input class="lk-pass-delete-input" type="checkbox" :checked="deleteChecked" @change="toggleDelete($event.target.checked)">
+                        <span class="lk-pass-delete-box" aria-hidden="true">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+                        </span>
+                        <span class="lk-pass-delete-text">{{ deleteLabel }}</span>
+                    </label>
+                    <label v-if="!isDecrypt" class="lk-pass-delete" title="The file refuses to decrypt after this date">
+                        <input class="lk-pass-delete-input" type="checkbox" :checked="expireEnabled" @change="toggleExpire($event.target.checked)">
+                        <span class="lk-pass-delete-box" aria-hidden="true">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+                        </span>
+                        <span class="lk-pass-delete-text">Set an expiration date</span>
+                    </label>
+                </div>
             </div>
-            <div v-if="!isDecrypt" class="lk-input">
-                <svg width="15" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
-                <input :type="showNewPassword ? 'text' : 'password'" name="newpassword" id="newpassword" v-model="newPassword"
-                    placeholder="Retype password"
-                    autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"
-                    @input="error = ''">
-                <button type="button" class="lk-eye" :aria-label="showNewPassword ? 'Hide password' : 'Show password'" @click="showNewPassword = !showNewPassword">
-                    <svg v-if="showNewPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" x2="22" y1="2" y2="22"></line></svg>
-                    <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                </button>
+            <div v-else key="expiry" class="lk-pass-step">
+                <div class="lk-pass-head">
+                    <div class="lk-title">Set expiration</div>
+                    <div class="lk-sub">After this moment the file can no longer be decrypted.</div>
+                </div>
+                <expiry-picker v-model="expireAt" :min="minMs"></expiry-picker>
+                <div class="lk-pass-summary">
+                    <svg width="13" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 22h14"></path><path d="M5 2h14"></path><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"></path><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"></path></svg>
+                    <span>Expires {{ expireSummary }}</span>
+                </div>
             </div>
+        </transition>
+        <div class="lk-pass-error-slot" aria-live="polite">
+            <div v-if="error" class="lk-error">{{ error }}</div>
         </div>
-        <label v-if="deleteBehavior.usesCheckbox" class="lk-pass-delete" :title="deleteTitle">
-            <input class="lk-pass-delete-input" type="checkbox" :checked="deleteChecked" @change="toggleDelete($event.target.checked)">
-            <span class="lk-pass-delete-box" aria-hidden="true">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
-            </span>
-            <span class="lk-pass-delete-text">{{ deleteLabel }}</span>
-        </label>
-        <div v-if="error" class="lk-error">{{ error }}</div>
         <div class="lk-pass-actions">
-            <glass-button variant="glass" @click="$emit('cancel')">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
-                Cancel
+            <glass-button variant="glass" @click="secondaryAction">
+                <svg v-if="step === 2" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+                <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+                {{ step === 2 ? "Back" : "Cancel" }}
             </glass-button>
             <glass-button variant="primary" type="submit">
                 <svg v-if="isDecrypt" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
+                <svg v-else-if="goesToExpiry" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
                 <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                <span>{{ isDecrypt ? "Decrypt" : "Encrypt" }}</span>
+                <span>{{ primaryLabel }}</span>
             </glass-button>
         </div>
     </form>
 </template>
 <script>
 import * as e from "@shared/exceptions.js";
+import ExpiryPicker from "@/components/ui/ExpiryPicker.vue";
 import GlassButton from "@/components/ui/GlassButton.vue";
 import { useDeleteBehaviorStore } from "@/store/deleteBehavior";
 
@@ -67,17 +98,23 @@ export default {
     },
     data: () => {
         return {
+            step: 1,
+            stepBack: false,
             password: "",
             newPassword: "",
             showPassword: false,
             showNewPassword: false,
+            expireEnabled: false,
+            expireAt: null,
+            minMs: 0,
             error: ""
         };
     },
     components: {
+        "expiry-picker": ExpiryPicker,
         "glass-button": GlassButton
     },
-    emits: ["password", "cancel", "setDecrypt"],
+    emits: ["password", "cancel", "setDecrypt", "expiration"],
     props: {
         isDecrypt: {
             type: Boolean,
@@ -107,6 +144,25 @@ export default {
         },
         deleteTitle() {
             return this.deleteBehavior.mode === "permanent" ? "Deleted permanently" : "Moved to the Trash";
+        },
+        goesToExpiry() {
+            return !this.isDecrypt && this.expireEnabled && this.step === 1;
+        },
+        primaryLabel() {
+            if (this.isDecrypt) return "Decrypt";
+            return this.goesToExpiry ? "Next" : "Encrypt";
+        },
+        stepTransition() {
+            return this.stepBack ? "lk-step-back" : "lk-step-fwd";
+        },
+        expireSummary() {
+            if (!this.expireAt) return "";
+            return new Date(this.expireAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+        }
+    },
+    watch: {
+        expireAt() {
+            this.error = "";
         }
     },
     methods: {
@@ -114,34 +170,70 @@ export default {
             if (this.isDecrypt) this.deleteBehavior.setDeleteEncrypted(checked);
             else this.deleteBehavior.setDeleteOriginal(checked);
         },
-        checkPassword() {
+        toggleExpire(checked) {
+            this.expireEnabled = checked;
+            this.error = "";
+        },
+        secondaryAction() {
+            if (this.step === 2) {
+                this.stepBack = true;
+                this.step = 1;
+                this.error = "";
+                return;
+            }
+            this.$emit("cancel");
+        },
+        checkCredentials() {
             try {
                 if (!this.password) {
                     throw new e.NoValidPassword("This password is empty O_o");
                 }
-                else if (this.password.length <= 4) {
+                if (this.password.length <= 4) {
                     throw new e.NoValidPassword("This password is too short. Please, choose another one.");
                 }
-                else if (this.isDecrypt) {
-                    this.emitObject();
-                    return;
-                }
-                else if (this.password !== this.newPassword) {
+                if (!this.isDecrypt && this.password !== this.newPassword) {
                     throw new e.NoValidPassword("Passwords don't match.");
                 }
-
-                this.emitObject();
-
+                return true;
             } catch (error) {
                 this.password = "";
                 this.newPassword = "";
                 this.showPassword = false;
                 this.showNewPassword = false;
                 this.error = error.message;
+                return false;
             }
         },
+        submitStep() {
+            if (this.step === 1) {
+                if (!this.checkCredentials()) return;
+                // Mobile-style navigation: expiration gets its own screen; the
+                // password survives the detour and is emitted from step 2.
+                if (this.goesToExpiry) {
+                    this.minMs = Date.now();
+                    if (!this.expireAt || this.expireAt <= this.minMs) {
+                        const tomorrow = new Date(this.minMs + 24 * 60 * 60 * 1000);
+                        tomorrow.setSeconds(0, 0);
+                        this.expireAt = tomorrow.getTime();
+                    }
+                    this.stepBack = false;
+                    this.step = 2;
+                    this.error = "";
+                    return;
+                }
+                this.emitObject();
+                return;
+            }
+            if (!this.expireAt || this.expireAt <= Date.now()) {
+                this.error = "The expiration date must be in the future.";
+                return;
+            }
+            this.emitObject();
+        },
         emitObject() {
+            const expiration = !this.isDecrypt && this.expireEnabled && this.expireAt ? { at: this.expireAt } : null;
             this.$emit("setDecrypt", this.isDecrypt);
+            this.$emit("expiration", expiration);
             this.$emit("password", this.password);
             // Clear the plaintext password on the success path too. JS strings
             // are immutable, so this is best-effort hygiene (no real zeroing),
@@ -160,10 +252,48 @@ export default {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 18px;
+    gap: 16px;
     padding: 28px;
     text-align: center;
     animation: fadeScreen 0.62s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+// Both steps share one fixed footprint so the error slot and the action
+// buttons never move while navigating or when a validation message appears.
+.lk-pass-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    min-height: 400px;
+}
+
+.lk-step-fwd-enter-active,
+.lk-step-fwd-leave-active,
+.lk-step-back-enter-active,
+.lk-step-back-leave-active {
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.lk-step-fwd-enter-from {
+    opacity: 0;
+    transform: translateX(28px);
+}
+
+.lk-step-fwd-leave-to {
+    opacity: 0;
+    transform: translateX(-28px);
+}
+
+.lk-step-back-enter-from {
+    opacity: 0;
+    transform: translateX(-28px);
+}
+
+.lk-step-back-leave-to {
+    opacity: 0;
+    transform: translateX(28px);
 }
 
 .lk-pass-head {
@@ -209,10 +339,41 @@ export default {
     width: 300px;
 }
 
+// Reserved line so a validation message never reflows the screen.
+.lk-pass-error-slot {
+    min-height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lk-pass-summary {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    color: var(--dim);
+
+    > svg {
+        color: var(--faint);
+        flex-shrink: 0;
+    }
+}
+
 .lk-pass-actions {
     display: flex;
     gap: 12px;
-    margin-top: 4px;
+}
+
+// Shared column for the delete and expiration checkboxes: same width as the
+// password fields, left-aligned so the two rows line up regardless of label
+// length.
+.lk-pass-options {
+    width: 300px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
 }
 
 .lk-pass-delete {

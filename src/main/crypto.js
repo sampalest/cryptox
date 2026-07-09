@@ -1,5 +1,5 @@
 import Constants from "../shared/constants.js";
-import { CancelledError, WrongPasswordError } from "../shared/exceptions.js";
+import { CancelledError, ExpiredError, WrongPasswordError } from "../shared/exceptions.js";
 import Format from "./format.js";
 import TempManager from "./temp.js";
 import Utils from "./utils.js";
@@ -21,6 +21,18 @@ export default class Crypto {
         // { maxAttempts, attempts, counterOffset, dev, ino }. The IPC handler
         // uses it to count failed attempts and to reset the counter on success.
         this.eraseInfo = null;
+        // Encrypt-time expiration ({ at: epoch ms } or null): baked into the
+        // authenticated DINO header so it travels with the file.
+        this.expiration = options.expiration || null;
+        // Time source for decrypt-time expiration checks; without one the
+        // system clock is used. Injected by the IPC handler (or tests).
+        this.timeProvider = options.timeProvider || null;
+        // Populated by a DINO decrypt whose header carries an expiration.
+        this.expiresAt = null;
+        // True when a trusted source was configured but unreachable and the
+        // check fell back to the system clock; surfaced in the IPC result.
+        this.trustedTimeUnavailable = false;
+        this._timeCheck = null;
         this._cancelled = false;
         this._destroyables = new Set();
     }
@@ -48,6 +60,34 @@ export default class Crypto {
      */
     _checkCancelled() {
         if (this._cancelled) throw new CancelledError();
+    }
+
+    /**
+     * Fetch the operation's time verdict once (network at most once per
+     * operation; never during finalize). Only called when the parsed header
+     * carries an expiration, so non-expiring files never touch the network.
+     * @function _fetchTrustedTime
+     * @return {Promise<Number>} The verdict in epoch ms.
+     * @throws {TimeUnavailableError} From a fail-closed provider.
+     */
+    async _fetchTrustedTime() {
+        const verdict = this.timeProvider
+            ? await this.timeProvider.now()
+            : { nowMs: Date.now(), source: "system", trusted: false };
+        this.trustedTimeUnavailable = verdict.fallback === true;
+        this._timeCheck = { nowMs: verdict.nowMs, atHrtime: process.hrtime.bigint() };
+        return verdict.nowMs;
+    }
+
+    /**
+     * The fetched verdict advanced by the monotonic clock, so the finalize
+     * re-check stays boundary-correct on long decrypts without network I/O.
+     * @function _effectiveNowMs
+     * @return {Number} Epoch ms.
+     */
+    _effectiveNowMs() {
+        if (!this._timeCheck) return Date.now();
+        return this._timeCheck.nowMs + Number((process.hrtime.bigint() - this._timeCheck.atHrtime) / 1000000n);
     }
 
     /**
@@ -220,6 +260,7 @@ export default class Crypto {
             name: isDirectory ? `${file.name}.tar` : file.name
         };
         if (this.erasePolicy) meta.erase = { maxAttempts: this.erasePolicy.maxAttempts };
+        if (this.expiration) meta.expires = { at: this.expiration.at };
         const header = Format.buildHeaderDino(meta, isDirectory ? Format.FLAG_DIRECTORY : 0);
 
         // The ciphertext is staged in a hidden, randomly named temp file next
@@ -367,6 +408,17 @@ export default class Crypto {
         }
         const headerBuf = await this._readBytes(file.path, 0, Format.PREFIX_LEN_DINO + headerLen);
         const { flags, meta, aadBytes, counter, payloadStart } = Format.parseHeaderDino(headerBuf, size);
+        if (meta.expires) {
+            // Pre-flight expiration deny on the parsed (not yet verified)
+            // header: an already-expired file never reaches the KDF and never
+            // stages a single plaintext byte. Tampering the field pre-auth can
+            // only self-DoS; hiding it fails GCM auth at stream end, where the
+            // finalize re-check is the authoritative gate.
+            this.expiresAt = meta.expires.at;
+            const nowMs = await this._fetchTrustedTime();
+            this._checkCancelled();
+            if (nowMs >= this.expiresAt) throw new ExpiredError();
+        }
         if (meta.erase) {
             // dev/ino pin the identity of the file whose header was parsed, so
             // the counter/erase writer can refuse a path swapped underneath it.
@@ -642,6 +694,14 @@ export default class Crypto {
                     // A cancel can race stream completion: never move a
                     // cancelled output into place, even fully authenticated.
                     if (this._cancelled) return cleanupAndReject(new CancelledError());
+                    // Authoritative expiration gate: GCM has authenticated the
+                    // header by now, and the staged plaintext is not yet
+                    // visible. Raised outside the decipher-error path, so it
+                    // is never classified as a wrong password and never burns
+                    // erase-policy attempts.
+                    if (this.expiresAt !== null && this._effectiveNowMs() >= this.expiresAt) {
+                        return cleanupAndReject(new ExpiredError());
+                    }
                     // The plaintext is authenticated but still staged/hidden:
                     // tell the UI finalization is running and reserve 100% for
                     // "visible at the final path".

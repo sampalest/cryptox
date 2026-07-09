@@ -77,6 +77,11 @@ export default {
             type: String,
             default: ""
         },
+        // Encrypt-only { at: epoch ms } from the password screen, or null.
+        expiration: {
+            type: Object,
+            default: null
+        },
         isDecrypt: {
             type: Boolean,
             default: true

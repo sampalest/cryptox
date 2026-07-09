@@ -133,7 +133,9 @@ export function normalizeCryptoPayload(payload) {
         filePath,
         password: payload.password,
         operationId: validateOperationId(payload.operationId),
-        erasePolicy: normalizeErasePolicy(payload.erasePolicy)
+        erasePolicy: normalizeErasePolicy(payload.erasePolicy),
+        expiration: normalizeExpiration(payload.expiration),
+        timeSource: normalizeTimeSource(payload.timeSource)
     };
 }
 
@@ -146,6 +148,49 @@ export function normalizeErasePolicy(value) {
         throw new IpcValidationError(Codes.INVALID_PAYLOAD, "Erase policy must use one of the offered attempt counts.");
     }
     return { maxAttempts: value.maxAttempts };
+}
+
+// Optional encrypt-time expiration. The instant must be a future epoch-ms
+// value within the format's ceiling; anything else is an invalid payload,
+// never a clamped or defaulted one. Only `at` survives normalization. This is
+// the authoritative no-past-expiry gate (the renderer validates only for UX).
+export function normalizeExpiration(value) {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "object" || Array.isArray(value)
+        || !Number.isSafeInteger(value.at) || value.at <= Date.now() || value.at > Constants.EXPIRES_AT_MAX) {
+        throw new IpcValidationError(Codes.INVALID_PAYLOAD, "Expiration must be a future timestamp.");
+    }
+    return { at: value.at };
+}
+
+// Hostname allowlist shape for the custom NTS server: dot-separated
+// RFC 1123 labels, 253 chars max. Rejecting here keeps arbitrary renderer
+// strings away from the TLS/UDP stack.
+const HOSTNAME_LABEL = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/i;
+
+function isValidHostname(value) {
+    if (typeof value !== "string" || value.length === 0 || value.length > 253) return false;
+    return value.split(".").every(label => HOSTNAME_LABEL.test(label));
+}
+
+// Optional decrypt-time trusted time source. Absent means the default
+// (Cloudflare NTS with system-clock fallback), resolved by the handler;
+// malformed input throws, it never defaults through.
+export function normalizeTimeSource(value) {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "object" || Array.isArray(value) || !Constants.TIME_SOURCE_KINDS.includes(value.kind)) {
+        throw new IpcValidationError(Codes.INVALID_PAYLOAD, "Time source is not recognized.");
+    }
+    if (value.kind === "system") return { kind: "system" };
+    const host = value.host === undefined || value.host === null ? Constants.NTS_DEFAULT_HOST : value.host;
+    if (!isValidHostname(host)) {
+        throw new IpcValidationError(Codes.INVALID_PAYLOAD, "Time server host is not a valid hostname.");
+    }
+    const port = value.port === undefined || value.port === null ? Constants.NTS_DEFAULT_PORT : value.port;
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new IpcValidationError(Codes.INVALID_PAYLOAD, "Time server port is out of range.");
+    }
+    return { kind: "nts", host, port, failClosed: value.failClosed === true };
 }
 
 export function validateOperationId(value) {

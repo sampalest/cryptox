@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import sodium from "libsodium-wrappers-sumo";
-import { CancelledError, WrongPasswordError } from "@shared/exceptions.js";
+import { CancelledError, ExpiredError, TimeUnavailableError, WrongPasswordError } from "@shared/exceptions.js";
 import Crypto from "@main/crypto.js";
 import Format from "@main/format.js";
 import FileManager from "@shared/filemanager.js";
@@ -318,6 +318,184 @@ describe("Crypto", () => {
         });
     });
 
+    describe("expiration", () => {
+        // Deterministic stand-in for the main-process TimeProvider: tests pin
+        // "now" instead of mocking Date, keeping format.js and crypto.js pure.
+        function fakeTimeProvider(nowMs, extra = {}) {
+            const provider = {
+                calls: 0,
+                async now() {
+                    provider.calls++;
+                    return { nowMs, source: "nts", trusted: true, ...extra };
+                }
+            };
+            return provider;
+        }
+
+        async function encryptWithExpiry(name, payload, at) {
+            const sourcePath = path.join(tempDir, name);
+            fs.writeFileSync(sourcePath, payload);
+            await new Crypto("correct horse", undefined, { expiration: { at } })
+                .encrypt(new FileManager(sourcePath), { value: 0 }, {});
+            fs.unlinkSync(sourcePath);
+            return { sourcePath, encryptedPath: path.join(tempDir, `${path.parse(name).name}.dino`) };
+        }
+
+        const AT = 1783600000000;
+
+        it("bakes the expiration into the header and decrypts before the instant", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("sample.txt", "timed payload", AT);
+            expect(readDinoHeader(encryptedPath).meta.expires).toEqual({ at: AT });
+
+            const provider = fakeTimeProvider(AT - 60000);
+            const cryptoOp = new Crypto("correct horse", undefined, { timeProvider: provider });
+            await cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 });
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("timed payload");
+            expect(cryptoOp.expiresAt).toBe(AT);
+            expect(provider.calls).toBe(1);
+        });
+
+        it("decrypts files without an expiration and never consults the time provider", async () => {
+            const sourcePath = path.join(tempDir, "plain.txt");
+            fs.writeFileSync(sourcePath, "plain payload");
+            await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
+            expect(readDinoHeader(path.join(tempDir, "plain.dino")).meta.expires).toBeUndefined();
+            fs.unlinkSync(sourcePath);
+
+            const provider = fakeTimeProvider(Number.MAX_SAFE_INTEGER);
+            const cryptoOp = new Crypto("correct horse", undefined, { timeProvider: provider });
+            await cryptoOp.decrypt(new FileManager(path.join(tempDir, "plain.dino")), { value: 0 });
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("plain payload");
+            expect(cryptoOp.expiresAt).toBeNull();
+            expect(provider.calls).toBe(0);
+        });
+
+        it("rejects an expired file before any plaintext byte is staged", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("gone.txt", "x".repeat(64 * 1024), AT);
+
+            const observed = [];
+            const cryptoOp = new Crypto("correct horse", undefined, { timeProvider: fakeTimeProvider(AT + 1) });
+            await expect(
+                cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 }, {
+                    onProgress: value => observed.push(value)
+                })
+            ).rejects.toThrow(ExpiredError);
+
+            // The pre-flight deny fires before the KDF and streaming: nothing
+            // was staged, nothing is visible, no progress ever fired.
+            expect(observed).toEqual([]);
+            expect(fs.existsSync(sourcePath)).toBe(false);
+            expect(leftoverTempNames(tempDir)).toEqual([]);
+            expect(cryptoOp.expiresAt).toBe(AT);
+        });
+
+        it("treats the exact instant as expired and the millisecond before as valid", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("edge.txt", "edge payload", AT);
+
+            // Pre-flight boundary: nowMs == at is already expired.
+            await expect(
+                new Crypto("correct horse", undefined, { timeProvider: fakeTimeProvider(AT) })
+                    .decrypt(new FileManager(encryptedPath), { value: 0 })
+            ).rejects.toThrow(ExpiredError);
+            expect(fs.existsSync(sourcePath)).toBe(false);
+
+            // Finalize boundary: pin the re-check clock one millisecond before
+            // the instant (real KDF time would otherwise cross any margin).
+            const cryptoOp = new Crypto("correct horse", undefined, { timeProvider: fakeTimeProvider(AT - 60000) });
+            jest.spyOn(cryptoOp, "_effectiveNowMs").mockReturnValue(AT - 1);
+            await cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 });
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("edge payload");
+        });
+
+        it("rejects a tampered expiration as an auth failure, never as expired plaintext", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("tamper.txt", "tamper payload", AT);
+
+            // Extend the expiry in the raw header bytes: the JSON stays valid
+            // and in range, so only the AAD authentication can catch it.
+            const buf = fs.readFileSync(encryptedPath);
+            const idx = buf.indexOf(`"at":${AT}`);
+            expect(idx).toBeGreaterThan(0);
+            buf.write(`"at":${AT + 900000000}`, idx, "utf-8");
+            fs.writeFileSync(encryptedPath, buf);
+
+            await expect(
+                new Crypto("correct horse", undefined, { timeProvider: fakeTimeProvider(AT + 60000) })
+                    .decrypt(new FileManager(encryptedPath), { value: 0 })
+            ).rejects.toThrow(WrongPasswordError);
+
+            expect(fs.existsSync(sourcePath)).toBe(false);
+            expect(leftoverTempNames(tempDir)).toEqual([]);
+        });
+
+        it("re-checks expiration after authentication and removes the staged plaintext", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("racing.txt", "racing payload", AT);
+
+            // Pre-flight passes (1 s of margin); the decrypt then "takes long
+            // enough" to cross the boundary, simulated deterministically by
+            // advancing the monotonic re-check instead of sleeping.
+            const cryptoOp = new Crypto("correct horse", undefined, { timeProvider: fakeTimeProvider(AT - 1000) });
+            jest.spyOn(cryptoOp, "_effectiveNowMs").mockReturnValue(AT + 1);
+            await expect(
+                cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 })
+            ).rejects.toThrow(ExpiredError);
+
+            expect(fs.existsSync(sourcePath)).toBe(false);
+            expect(leftoverTempNames(tempDir)).toEqual([]);
+        });
+
+        it("covers the empty-plaintext branch with the same post-auth gate", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("empty.txt", "", AT);
+
+            const cryptoOp = new Crypto("correct horse", undefined, { timeProvider: fakeTimeProvider(AT - 1000) });
+            jest.spyOn(cryptoOp, "_effectiveNowMs").mockReturnValue(AT + 1);
+            await expect(
+                cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 })
+            ).rejects.toThrow(ExpiredError);
+            expect(fs.existsSync(sourcePath)).toBe(false);
+            expect(leftoverTempNames(tempDir)).toEqual([]);
+        });
+
+        it("propagates TimeUnavailableError from a fail-closed provider with no output", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("blocked.txt", "blocked payload", AT);
+
+            const provider = { async now() { throw new TimeUnavailableError(new Error("offline")); } };
+            await expect(
+                new Crypto("correct horse", undefined, { timeProvider: provider })
+                    .decrypt(new FileManager(encryptedPath), { value: 0 })
+            ).rejects.toThrow(TimeUnavailableError);
+            expect(fs.existsSync(sourcePath)).toBe(false);
+            expect(leftoverTempNames(tempDir)).toEqual([]);
+        });
+
+        it("surfaces a system-clock fallback through trustedTimeUnavailable", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("fallback.txt", "fallback payload", AT);
+
+            const cryptoOp = new Crypto("correct horse", undefined, {
+                timeProvider: fakeTimeProvider(AT - 60000, { trusted: false, fallback: true })
+            });
+            await cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 });
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("fallback payload");
+            expect(cryptoOp.trustedTimeUnavailable).toBe(true);
+        });
+
+        it("rejects an expired erase-protected file as expired, not as a wrong password", async () => {
+            const sourcePath = path.join(tempDir, "both.txt");
+            const encryptedPath = path.join(tempDir, "both.dino");
+            fs.writeFileSync(sourcePath, "double payload");
+            await new Crypto("correct horse", undefined, { erasePolicy: { maxAttempts: 3 }, expiration: { at: AT } })
+                .encrypt(new FileManager(sourcePath), { value: 0 }, {});
+            fs.unlinkSync(sourcePath);
+
+            const cryptoOp = new Crypto("correct horse", undefined, { timeProvider: fakeTimeProvider(AT + 1) });
+            const failure = await cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 }).catch(error => error);
+            expect(failure.name).toBe("ExpiredError");
+            // The IPC handler counts attempts only for WrongPasswordError, so
+            // an expired refusal can never burn one.
+            expect(failure.name).not.toBe("WrongPasswordError");
+            expect(readDinoHeader(encryptedPath).counter).toBe(0);
+        });
+    });
+
     it("uses a different random salt per file", async () => {
         const firstSource = path.join(tempDir, "first.txt");
         const secondSource = path.join(tempDir, "second.txt");
@@ -553,7 +731,7 @@ describe("Crypto", () => {
 
     it("rejects when a decrypted directory archive contains traversal entries", async () => {
         // Build a malicious tar in memory and wrap it in a CTX1 file with the
-        // directory flag set — exactly the path a hostile archive would take.
+        // directory flag set, exactly the path a hostile archive would take.
         const { pack } = require("tar-stream");
         const tarBuffer = await new Promise((resolve, reject) => {
             const archive = pack();

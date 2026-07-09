@@ -21,7 +21,9 @@ const CRYPTO_ERROR_CODES = Object.freeze({
     INVALID_FILE_TYPE: "INVALID_FILE_TYPE",
     OPERATION_FAILED: "OPERATION_FAILED",
     WRONG_PASSWORD: "WRONG_PASSWORD",
-    FILE_ERASED: "FILE_ERASED"
+    FILE_ERASED: "FILE_ERASED",
+    FILE_EXPIRED: "FILE_EXPIRED",
+    TIME_UNAVAILABLE: "TIME_UNAVAILABLE"
 });
 
 // Erase-after-failed-attempts policy. The IPC payload only accepts the exact
@@ -31,6 +33,17 @@ const ERASE_ATTEMPT_OPTIONS = Object.freeze([3, 5, 10]);
 const ERASE_MAX_ATTEMPTS_MIN = 1;
 const ERASE_MAX_ATTEMPTS_MAX = 10;
 const ERASE_MAX_ATTEMPTS_DEFAULT = 5;
+
+// Expiration policy. `expires.at` is a UTC epoch-milliseconds instant stored in
+// the authenticated DINO header; the ceiling is 9999-12-31T23:59:59.999Z so a
+// crafted header cannot smuggle absurd values into date formatting.
+const EXPIRES_AT_MAX = 253402300799999;
+
+// Trusted time. The decrypt payload may name a time source; "nts" speaks
+// RFC 8915 Network Time Security, defaulting to Cloudflare's public server.
+const TIME_SOURCE_KINDS = Object.freeze(["system", "nts"]);
+const NTS_DEFAULT_HOST = "time.cloudflare.com";
+const NTS_DEFAULT_PORT = 4460;
 
 // Key derivation. Argon2id ops/mem limits are resolved at runtime from libsodium's
 // MODERATE presets (see crypto.js) and stored per-file in the header, so these are
@@ -55,6 +68,10 @@ export default {
     ERASE_MAX_ATTEMPTS_MIN: ERASE_MAX_ATTEMPTS_MIN,
     ERASE_MAX_ATTEMPTS_MAX: ERASE_MAX_ATTEMPTS_MAX,
     ERASE_MAX_ATTEMPTS_DEFAULT: ERASE_MAX_ATTEMPTS_DEFAULT,
+    EXPIRES_AT_MAX: EXPIRES_AT_MAX,
+    TIME_SOURCE_KINDS: TIME_SOURCE_KINDS,
+    NTS_DEFAULT_HOST: NTS_DEFAULT_HOST,
+    NTS_DEFAULT_PORT: NTS_DEFAULT_PORT,
     KEY_LEN: KEY_LEN,
     FRAMELESS_GUTTER: FRAMELESS_GUTTER
 };

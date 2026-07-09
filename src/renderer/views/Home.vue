@@ -1,8 +1,8 @@
 <template>
     <div class="home-screen">
-        <encrypt-loader v-if="loader" :files="files" :password="password" :is-decrypt="encrypted" @finish="operationFinished" @cancel="finishOperation"></encrypt-loader>
+        <encrypt-loader v-if="loader" :files="files" :password="password" :expiration="expiration" :is-decrypt="encrypted" @finish="operationFinished" @cancel="finishOperation"></encrypt-loader>
         <success-screen v-else-if="success" :files="files" :is-decrypt="encrypted" @done="finishOperation"></success-screen>
-        <password-screen v-else-if="showPassword" :is-decrypt="encrypted" :files="files" @password="setPassword" @cancel="cancelPassword" @setDecrypt="setDecrypt"></password-screen>
+        <password-screen v-else-if="showPassword" :is-decrypt="encrypted" :files="files" @password="setPassword" @expiration="expiration = $event" @cancel="cancelPassword" @setDecrypt="setDecrypt"></password-screen>
         <div v-else class="lk-home">
             <div class="lk-home-head">
                 <word-mark :size="46" animate />
@@ -55,6 +55,7 @@ export default {
             showPassword: false,
             encrypted: true,
             password: "",
+            expiration: null,
             files: null,
             loader: false,
             success: false,
@@ -125,6 +126,7 @@ export default {
         operationFinished() {
             this.loader = false;
             this.password = "";
+            this.expiration = null;
             this.success = true;
         },
         finishOperation() {
@@ -135,6 +137,7 @@ export default {
         cancelPassword() {
             this.showPassword = false;
             this.password = "";
+            this.expiration = null;
             this.files = null;
         },
         setDecrypt(bool) {

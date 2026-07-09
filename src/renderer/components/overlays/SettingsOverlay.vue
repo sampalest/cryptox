@@ -1,8 +1,9 @@
 <template>
     <div class="lk-overlay" role="dialog" aria-label="Settings">
         <div class="lk-overlay-title">Settings</div>
+        <div class="lk-settings-group-title">Appearance</div>
         <div class="lk-settings-section">
-            <div class="lk-settings-label">APPEARANCE</div>
+            <div class="lk-settings-label">THEME</div>
             <div class="lk-settings-seg">
                 <button
                     v-for="option in modes"
@@ -18,7 +19,7 @@
                     {{ option.label }}
                 </button>
             </div>
-            <div class="lk-settings-hint">{{ appearanceHint }}</div>
+            <div class="lk-settings-hint">{{ themeHint }}</div>
         </div>
         <div class="lk-settings-section">
             <div class="lk-settings-label">WINDOW SIZE</div>
@@ -36,43 +37,6 @@
                 </button>
             </div>
             <div class="lk-settings-hint">Scales the whole window. It stays this size until you change it.</div>
-        </div>
-        <div class="lk-settings-section">
-            <div class="lk-settings-label">AFTER SUCCESS</div>
-            <div class="lk-settings-seg">
-                <button
-                    v-for="option in deleteModes"
-                    :key="option.id"
-                    type="button"
-                    class="lk-settings-seg-btn"
-                    :class="{ active: deleteBehavior.mode === option.id }"
-                    @click="deleteBehavior.setMode(option.id)"
-                >
-                    <svg v-if="option.id === 'trash'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                    <svg v-else-if="option.id === 'permanent'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="m10 11 4 5"></path><path d="m14 11-4 5"></path></svg>
-                    <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><path d="M12 17h.01"></path></svg>
-                    {{ option.label }}
-                </button>
-            </div>
-            <div class="lk-settings-hint">{{ deleteHint }}</div>
-        </div>
-        <div class="lk-settings-section">
-            <div class="lk-settings-label">ERASE AFTER FAILED ATTEMPTS</div>
-            <div class="lk-settings-seg">
-                <button
-                    v-for="option in eraseOptions"
-                    :key="option.id"
-                    type="button"
-                    class="lk-settings-seg-btn"
-                    :class="{ active: eraseActive === option.id }"
-                    @click="erasePolicy.choose(option.id)"
-                >
-                    <svg v-if="option.id === 'off'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.7 14a6.9 6.9 0 0 0 .3-2V5l-8-3-3.2 1.2"></path><path d="m2 2 20 20"></path><path d="M4.7 4.7 4 5v7c0 6 8 10 8 10a20.3 20.3 0 0 0 5.6-4.4"></path></svg>
-                    <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.7 9a.6.6 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
-                    {{ option.label }}
-                </button>
-            </div>
-            <div class="lk-settings-hint">{{ eraseHint }}</div>
         </div>
         <div v-if="isMac" class="lk-settings-section">
             <div class="lk-settings-label">APP ICON</div>
@@ -96,6 +60,82 @@
             </div>
             <div class="lk-settings-hint">{{ iconHint }}</div>
         </div>
+        <div class="lk-settings-group-title">Behavior</div>
+        <div class="lk-settings-section">
+            <div class="lk-settings-label">AFTER SUCCESS</div>
+            <div class="lk-settings-seg">
+                <button
+                    v-for="option in deleteModes"
+                    :key="option.id"
+                    type="button"
+                    class="lk-settings-seg-btn"
+                    :class="{ active: deleteBehavior.mode === option.id }"
+                    @click="deleteBehavior.setMode(option.id)"
+                >
+                    <svg v-if="option.id === 'trash'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    <svg v-else-if="option.id === 'permanent'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="m10 11 4 5"></path><path d="m14 11-4 5"></path></svg>
+                    <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><path d="M12 17h.01"></path></svg>
+                    {{ option.label }}
+                </button>
+            </div>
+            <div class="lk-settings-hint">{{ deleteHint }}</div>
+        </div>
+        <div class="lk-settings-group-title">Security</div>
+        <div class="lk-settings-section">
+            <div class="lk-settings-label">ERASE AFTER FAILED ATTEMPTS</div>
+            <div class="lk-settings-seg">
+                <button
+                    v-for="option in eraseOptions"
+                    :key="option.id"
+                    type="button"
+                    class="lk-settings-seg-btn"
+                    :class="{ active: eraseActive === option.id }"
+                    @click="erasePolicy.choose(option.id)"
+                >
+                    <svg v-if="option.id === 'off'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.7 14a6.9 6.9 0 0 0 .3-2V5l-8-3-3.2 1.2"></path><path d="m2 2 20 20"></path><path d="M4.7 4.7 4 5v7c0 6 8 10 8 10a20.3 20.3 0 0 0 5.6-4.4"></path></svg>
+                    <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.7 9a.6.6 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+                    {{ option.label }}
+                </button>
+            </div>
+            <div class="lk-settings-hint">{{ eraseHint }}</div>
+        </div>
+        <div class="lk-settings-section">
+            <div class="lk-settings-label">TRUSTED TIME</div>
+            <div class="lk-settings-seg">
+                <button
+                    v-for="option in timeSources"
+                    :key="option.id"
+                    type="button"
+                    class="lk-settings-seg-btn"
+                    :class="{ active: timeSource.source === option.id }"
+                    @click="timeSource.choose(option.id)"
+                >
+                    <svg v-if="option.id === 'system'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    <svg v-else-if="option.id === 'cloudflare'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
+                    <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"></rect><rect width="20" height="8" x="2" y="14" rx="2" ry="2"></rect><line x1="6" x2="6.01" y1="6" y2="6"></line><line x1="6" x2="6.01" y1="18" y2="18"></line></svg>
+                    {{ option.label }}
+                </button>
+            </div>
+            <div v-if="timeSource.source === 'custom'" class="lk-input lk-settings-host">
+                <svg width="15" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg>
+                <input type="text" name="timeserver" id="timeserver" placeholder="nts.example.com"
+                    autocapitalize="off" autocorrect="off" spellcheck="false"
+                    :value="timeSource.customHost" @input="timeSource.setCustomHost($event.target.value)">
+            </div>
+            <div v-if="timeSource.source !== 'system'" class="lk-settings-seg">
+                <button
+                    v-for="option in failModes"
+                    :key="option.id"
+                    type="button"
+                    class="lk-settings-seg-btn"
+                    :class="{ active: timeSource.failClosed === option.id }"
+                    @click="timeSource.chooseFailClosed(option.id)"
+                >
+                    {{ option.label }}
+                </button>
+            </div>
+            <div class="lk-settings-hint">{{ timeHint }}</div>
+        </div>
         <glass-button variant="primary" @click="ui.closeOverlays()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>
             Done
@@ -108,6 +148,7 @@ import { APP_ICONS, useAppIconStore } from "@/store/appIcon";
 import { useAppStore } from "@/store/app";
 import { DELETE_MODES, useDeleteBehaviorStore } from "@/store/deleteBehavior";
 import { ERASE_ATTEMPT_OPTIONS, useErasePolicyStore } from "@/store/erasePolicy";
+import { useTimeSourceStore } from "@/store/timeSource";
 import { useThemeStore } from "@/store/theme";
 import { useUiStore } from "@/store/ui";
 import { WINDOW_SIZES, useWindowSizeStore } from "@/store/windowSize";
@@ -118,7 +159,7 @@ export default {
         "glass-button": GlassButton
     },
     setup() {
-        return { appIcon: useAppIconStore(), appStore: useAppStore(), deleteBehavior: useDeleteBehaviorStore(), erasePolicy: useErasePolicyStore(), theme: useThemeStore(), ui: useUiStore(), windowSize: useWindowSizeStore() };
+        return { appIcon: useAppIconStore(), appStore: useAppStore(), deleteBehavior: useDeleteBehaviorStore(), erasePolicy: useErasePolicyStore(), theme: useThemeStore(), timeSource: useTimeSourceStore(), ui: useUiStore(), windowSize: useWindowSizeStore() };
     },
     computed: {
         isMac() {
@@ -153,12 +194,30 @@ export default {
             if (!this.erasePolicy.enabled) return "Nothing is ever erased after a wrong password.";
             return `New encrypted files are permanently erased after ${this.erasePolicy.maxAttempts} wrong passwords. This cannot be undone.`;
         },
+        timeSources() {
+            return [
+                { id: "system", label: "System clock" },
+                { id: "cloudflare", label: "Cloudflare" },
+                { id: "custom", label: "Custom" }
+            ];
+        },
+        failModes() {
+            return [
+                { id: false, label: "Fall back to clock" },
+                { id: true, label: "Fail closed" }
+            ];
+        },
+        timeHint() {
+            if (this.timeSource.source === "system") return "Files with an expiration date are checked against this computer's clock.";
+            if (this.timeSource.failClosed) return "Expiring files refuse to decrypt when the time server is unreachable.";
+            return "Expiring files are checked against the time server, or this computer's clock when it is unreachable.";
+        },
         deleteHint() {
             if (this.deleteBehavior.mode === "ask") return "Asks what to do with the source file after each operation.";
             if (this.deleteBehavior.mode === "permanent") return "A checkbox on the password screen deletes the source file permanently.";
             return "A checkbox on the password screen moves the source file to the Trash.";
         },
-        appearanceHint() {
+        themeHint() {
             if (this.theme.mode === "system") return "Follows your OS appearance.";
             return this.theme.mode === "dark" ? "Always dark, day or night." : "Always light and airy.";
         },
@@ -211,6 +270,27 @@ export default {
     flex-direction: column;
     align-items: center;
     gap: 8px;
+}
+
+// Category divider between groups of related sections.
+.lk-settings-group-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 6px;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: var(--accent);
+
+    &::before,
+    &::after {
+        content: "";
+        width: 56px;
+        height: 1px;
+        background: var(--track);
+    }
 }
 
 .lk-settings-label {
@@ -274,6 +354,15 @@ export default {
 .lk-settings-hint {
     font-size: 12px;
     color: var(--faint);
+}
+
+.lk-settings-host {
+    width: 280px;
+
+    > svg {
+        color: var(--faint);
+        flex-shrink: 0;
+    }
 }
 
 .lk-settings-icons {

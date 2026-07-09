@@ -40,7 +40,9 @@ describe("IPC validation", () => {
             filePath: "/tmp/example.txt",
             password: "correct horse",
             operationId: "operation-1",
-            erasePolicy: null
+            erasePolicy: null,
+            expiration: null,
+            timeSource: null
         });
     });
 
@@ -76,6 +78,90 @@ describe("IPC validation", () => {
             ["number", 5]
         ])("rejects an erase policy that is %s with INVALID_PAYLOAD", (label, erasePolicy) => {
             expect(() => normalizeCryptoPayload(basePayload({ erasePolicy })))
+                .toThrow(expect.objectContaining({ code: "INVALID_PAYLOAD" }));
+        });
+    });
+
+    describe("expiration payload", () => {
+        const basePayload = overrides => Object.assign({
+            file: { path: "/tmp/example.txt" },
+            password: "correct horse",
+            operationId: "operation-1"
+        }, overrides);
+
+        it("accepts a future instant and keeps only at", () => {
+            const at = Date.now() + 60000;
+            expect(normalizeCryptoPayload(basePayload({
+                expiration: { at, extra: "dropped" }
+            })).expiration).toEqual({ at });
+        });
+
+        it("normalizes an absent expiration to null", () => {
+            expect(normalizeCryptoPayload(basePayload({})).expiration).toBeNull();
+            expect(normalizeCryptoPayload(basePayload({ expiration: null })).expiration).toBeNull();
+        });
+
+        it.each([
+            ["in the past", { at: 1000 }],
+            ["the current instant", { at: 0 }],
+            ["negative", { at: -1 }],
+            ["a float", { at: Date.now() + 60000.5 }],
+            ["a numeric string", { at: String(Date.now() + 60000) }],
+            ["above the format ceiling", { at: 253402300800000 }],
+            ["missing at", {}],
+            ["an array", [123]],
+            ["a bare number", 123]
+        ])("rejects an expiration that is %s with INVALID_PAYLOAD", (label, expiration) => {
+            expect(() => normalizeCryptoPayload(basePayload({ expiration })))
+                .toThrow(expect.objectContaining({ code: "INVALID_PAYLOAD" }));
+        });
+    });
+
+    describe("time source payload", () => {
+        const basePayload = overrides => Object.assign({
+            file: { path: "/tmp/example.txt" },
+            password: "correct horse",
+            operationId: "operation-1"
+        }, overrides);
+
+        it("normalizes an absent time source to null (handler applies the default)", () => {
+            expect(normalizeCryptoPayload(basePayload({})).timeSource).toBeNull();
+            expect(normalizeCryptoPayload(basePayload({ timeSource: null })).timeSource).toBeNull();
+        });
+
+        it("keeps only kind for the system clock", () => {
+            expect(normalizeCryptoPayload(basePayload({
+                timeSource: { kind: "system", host: "dropped.example", failClosed: true }
+            })).timeSource).toEqual({ kind: "system" });
+        });
+
+        it("fills NTS defaults and coerces failClosed strictly", () => {
+            expect(normalizeCryptoPayload(basePayload({
+                timeSource: { kind: "nts" }
+            })).timeSource).toEqual({ kind: "nts", host: "time.cloudflare.com", port: 4460, failClosed: false });
+            expect(normalizeCryptoPayload(basePayload({
+                timeSource: { kind: "nts", host: "nts.example.com", port: 123, failClosed: "yes" }
+            })).timeSource).toEqual({ kind: "nts", host: "nts.example.com", port: 123, failClosed: false });
+            expect(normalizeCryptoPayload(basePayload({
+                timeSource: { kind: "nts", failClosed: true }
+            })).timeSource.failClosed).toBe(true);
+        });
+
+        it.each([
+            ["an unknown kind", { kind: "carrier-pigeon" }],
+            ["a missing kind", {}],
+            ["an array", ["nts"]],
+            ["a bare string", "nts"],
+            ["a host with a scheme", { kind: "nts", host: "https://example.com" }],
+            ["a host with a path", { kind: "nts", host: "example.com/time" }],
+            ["a host with spaces", { kind: "nts", host: "exa mple.com" }],
+            ["an overlong host", { kind: "nts", host: `${"a".repeat(254)}.com` }],
+            ["an empty host", { kind: "nts", host: "" }],
+            ["a port of 0", { kind: "nts", port: 0 }],
+            ["a port above 65535", { kind: "nts", port: 65536 }],
+            ["a string port", { kind: "nts", port: "4460" }]
+        ])("rejects a time source with %s with INVALID_PAYLOAD", (label, timeSource) => {
+            expect(() => normalizeCryptoPayload(basePayload({ timeSource })))
                 .toThrow(expect.objectContaining({ code: "INVALID_PAYLOAD" }));
         });
     });

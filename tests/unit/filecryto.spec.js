@@ -286,7 +286,7 @@ describe("filecryto mixin", () => {
             ctx.encryptFile(files[0]);
             await new Promise(res => setImmediate(res));
             expect(global.window.lockasaur.crypto.encrypt).toHaveBeenCalledWith(
-                { path: "/a.txt" }, "secret", expect.any(String), { maxAttempts: 3 }
+                { path: "/a.txt" }, "secret", expect.any(String), { maxAttempts: 3 }, undefined
             );
         });
 
@@ -296,8 +296,75 @@ describe("filecryto mixin", () => {
             ctx.encryptFile(files[0]);
             await new Promise(res => setImmediate(res));
             expect(global.window.lockasaur.crypto.encrypt).toHaveBeenCalledWith(
-                { path: "/a.txt" }, "secret", expect.any(String), undefined
+                { path: "/a.txt" }, "secret", expect.any(String), undefined, undefined
             );
+        });
+    });
+
+    describe("expiration encrypt payload", () => {
+        it("passes the component's expiration as the fifth encrypt argument", async () => {
+            const files = [{ path: "/a.txt" }];
+            const ctx = makeContext(files);
+            ctx.expiration = { at: 1783600000000 };
+            ctx.encryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.window.lockasaur.crypto.encrypt).toHaveBeenCalledWith(
+                { path: "/a.txt" }, "secret", expect.any(String), undefined, { at: 1783600000000 }
+            );
+        });
+
+        it("rebuilds the expiration as a plain object so a reactive Proxy never crosses the bridge", async () => {
+            const files = [{ path: "/a.txt" }];
+            const ctx = makeContext(files);
+            // Stand-in for Vue's reactive() wrapper: proxies fail Electron's
+            // structured clone at the contextBridge boundary.
+            const reactiveLike = new Proxy({ at: 1783600000000 }, {});
+            ctx.expiration = reactiveLike;
+            ctx.encryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            const passed = global.window.lockasaur.crypto.encrypt.mock.calls[0][4];
+            expect(passed).toEqual({ at: 1783600000000 });
+            expect(passed).not.toBe(reactiveLike);
+            expect(Object.getPrototypeOf(passed)).toBe(Object.prototype);
+        });
+    });
+
+    describe("time source decrypt payload", () => {
+        it("passes the stored time source as the fourth decrypt argument", async () => {
+            const files = [{ path: "/a.dino" }];
+            const ctx = makeContext(files);
+            ctx.decryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.window.lockasaur.crypto.decrypt).toHaveBeenCalledWith(
+                { path: "/a.dino" }, "secret", expect.any(String),
+                { kind: "nts", host: "time.cloudflare.com", failClosed: false }
+            );
+        });
+
+        it("shows the expired message with the header instant, never the delete prompt", async () => {
+            global.window.lockasaur.crypto.decrypt = jest.fn(() => Promise.resolve({
+                ok: false, code: "FILE_EXPIRED", message: "raw", expiresAt: 1783600000000
+            }));
+            const files = [{ path: "/a.dino" }];
+            const ctx = makeContext(files);
+            ctx.decryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            const shown = global.alert.mock.calls.pop()[0];
+            expect(shown).toContain("expired on");
+            expect(shown).toContain(new Date(1783600000000).toLocaleString());
+            expect(global.window.lockasaur.files.confirmDeleteEncrypted).not.toHaveBeenCalled();
+            expect(ctx.finish).toBe(false);
+        });
+
+        it("notes the clock fallback on an expired result", async () => {
+            global.window.lockasaur.crypto.decrypt = jest.fn(() => Promise.resolve({
+                ok: false, code: "FILE_EXPIRED", message: "raw", trustedTimeUnavailable: true
+            }));
+            const files = [{ path: "/a.dino" }];
+            const ctx = makeContext(files);
+            ctx.decryptFile(files[0]);
+            await new Promise(res => setImmediate(res));
+            expect(global.alert.mock.calls.pop()[0]).toContain("system clock was used");
         });
     });
 

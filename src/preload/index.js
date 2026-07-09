@@ -11,13 +11,24 @@ contextBridge.exposeInMainWorld("lockasaur", {
         setSize: sizeId => ipcRenderer.invoke("window:set-size", sizeId)
     },
     crypto: {
-        encrypt: (file, password, operationId, erasePolicy) => ipcRenderer.invoke("crypto:encrypt", {
+        encrypt: (file, password, operationId, erasePolicy, expiration) => ipcRenderer.invoke("crypto:encrypt", {
             file: { path: file?.path },
             password,
             operationId,
-            erasePolicy: erasePolicy ? { maxAttempts: erasePolicy.maxAttempts } : undefined
+            erasePolicy: erasePolicy ? { maxAttempts: erasePolicy.maxAttempts } : undefined,
+            expiration: expiration ? { at: expiration.at } : undefined
         }),
-        decrypt: (file, password, operationId) => ipcRenderer.invoke("crypto:decrypt", { file: { path: file?.path }, password, operationId }),
+        decrypt: (file, password, operationId, timeSource) => ipcRenderer.invoke("crypto:decrypt", {
+            file: { path: file?.path },
+            password,
+            operationId,
+            timeSource: timeSource ? {
+                kind: timeSource.kind,
+                host: timeSource.host,
+                port: timeSource.port,
+                failClosed: timeSource.failClosed === true
+            } : undefined
+        }),
         cancel: operationId => ipcRenderer.invoke("crypto:cancel", operationId),
         onProgress: callback => {
             const listener = (_, payload) => callback(payload);

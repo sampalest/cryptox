@@ -25,6 +25,7 @@ import {
 } from "./ipcValidation.js";
 import { removeEncrypted, removeOriginal } from "./deletion.js";
 import { handleFailedAttempt, resetCounter } from "./erasePolicy.js";
+import TimeProvider from "./time/timeProvider.js";
 const isDevelopment = process.env.NODE_ENV !== "production";
 import logger from "electron-log";
 
@@ -523,14 +524,14 @@ const deletableEncrypted = new Set();
 ipcMain.handle("crypto:encrypt", async (event, payload) => {
     if (!isTrustedSender(event, win)) return failure(Codes.SENDER_REJECTED, "Request was rejected.");
     const fallbackMessage = "Encryption failed.";
-    let filePath, password, operationId, erasePolicy;
+    let filePath, password, operationId, erasePolicy, expiration;
     try {
-        ({ filePath, password, operationId, erasePolicy } = normalizeCryptoPayload(payload));
+        ({ filePath, password, operationId, erasePolicy, expiration } = normalizeCryptoPayload(payload));
         await assertEncryptSource(filePath);
     } catch (error) {
         return toCryptoFailure(error, fallbackMessage);
     }
-    const crypto = new Crypto(password, operationId, { erasePolicy });
+    const crypto = new Crypto(password, operationId, { erasePolicy, expiration });
     const normalizedFile = new FileManager(filePath);
     // Lock the source and the predicted primary output. uniquePath/"wx" already
     // make output collisions non-destructive; the lock keeps a second operation
@@ -559,14 +560,16 @@ ipcMain.handle("crypto:encrypt", async (event, payload) => {
 ipcMain.handle("crypto:decrypt", async (event, payload) => {
     if (!isTrustedSender(event, win)) return failure(Codes.SENDER_REJECTED, "Request was rejected.");
     const fallbackMessage = "Incorrect password or the file is corrupted.";
-    let filePath, password, operationId;
+    let filePath, password, operationId, timeSource;
     try {
-        ({ filePath, password, operationId } = normalizeCryptoPayload(payload));
+        ({ filePath, password, operationId, timeSource } = normalizeCryptoPayload(payload));
         await assertDecryptSource(filePath);
     } catch (error) {
         return toCryptoFailure(error, fallbackMessage);
     }
-    const crypto = new Crypto(password, operationId);
+    // The provider is only consulted when the parsed header carries an
+    // expiration, so non-expiring files never trigger a network lookup.
+    const crypto = new Crypto(password, operationId, { timeProvider: TimeProvider.createTimeProvider(timeSource) });
     const normalizedFile = new FileManager(filePath);
     // The output name is only known after the header parse, and the plaintext
     // is staged then moved atomically, so locking the input is enough.
@@ -580,6 +583,7 @@ ipcMain.handle("crypto:decrypt", async (event, payload) => {
             onProgress: value => event.sender.send("crypto:progress", { operationId, value }),
             onStatus: status => event.sender.send("crypto:status", { operationId, status })
         });
+        const extras = crypto.trustedTimeUnavailable ? { trustedTimeUnavailable: true } : {};
         // Successful decrypt: clear the failed-attempt counter while the path
         // lock is still held. A failed reset is surfaced (policyError), or the
         // next typo could erase a file the user believed was reset.
@@ -587,10 +591,23 @@ ipcMain.handle("crypto:decrypt", async (event, payload) => {
             const reset = await resetCounter(filePath, crypto.eraseInfo);
             if (reset.error) {
                 logger.error("crypto:decrypt could not reset the failed-attempt counter");
-                return { policyError: true };
+                return { ...extras, policyError: true };
             }
         }
+        return extras;
     }, fallbackMessage, async error => {
+        // An authentic expired header is a deliberate refusal, never a wrong
+        // password: it must not reach the erase-policy accounting below.
+        if (error && error.name === "ExpiredError") {
+            return {
+                ...failure(Codes.FILE_EXPIRED, "This file has expired and can no longer be decrypted."),
+                ...(Number.isSafeInteger(crypto.expiresAt) ? { expiresAt: crypto.expiresAt } : {}),
+                ...(crypto.trustedTimeUnavailable ? { trustedTimeUnavailable: true } : {})
+            };
+        }
+        if (error && error.name === "TimeUnavailableError") {
+            return failure(Codes.TIME_UNAVAILABLE, "The trusted time source could not be reached.");
+        }
         // Only GCM authentication failures reach this branch; I/O errors,
         // cancels and pre-flight failures keep their existing handling and
         // never count against the erase policy.

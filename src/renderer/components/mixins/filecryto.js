@@ -1,5 +1,6 @@
 import { useDeleteBehaviorStore } from "@/store/deleteBehavior";
 import { useErasePolicyStore } from "@/store/erasePolicy";
+import { useTimeSourceStore } from "@/store/timeSource";
 
 // Every CRYPTO_ERROR_CODES value maps to a deliberate string for both kinds, so
 // no code ever falls through to a generic message (SENDER_REJECTED and
@@ -13,7 +14,9 @@ const FAILURE_MESSAGES = {
         INVALID_FILE_TYPE: "This file cannot be encrypted.",
         OPERATION_FAILED: "Encryption failed.",
         WRONG_PASSWORD: "Encryption failed.",
-        FILE_ERASED: "Encryption failed."
+        FILE_ERASED: "Encryption failed.",
+        FILE_EXPIRED: "Encryption failed.",
+        TIME_UNAVAILABLE: "Encryption failed."
     },
     decrypt: {
         SENDER_REJECTED: "The request was rejected.",
@@ -22,7 +25,9 @@ const FAILURE_MESSAGES = {
         INVALID_FILE_TYPE: "Only .dino and .ctx files can be decrypted.",
         OPERATION_FAILED: "Incorrect password or the file is corrupted.",
         WRONG_PASSWORD: "Incorrect password or the file is corrupted.",
-        FILE_ERASED: "This file was erased because the failed-attempt limit was reached."
+        FILE_ERASED: "This file was erased because the failed-attempt limit was reached.",
+        FILE_EXPIRED: "This file has expired and can no longer be decrypted.",
+        TIME_UNAVAILABLE: "The trusted time source could not be reached, and your settings block decrypting expiring files without it."
     }
 };
 
@@ -33,6 +38,19 @@ function wrongPasswordAlert(result) {
         return `Incorrect password. ${result.attemptsRemaining} ${plural} remaining before this file is permanently erased.`;
     }
     return FAILURE_MESSAGES.decrypt.WRONG_PASSWORD;
+}
+
+// expiresAt is a numeric instant read from the authenticated header and
+// forwarded by the main process; formatting stays renderer-side.
+function expiredAlert(result) {
+    let message = FAILURE_MESSAGES.decrypt.FILE_EXPIRED;
+    if (Number.isSafeInteger(result.expiresAt)) {
+        message = `This file expired on ${new Date(result.expiresAt).toLocaleString()} and can no longer be decrypted.`;
+    }
+    if (result.trustedTimeUnavailable) {
+        message = `${message} The time server was unreachable, so the system clock was used.`;
+    }
+    return message;
 }
 
 const POLICY_ERROR_NOTE = "The failed-attempt protection could not update this file.";
@@ -91,6 +109,7 @@ export default {
             const messages = FAILURE_MESSAGES[kind];
             let message = messages[code] || (result && result.message) || "The operation failed.";
             if (kind === "decrypt" && code === "WRONG_PASSWORD") message = wrongPasswordAlert(result);
+            if (kind === "decrypt" && code === "FILE_EXPIRED") message = expiredAlert(result);
             if (result && result.policyError) message = `${message} ${POLICY_ERROR_NOTE}`;
             alert(message);
             this.cancel();
@@ -106,7 +125,10 @@ export default {
             this.addHandlers(offProgress, offStatus);
 
             this.trackOperation(operationId);
-            window.lockasaur.crypto.encrypt({ path: file.path }, this.password, operationId, useErasePolicyStore().policyPayload).then(async result => {
+            // Rebuilt as a plain object: this.expiration is a Vue reactive
+            // Proxy (Home data), and proxies fail the contextBridge clone.
+            const expiration = this.expiration ? { at: this.expiration.at } : undefined;
+            window.lockasaur.crypto.encrypt({ path: file.path }, this.password, operationId, useErasePolicyStore().policyPayload, expiration).then(async result => {
                 if (!result || result.ok === false) return this.handleCryptoFailure("encrypt", result);
                 // A cancelled operation must never count as a success.
                 if (result.cancelled) return;
@@ -143,7 +165,7 @@ export default {
             this.addHandlers(offProgress, offStatus);
 
             this.trackOperation(operationId);
-            window.lockasaur.crypto.decrypt({ path: file.path }, this.password, operationId)
+            window.lockasaur.crypto.decrypt({ path: file.path }, this.password, operationId, useTimeSourceStore().sourcePayload)
                 .then(async result => {
                     if (!result || result.ok === false) return this.handleCryptoFailure("decrypt", result);
                     // A cancelled operation must never count as a success.
