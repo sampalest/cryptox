@@ -1,5 +1,5 @@
 <template>
-    <!-- Teleported to #app so the frameless blur fallback (master.scss) can
+    <!-- Teleported to #app so the drop blur (master.scss, all platforms) can
          filter the titlebar, blobs and page content without ever filtering
          the drop zone itself: a CSS filter on any ancestor would blur it.
          defer is required: on initial mount the app tree is built detached,
@@ -97,9 +97,7 @@ export default {
     gap: 6px;
     pointer-events: none;
     border-radius: 28px;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.08) 62%), rgba(255, 255, 255, 0.16);
-    backdrop-filter: saturate(1.9) blur(34px);
-    -webkit-backdrop-filter: saturate(1.9) blur(34px);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.24) 62%), rgba(255, 255, 255, 0.36);
     border: 1px solid var(--glass-edge);
     box-shadow: inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 rgba(255, 255, 255, 0.16), inset 0 0 44px rgba(255, 255, 255, 0.1), var(--dialog-shadow);
     opacity: 1;
@@ -111,14 +109,6 @@ export default {
 }
 
 #app.dark .lk-drop {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02) 62%), rgba(24, 28, 36, 0.26);
-}
-
-#app.platform-frameless .lk-drop {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.24) 62%), rgba(255, 255, 255, 0.36);
-}
-
-#app.dark.platform-frameless .lk-drop {
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04) 62%), rgba(24, 28, 36, 0.52);
 }
 

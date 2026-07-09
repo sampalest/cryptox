@@ -69,14 +69,18 @@ body,
     animation-play-state: paused;
 }
 
-#app.platform-frameless > .lk-titlebar,
-#app.platform-frameless > .lk-blobs,
-#app.platform-frameless > .page-block {
+// Transparent Electron windows never composite backdrop-filter on any
+// platform, so the drop-zone frost is produced by blurring the content
+// behind the overlay directly. macOS dev only appeared to support
+// backdrop-filter because an open DevTools makes the window opaque.
+#app > .lk-titlebar,
+#app > .lk-blobs,
+#app > .page-block {
     transition: filter 0.25s ease-in-out, opacity 0.3s ease;
 }
 
-#app.platform-frameless.lk-drop-active > .lk-titlebar,
-#app.platform-frameless.lk-drop-active > .lk-blobs,
-#app.platform-frameless.lk-drop-active > .page-block {
+#app.lk-drop-active > .lk-titlebar,
+#app.lk-drop-active > .lk-blobs,
+#app.lk-drop-active > .page-block {
     filter: blur(14px) saturate(1.18);
 }

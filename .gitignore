@@ -37,3 +37,5 @@ vue.config.js
 
 # AI
 /.claude
+/docs/claude
+CLAUDE.md
