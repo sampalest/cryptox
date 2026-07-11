@@ -9,16 +9,86 @@ const ALLOWED_EXTERNAL_URLS = new Set([
     "https://github.com/sampalest/cryptox"
 ]);
 
+// The open-dialog kind is renderer-supplied, so it is allowlisted. Undefined
+// (the menu's plain "open" invoke) means "files"; anything else unexpected
+// returns null and the handler answers with an inert empty selection.
+const OPEN_DIALOG_KINDS = new Set(["files", "folder"]);
+
+export function normalizeOpenDialogKind(value) {
+    if (value === undefined) return "files";
+    return OPEN_DIALOG_KINDS.has(value) ? value : null;
+}
+
+// The app:set-icon handler resolves the id to a bundled PNG, so the
+// renderer-supplied value is allowlisted rather than used as a path fragment.
+// Ids mirror the appearance variants scripts/generate-appicon.mjs writes to
+// public/appicons, plus "locked" (the padlock-dino, written by
+// scripts/generate-icons.mjs from build/icon.svg); anything unexpected returns
+// null and the handler answers with an inert false.
+const APP_ICON_IDS = new Set(["default", "dark", "clear-light", "clear-dark", "tinted-light", "tinted-dark", "locked"]);
+
+export function normalizeAppIconId(value) {
+    return APP_ICON_IDS.has(value) ? value : null;
+}
+
+// The window:set-size handler resolves the id to a preset in its own map, so
+// the renderer can never supply dimensions; anything unexpected returns null
+// and the handler answers with an inert false.
+const WINDOW_SIZE_IDS = new Set(["default", "l", "xl"]);
+
+export function normalizeWindowSizeId(value) {
+    return WINDOW_SIZE_IDS.has(value) ? value : null;
+}
+
+// Renderer-supplied delete mode; anything unexpected returns null and the
+// delete handlers answer inertly, never with a deletion.
+const DELETE_MODES = new Set(["trash", "permanent", "ask"]);
+
+export function normalizeDeleteMode(value) {
+    return DELETE_MODES.has(value) ? value : null;
+}
+
 export function validateDeletePath(value) {
     if (typeof value !== "string" || value.trim() === "") {
         throw new TypeError("Delete path must be a non-empty string.");
     }
 
-    if (!value.endsWith(Constants.POINT_EXT)) {
-        throw new Error(`Only ${Constants.POINT_EXT} files may be deleted.`);
+    // .dino or the legacy .ctx: both are app-produced encrypted files the
+    // post-decrypt prompt may offer to delete.
+    if (!Constants.ENCRYPTED_POINT_EXTS.some(ext => value.endsWith(ext))) {
+        throw new Error("Only encrypted files may be deleted.");
     }
 
     return value;
+}
+
+// The post-encrypt delete prompt may only target a source path the main
+// process itself recorded from a successfully completed encrypt operation,
+// so a hostile renderer can never steer deletion toward an arbitrary path.
+// The caller owns the recorded set and consumes entries once prompted.
+export function validateOriginalDeletePath(value, allowedPaths) {
+    if (typeof value !== "string" || value.trim() === "") {
+        throw new TypeError("Delete path must be a non-empty string.");
+    }
+
+    if (!allowedPaths || !allowedPaths.has(value)) {
+        throw new Error("Only just-encrypted originals may be deleted.");
+    }
+
+    return value;
+}
+
+// The post-decrypt delete may only target a .dino/.ctx path the main process
+// itself recorded from a successfully completed decrypt. Membership binds the
+// deletion to a file the app just decrypted (the extension check alone is not
+// authorization now that trash/permanent modes delete without a confirm dialog).
+export function validateEncryptedDeletePath(value, allowedPaths) {
+    const target = validateDeletePath(value);
+    if (!allowedPaths || !allowedPaths.has(target)) {
+        throw new Error("Only just-decrypted encrypted files may be deleted.");
+    }
+
+    return target;
 }
 
 export function validateExternalUrl(value) {
@@ -62,8 +132,65 @@ export function normalizeCryptoPayload(payload) {
     return {
         filePath,
         password: payload.password,
-        operationId: validateOperationId(payload.operationId)
+        operationId: validateOperationId(payload.operationId),
+        erasePolicy: normalizeErasePolicy(payload.erasePolicy),
+        expiration: normalizeExpiration(payload.expiration),
+        timeSource: normalizeTimeSource(payload.timeSource)
     };
+}
+
+// Optional encrypt-time erase policy. The renderer may only request the exact
+// attempt counts the UI offers; anything else is an invalid payload, never a
+// clamped or defaulted policy. Only maxAttempts survives normalization.
+export function normalizeErasePolicy(value) {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "object" || Array.isArray(value) || !Constants.ERASE_ATTEMPT_OPTIONS.includes(value.maxAttempts)) {
+        throw new IpcValidationError(Codes.INVALID_PAYLOAD, "Erase policy must use one of the offered attempt counts.");
+    }
+    return { maxAttempts: value.maxAttempts };
+}
+
+// Optional encrypt-time expiration. The instant must be a future epoch-ms
+// value within the format's ceiling; anything else is an invalid payload,
+// never a clamped or defaulted one. Only `at` survives normalization. This is
+// the authoritative no-past-expiry gate (the renderer validates only for UX).
+export function normalizeExpiration(value) {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "object" || Array.isArray(value)
+        || !Number.isSafeInteger(value.at) || value.at <= Date.now() || value.at > Constants.EXPIRES_AT_MAX) {
+        throw new IpcValidationError(Codes.INVALID_PAYLOAD, "Expiration must be a future timestamp.");
+    }
+    return { at: value.at };
+}
+
+// Hostname allowlist shape for the custom NTS server: dot-separated
+// RFC 1123 labels, 253 chars max. Rejecting here keeps arbitrary renderer
+// strings away from the TLS/UDP stack.
+const HOSTNAME_LABEL = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/i;
+
+function isValidHostname(value) {
+    if (typeof value !== "string" || value.length === 0 || value.length > 253) return false;
+    return value.split(".").every(label => HOSTNAME_LABEL.test(label));
+}
+
+// Optional decrypt-time trusted time source. Absent means the default
+// (Cloudflare NTS with system-clock fallback), resolved by the handler;
+// malformed input throws, it never defaults through.
+export function normalizeTimeSource(value) {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "object" || Array.isArray(value) || !Constants.TIME_SOURCE_KINDS.includes(value.kind)) {
+        throw new IpcValidationError(Codes.INVALID_PAYLOAD, "Time source is not recognized.");
+    }
+    if (value.kind === "system") return { kind: "system" };
+    const host = value.host === undefined || value.host === null ? Constants.NTS_DEFAULT_HOST : value.host;
+    if (!isValidHostname(host)) {
+        throw new IpcValidationError(Codes.INVALID_PAYLOAD, "Time server host is not a valid hostname.");
+    }
+    const port = value.port === undefined || value.port === null ? Constants.NTS_DEFAULT_PORT : value.port;
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new IpcValidationError(Codes.INVALID_PAYLOAD, "Time server port is out of range.");
+    }
+    return { kind: "nts", host, port, failClosed: value.failClosed === true };
 }
 
 export function validateOperationId(value) {
@@ -100,15 +227,17 @@ export async function assertEncryptSource(filePath) {
     if (stats.isSymbolicLink() || (!stats.isFile() && !stats.isDirectory())) {
         throw new IpcValidationError(Codes.INVALID_FILE_TYPE, "Only regular files and folders can be encrypted.");
     }
-    if (filePath.endsWith(Constants.POINT_EXT)) {
-        throw new IpcValidationError(Codes.INVALID_FILE_TYPE, `${Constants.POINT_EXT} files are already encrypted.`);
+    // Reject the legacy extension too, or a .ctx could be re-encrypted into a
+    // nested .ctx.dino.
+    if (Constants.ENCRYPTED_POINT_EXTS.some(ext => filePath.endsWith(ext))) {
+        throw new IpcValidationError(Codes.INVALID_FILE_TYPE, "This file is already encrypted.");
     }
 }
 
 export async function assertDecryptSource(filePath) {
     const stats = await statSource(filePath);
     // isFile is false for a symlink under lstat, so symlinked sources are rejected.
-    if (!stats.isFile() || !filePath.endsWith(Constants.POINT_EXT)) {
-        throw new IpcValidationError(Codes.INVALID_FILE_TYPE, `Only ${Constants.POINT_EXT} files can be decrypted.`);
+    if (!stats.isFile() || !Constants.ENCRYPTED_POINT_EXTS.some(ext => filePath.endsWith(ext))) {
+        throw new IpcValidationError(Codes.INVALID_FILE_TYPE, "Only .dino and .ctx files can be decrypted.");
     }
 }

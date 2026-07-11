@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import sodium from "libsodium-wrappers-sumo";
-import { CancelledError } from "@shared/exceptions.js";
+import { CancelledError, ExpiredError, TimeUnavailableError, WrongPasswordError } from "@shared/exceptions.js";
 import Crypto from "@main/crypto.js";
 import Format from "@main/format.js";
 import FileManager from "@shared/filemanager.js";
@@ -111,19 +111,20 @@ async function writeCtx1File(destPath, password, payload, { flags = 0, metaOverr
  * must remove these, so tests assert the list is empty afterwards.
  */
 function leftoverTempNames(dir) {
-    return fs.readdirSync(dir).filter(name => name.startsWith(".cryptox-"));
+    return fs.readdirSync(dir).filter(name => name.startsWith(".lockasaur-"));
 }
 
-/** Parse the header of a CTX1 file written by encrypt(). */
-function readCtx1Header(ctxPath) {
-    const buf = fs.readFileSync(ctxPath);
+/** Parse the header of a DINO file written by encrypt(). */
+function readDinoHeader(dinoPath) {
+    const buf = fs.readFileSync(dinoPath);
     const headerLen = buf.readUInt16BE(6);
     return {
         magic: buf.slice(0, 4).toString("utf-8"),
         version: buf.readUInt8(4),
         flags: buf.readUInt8(5),
         headerLen: headerLen,
-        meta: JSON.parse(buf.slice(8, 8 + headerLen).toString("utf-8")),
+        counter: buf.readUInt32BE(8),
+        meta: JSON.parse(buf.slice(16, 16 + headerLen).toString("utf-8")),
         raw: buf
     };
 }
@@ -135,7 +136,7 @@ describe("Crypto", () => {
     let acquiredDirs;
 
     beforeEach(() => {
-        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cryptox-test-"));
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "lockasaur-test-"));
         acquiredDirs = [];
         const realAcquire = TempManager.acquire.bind(TempManager);
         jest.spyOn(TempManager, "acquire").mockImplementation(async (...args) => {
@@ -151,10 +152,10 @@ describe("Crypto", () => {
         fs.rmSync(tempDir, { force: true, recursive: true });
     });
 
-    it("encrypts and decrypts a ctx file with the same password", async () => {
+    it("encrypts and decrypts a .dino file with the same password", async () => {
         const sourcePath = path.join(tempDir, "sample.txt");
-        const encryptedPath = path.join(tempDir, "sample.ctx");
-        fs.writeFileSync(sourcePath, "hello cryptox");
+        const encryptedPath = path.join(tempDir, "sample.dino");
+        fs.writeFileSync(sourcePath, "hello lockasaur");
 
         await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
 
@@ -163,12 +164,12 @@ describe("Crypto", () => {
         fs.unlinkSync(sourcePath);
         await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
 
-        expect(fs.readFileSync(sourcePath, "utf-8")).toBe("hello cryptox");
+        expect(fs.readFileSync(sourcePath, "utf-8")).toBe("hello lockasaur");
     });
 
     it("round-trips binary content byte for byte", async () => {
         const sourcePath = path.join(tempDir, "payload.bin");
-        const encryptedPath = path.join(tempDir, "payload.ctx");
+        const encryptedPath = path.join(tempDir, "payload.dino");
         // Spans many 64 KB stream chunks and contains NUL plus high bytes,
         // so any encoding or chunk-boundary corruption shows up.
         const payload = crypto.randomBytes(3 * 1024 * 1024);
@@ -183,15 +184,15 @@ describe("Crypto", () => {
 
     it("rejects when decrypting with the wrong password", async () => {
         const sourcePath = path.join(tempDir, "sample.txt");
-        const encryptedPath = path.join(tempDir, "sample.ctx");
-        fs.writeFileSync(sourcePath, "hello cryptox");
+        const encryptedPath = path.join(tempDir, "sample.dino");
+        fs.writeFileSync(sourcePath, "hello lockasaur");
 
         await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
         fs.unlinkSync(sourcePath);
 
         await expect(
             new Crypto("wrong horse").decrypt(new FileManager(encryptedPath), { value: 0 })
-        ).rejects.toThrow();
+        ).rejects.toThrow(WrongPasswordError);
 
         // The partial/garbage output must be cleaned up, not left on disk,
         // and no staged temp file may remain either.
@@ -199,45 +200,313 @@ describe("Crypto", () => {
         expect(leftoverTempNames(tempDir)).toEqual([]);
     });
 
-    it("writes the CTX1 format and never the old layouts", async () => {
+    it("writes the DINO format and never the old layouts", async () => {
         const sourcePath = path.join(tempDir, "sample.txt");
-        const plaintext = "hello cryptox";
+        const plaintext = "hello lockasaur";
         fs.writeFileSync(sourcePath, plaintext);
 
         await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
 
-        const { magic, version, flags, headerLen, meta, raw } = readCtx1Header(path.join(tempDir, "sample.ctx"));
-        expect(magic).toBe("CTX1");
+        const { magic, version, flags, headerLen, counter, meta, raw } = readDinoHeader(path.join(tempDir, "sample.dino"));
+        expect(magic).toBe("DINO");
         expect(version).toBe(1);
         expect(flags).toBe(0);
+        expect(counter).toBe(0);
         expect(headerLen).toBeGreaterThan(0);
         expect(headerLen).toBeLessThanOrEqual(Format.MAX_HEADER_JSON);
         expect(meta.alg).toBe("aes-256-gcm");
         expect(meta.kdf).toBe("argon2id");
         expect(meta.name).toBe("sample.txt");
         expect(meta.keyLen).toBe(32);
+        expect(meta.erase).toBeUndefined();
         expect(Buffer.from(meta.salt, "base64").length).toBe(16);
         expect(meta.opslimit).toBeGreaterThan(0);
         expect(meta.memlimit).toBeGreaterThan(0);
 
-        // Pin the exact layout: [header][IV 16][ciphertext][tag 16] with no
-        // trailing 8-byte '*'-padded extension field (the old layouts' marker).
+        // Pin the exact layout: [prefix 8][mutable 8][JSON][IV 16][ciphertext]
+        // [tag 16] with no trailing 8-byte '*'-padded extension field (the old
+        // layouts' marker) and a zeroed mutable block.
+        expect(raw.slice(0, 4).toString("utf-8")).not.toBe("CTX1");
         expect(raw.slice(0, 6).toString("utf-8")).not.toBe("CTXBOX");
-        expect(raw.length).toBe(8 + headerLen + 16 + plaintext.length + 16);
+        expect(raw.slice(8, 16).equals(Buffer.alloc(8))).toBe(true);
+        expect(raw.length).toBe(16 + headerLen + 16 + plaintext.length + 16);
         expect(raw.slice(raw.length - 24, raw.length - 16).toString("utf-8")).not.toBe("*****txt");
+    });
+
+    describe("erase policy", () => {
+        it("bakes the policy into the header and still round-trips", async () => {
+            const sourcePath = path.join(tempDir, "sample.txt");
+            const encryptedPath = path.join(tempDir, "sample.dino");
+            fs.writeFileSync(sourcePath, "guarded payload");
+
+            await new Crypto("correct horse", undefined, { erasePolicy: { maxAttempts: 3 } })
+                .encrypt(new FileManager(sourcePath), { value: 0 }, {});
+
+            const { magic, counter, meta } = readDinoHeader(encryptedPath);
+            expect(magic).toBe("DINO");
+            expect(counter).toBe(0);
+            expect(meta.erase).toEqual({ maxAttempts: 3 });
+
+            fs.unlinkSync(sourcePath);
+            const cryptoOp = new Crypto("correct horse");
+            await cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 });
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("guarded payload");
+            expect(cryptoOp.eraseInfo).toMatchObject({ maxAttempts: 3, attempts: 0, counterOffset: Format.COUNTER_OFFSET });
+        });
+
+        it("rejects a wrong password with WrongPasswordError and populated eraseInfo", async () => {
+            const sourcePath = path.join(tempDir, "sample.txt");
+            const encryptedPath = path.join(tempDir, "sample.dino");
+            fs.writeFileSync(sourcePath, "guarded payload");
+            await new Crypto("correct horse", undefined, { erasePolicy: { maxAttempts: 5 } })
+                .encrypt(new FileManager(sourcePath), { value: 0 }, {});
+
+            const cryptoOp = new Crypto("wrong horse");
+            await expect(
+                cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 })
+            ).rejects.toThrow(WrongPasswordError);
+
+            const stats = fs.lstatSync(encryptedPath);
+            expect(cryptoOp.eraseInfo).toEqual({
+                maxAttempts: 5,
+                attempts: 0,
+                counterOffset: Format.COUNTER_OFFSET,
+                dev: stats.dev,
+                ino: stats.ino
+            });
+            expect(leftoverTempNames(tempDir)).toEqual([]);
+        });
+
+        it("leaves eraseInfo null for files without a policy, in every format", async () => {
+            const dinoSource = path.join(tempDir, "plain.txt");
+            fs.writeFileSync(dinoSource, "plain payload");
+            await new Crypto("correct horse").encrypt(new FileManager(dinoSource), { value: 0 }, {});
+            const legacyPath = path.join(tempDir, "legacy.ctx");
+            writeLegacyCtx(legacyPath, "correct horse", "legacy payload", "txt");
+            const ctx1Path = path.join(tempDir, "old.ctx");
+            await writeCtx1File(ctx1Path, "correct horse", "ctx1 payload", { metaOverrides: { name: "old.txt" } });
+
+            for (const target of [path.join(tempDir, "plain.dino"), legacyPath, ctx1Path]) {
+                const cryptoOp = new Crypto("wrong horse");
+                await expect(
+                    cryptoOp.decrypt(new FileManager(target), { value: 0 })
+                ).rejects.toThrow(WrongPasswordError);
+                expect(cryptoOp.eraseInfo).toBeNull();
+            }
+        });
+
+        it("still decrypts with the right password when the on-disk counter is nonzero", async () => {
+            const sourcePath = path.join(tempDir, "sample.txt");
+            const encryptedPath = path.join(tempDir, "sample.dino");
+            fs.writeFileSync(sourcePath, "counted payload");
+            await new Crypto("correct horse", undefined, { erasePolicy: { maxAttempts: 5 } })
+                .encrypt(new FileManager(sourcePath), { value: 0 }, {});
+            fs.unlinkSync(sourcePath);
+
+            // Bump the counter in place: the mutable block is outside the AAD,
+            // so authentication must still succeed.
+            const handle = fs.openSync(encryptedPath, "r+");
+            const bumped = Buffer.alloc(4);
+            bumped.writeUInt32BE(2, 0);
+            fs.writeSync(handle, bumped, 0, 4, Format.COUNTER_OFFSET);
+            fs.closeSync(handle);
+
+            const cryptoOp = new Crypto("correct horse");
+            await cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 });
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("counted payload");
+            expect(cryptoOp.eraseInfo.attempts).toBe(2);
+        });
+    });
+
+    describe("expiration", () => {
+        // Deterministic stand-in for the main-process TimeProvider: tests pin
+        // "now" instead of mocking Date, keeping format.js and crypto.js pure.
+        function fakeTimeProvider(nowMs, extra = {}) {
+            const provider = {
+                calls: 0,
+                async now() {
+                    provider.calls++;
+                    return { nowMs, source: "nts", trusted: true, ...extra };
+                }
+            };
+            return provider;
+        }
+
+        async function encryptWithExpiry(name, payload, at) {
+            const sourcePath = path.join(tempDir, name);
+            fs.writeFileSync(sourcePath, payload);
+            await new Crypto("correct horse", undefined, { expiration: { at } })
+                .encrypt(new FileManager(sourcePath), { value: 0 }, {});
+            fs.unlinkSync(sourcePath);
+            return { sourcePath, encryptedPath: path.join(tempDir, `${path.parse(name).name}.dino`) };
+        }
+
+        const AT = 1783600000000;
+
+        it("bakes the expiration into the header and decrypts before the instant", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("sample.txt", "timed payload", AT);
+            expect(readDinoHeader(encryptedPath).meta.expires).toEqual({ at: AT });
+
+            const provider = fakeTimeProvider(AT - 60000);
+            const cryptoOp = new Crypto("correct horse", undefined, { timeProvider: provider });
+            await cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 });
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("timed payload");
+            expect(cryptoOp.expiresAt).toBe(AT);
+            expect(provider.calls).toBe(1);
+        });
+
+        it("decrypts files without an expiration and never consults the time provider", async () => {
+            const sourcePath = path.join(tempDir, "plain.txt");
+            fs.writeFileSync(sourcePath, "plain payload");
+            await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
+            expect(readDinoHeader(path.join(tempDir, "plain.dino")).meta.expires).toBeUndefined();
+            fs.unlinkSync(sourcePath);
+
+            const provider = fakeTimeProvider(Number.MAX_SAFE_INTEGER);
+            const cryptoOp = new Crypto("correct horse", undefined, { timeProvider: provider });
+            await cryptoOp.decrypt(new FileManager(path.join(tempDir, "plain.dino")), { value: 0 });
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("plain payload");
+            expect(cryptoOp.expiresAt).toBeNull();
+            expect(provider.calls).toBe(0);
+        });
+
+        it("rejects an expired file before any plaintext byte is staged", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("gone.txt", "x".repeat(64 * 1024), AT);
+
+            const observed = [];
+            const cryptoOp = new Crypto("correct horse", undefined, { timeProvider: fakeTimeProvider(AT + 1) });
+            await expect(
+                cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 }, {
+                    onProgress: value => observed.push(value)
+                })
+            ).rejects.toThrow(ExpiredError);
+
+            // The pre-flight deny fires before the KDF and streaming: nothing
+            // was staged, nothing is visible, no progress ever fired.
+            expect(observed).toEqual([]);
+            expect(fs.existsSync(sourcePath)).toBe(false);
+            expect(leftoverTempNames(tempDir)).toEqual([]);
+            expect(cryptoOp.expiresAt).toBe(AT);
+        });
+
+        it("treats the exact instant as expired and the millisecond before as valid", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("edge.txt", "edge payload", AT);
+
+            // Pre-flight boundary: nowMs == at is already expired.
+            await expect(
+                new Crypto("correct horse", undefined, { timeProvider: fakeTimeProvider(AT) })
+                    .decrypt(new FileManager(encryptedPath), { value: 0 })
+            ).rejects.toThrow(ExpiredError);
+            expect(fs.existsSync(sourcePath)).toBe(false);
+
+            // Finalize boundary: pin the re-check clock one millisecond before
+            // the instant (real KDF time would otherwise cross any margin).
+            const cryptoOp = new Crypto("correct horse", undefined, { timeProvider: fakeTimeProvider(AT - 60000) });
+            jest.spyOn(cryptoOp, "_effectiveNowMs").mockReturnValue(AT - 1);
+            await cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 });
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("edge payload");
+        });
+
+        it("rejects a tampered expiration as an auth failure, never as expired plaintext", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("tamper.txt", "tamper payload", AT);
+
+            // Extend the expiry in the raw header bytes: the JSON stays valid
+            // and in range, so only the AAD authentication can catch it.
+            const buf = fs.readFileSync(encryptedPath);
+            const idx = buf.indexOf(`"at":${AT}`);
+            expect(idx).toBeGreaterThan(0);
+            buf.write(`"at":${AT + 900000000}`, idx, "utf-8");
+            fs.writeFileSync(encryptedPath, buf);
+
+            await expect(
+                new Crypto("correct horse", undefined, { timeProvider: fakeTimeProvider(AT + 60000) })
+                    .decrypt(new FileManager(encryptedPath), { value: 0 })
+            ).rejects.toThrow(WrongPasswordError);
+
+            expect(fs.existsSync(sourcePath)).toBe(false);
+            expect(leftoverTempNames(tempDir)).toEqual([]);
+        });
+
+        it("re-checks expiration after authentication and removes the staged plaintext", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("racing.txt", "racing payload", AT);
+
+            // Pre-flight passes (1 s of margin); the decrypt then "takes long
+            // enough" to cross the boundary, simulated deterministically by
+            // advancing the monotonic re-check instead of sleeping.
+            const cryptoOp = new Crypto("correct horse", undefined, { timeProvider: fakeTimeProvider(AT - 1000) });
+            jest.spyOn(cryptoOp, "_effectiveNowMs").mockReturnValue(AT + 1);
+            await expect(
+                cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 })
+            ).rejects.toThrow(ExpiredError);
+
+            expect(fs.existsSync(sourcePath)).toBe(false);
+            expect(leftoverTempNames(tempDir)).toEqual([]);
+        });
+
+        it("covers the empty-plaintext branch with the same post-auth gate", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("empty.txt", "", AT);
+
+            const cryptoOp = new Crypto("correct horse", undefined, { timeProvider: fakeTimeProvider(AT - 1000) });
+            jest.spyOn(cryptoOp, "_effectiveNowMs").mockReturnValue(AT + 1);
+            await expect(
+                cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 })
+            ).rejects.toThrow(ExpiredError);
+            expect(fs.existsSync(sourcePath)).toBe(false);
+            expect(leftoverTempNames(tempDir)).toEqual([]);
+        });
+
+        it("propagates TimeUnavailableError from a fail-closed provider with no output", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("blocked.txt", "blocked payload", AT);
+
+            const provider = { async now() { throw new TimeUnavailableError(new Error("offline")); } };
+            await expect(
+                new Crypto("correct horse", undefined, { timeProvider: provider })
+                    .decrypt(new FileManager(encryptedPath), { value: 0 })
+            ).rejects.toThrow(TimeUnavailableError);
+            expect(fs.existsSync(sourcePath)).toBe(false);
+            expect(leftoverTempNames(tempDir)).toEqual([]);
+        });
+
+        it("surfaces a system-clock fallback through trustedTimeUnavailable", async () => {
+            const { sourcePath, encryptedPath } = await encryptWithExpiry("fallback.txt", "fallback payload", AT);
+
+            const cryptoOp = new Crypto("correct horse", undefined, {
+                timeProvider: fakeTimeProvider(AT - 60000, { trusted: false, fallback: true })
+            });
+            await cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 });
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("fallback payload");
+            expect(cryptoOp.trustedTimeUnavailable).toBe(true);
+        });
+
+        it("rejects an expired erase-protected file as expired, not as a wrong password", async () => {
+            const sourcePath = path.join(tempDir, "both.txt");
+            const encryptedPath = path.join(tempDir, "both.dino");
+            fs.writeFileSync(sourcePath, "double payload");
+            await new Crypto("correct horse", undefined, { erasePolicy: { maxAttempts: 3 }, expiration: { at: AT } })
+                .encrypt(new FileManager(sourcePath), { value: 0 }, {});
+            fs.unlinkSync(sourcePath);
+
+            const cryptoOp = new Crypto("correct horse", undefined, { timeProvider: fakeTimeProvider(AT + 1) });
+            const failure = await cryptoOp.decrypt(new FileManager(encryptedPath), { value: 0 }).catch(error => error);
+            expect(failure.name).toBe("ExpiredError");
+            // The IPC handler counts attempts only for WrongPasswordError, so
+            // an expired refusal can never burn one.
+            expect(failure.name).not.toBe("WrongPasswordError");
+            expect(readDinoHeader(encryptedPath).counter).toBe(0);
+        });
     });
 
     it("uses a different random salt per file", async () => {
         const firstSource = path.join(tempDir, "first.txt");
         const secondSource = path.join(tempDir, "second.txt");
-        fs.writeFileSync(firstSource, "hello cryptox");
-        fs.writeFileSync(secondSource, "hello cryptox");
+        fs.writeFileSync(firstSource, "hello lockasaur");
+        fs.writeFileSync(secondSource, "hello lockasaur");
 
         await new Crypto("same password").encrypt(new FileManager(firstSource), { value: 0 }, {});
         await new Crypto("same password").encrypt(new FileManager(secondSource), { value: 0 }, {});
 
-        const firstSalt = readCtx1Header(path.join(tempDir, "first.ctx")).meta.salt;
-        const secondSalt = readCtx1Header(path.join(tempDir, "second.ctx")).meta.salt;
+        const firstSalt = readDinoHeader(path.join(tempDir, "first.dino")).meta.salt;
+        const secondSalt = readDinoHeader(path.join(tempDir, "second.dino")).meta.salt;
         expect(firstSalt).not.toBe(secondSalt);
     });
 
@@ -356,7 +625,7 @@ describe("Crypto", () => {
         await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
         fs.unlinkSync(sourcePath);
 
-        await new Crypto("correct horse").decrypt(new FileManager(path.join(tempDir, "empty.ctx")), { value: 0 });
+        await new Crypto("correct horse").decrypt(new FileManager(path.join(tempDir, "empty.dino")), { value: 0 });
 
         expect(fs.readFileSync(sourcePath, "utf-8")).toBe("");
     });
@@ -369,24 +638,24 @@ describe("Crypto", () => {
         // Snapshot, not bare non-existence: a stale dir left by old versions
         // on the host must not fail the test, only (re)creating it should. The
         // legacy fixed dir lived at <tmp>/cryptox; the current code only ever
-        // makes per-operation mkdtemp "cryptox-<random>" dirs, so this stays free.
+        // makes per-operation mkdtemp "lockasaur-<random>" dirs, so this stays free.
         const legacyGlobalTmp = path.join(os.tmpdir(), "cryptox");
         const hadLegacyGlobalTmp = fs.existsSync(legacyGlobalTmp);
 
         await new Crypto("correct horse").encrypt(new FileManager(dirPath), { value: 0 }, {});
-        expect(fs.existsSync(`${dirPath}.ctx`)).toBe(true);
+        expect(fs.existsSync(`${dirPath}.dino`)).toBe(true);
 
         // The operation-owned temp directory must be gone once encrypt resolves.
         expect(acquiredDirs).toHaveLength(1);
         expect(fs.existsSync(acquiredDirs[0])).toBe(false);
 
         // Directory payloads carry the flag bit and the tar name in the header.
-        const { flags, meta } = readCtx1Header(`${dirPath}.ctx`);
+        const { flags, meta } = readDinoHeader(`${dirPath}.dino`);
         expect(flags & Format.FLAG_DIRECTORY).toBe(Format.FLAG_DIRECTORY);
         expect(meta.name).toBe("folder.tar");
 
         fs.rmSync(dirPath, { force: true, recursive: true });
-        await new Crypto("correct horse").decrypt(new FileManager(`${dirPath}.ctx`), { value: 0 });
+        await new Crypto("correct horse").decrypt(new FileManager(`${dirPath}.dino`), { value: 0 });
 
         // decrypt must not resolve before extraction completed, so the files
         // are fully in place as soon as the promise settles.
@@ -418,14 +687,14 @@ describe("Crypto", () => {
         expect(acquiredDirs).toHaveLength(2);
         expect(acquiredDirs[0]).not.toBe(acquiredDirs[1]);
         for (const dir of acquiredDirs) {
-            expect(path.basename(dir)).toMatch(/^cryptox-/);
+            expect(path.basename(dir)).toMatch(/^lockasaur-/);
             expect(fs.existsSync(dir)).toBe(false);
         }
 
         for (const parent of ["a", "b"]) {
             const dirPath = path.join(tempDir, parent, "folder");
             fs.rmSync(dirPath, { force: true, recursive: true });
-            await new Crypto("correct horse").decrypt(new FileManager(`${dirPath}.ctx`), { value: 0 });
+            await new Crypto("correct horse").decrypt(new FileManager(`${dirPath}.dino`), { value: 0 });
             expect(fs.readFileSync(path.join(dirPath, "data.txt"), "utf-8")).toBe(contents[parent]);
         }
     });
@@ -453,7 +722,7 @@ describe("Crypto", () => {
         acquiredDirs.length = 0;
 
         await expect(
-            new Crypto("wrong horse").decrypt(new FileManager(`${dirPath}.ctx`), { value: 0 })
+            new Crypto("wrong horse").decrypt(new FileManager(`${dirPath}.dino`), { value: 0 })
         ).rejects.toThrow();
 
         expect(acquiredDirs).toHaveLength(1);
@@ -462,7 +731,7 @@ describe("Crypto", () => {
 
     it("rejects when a decrypted directory archive contains traversal entries", async () => {
         // Build a malicious tar in memory and wrap it in a CTX1 file with the
-        // directory flag set — exactly the path a hostile archive would take.
+        // directory flag set, exactly the path a hostile archive would take.
         const { pack } = require("tar-stream");
         const tarBuffer = await new Promise((resolve, reject) => {
             const archive = pack();
@@ -501,10 +770,10 @@ describe("Crypto", () => {
         await new Crypto("correct horse").encrypt(new FileManager(unicodeSource), { value: 0 }, {});
 
         // Only the last extension is replaced; the old first-dot truncation
-        // would have produced report.ctx.
-        expect(fs.existsSync(path.join(tempDir, "report.ctx"))).toBe(false);
-        expect(readCtx1Header(path.join(tempDir, "report.2024.backup.ctx")).meta.name).toBe("report.2024.backup.txt");
-        expect(readCtx1Header(path.join(tempDir, "naïve café.ctx")).meta.name).toBe("naïve café.txt");
+        // would have produced report.dino.
+        expect(fs.existsSync(path.join(tempDir, "report.dino"))).toBe(false);
+        expect(readDinoHeader(path.join(tempDir, "report.2024.backup.dino")).meta.name).toBe("report.2024.backup.txt");
+        expect(readDinoHeader(path.join(tempDir, "naïve café.dino")).meta.name).toBe("naïve café.txt");
     });
 
     it("round-trips a Unicode multi-dot name with a long extension from the header", async () => {
@@ -523,12 +792,12 @@ describe("Crypto", () => {
         // The parentheses also have to survive the "name (n)" collision
         // counter parsing in Utils.uniquePath.
         const sourcePath = path.join(tempDir, "my report (final) v2.txt");
-        const encryptedPath = path.join(tempDir, "my report (final) v2.ctx");
+        const encryptedPath = path.join(tempDir, "my report (final) v2.dino");
         fs.writeFileSync(sourcePath, "spaced payload");
 
         await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
 
-        expect(readCtx1Header(encryptedPath).meta.name).toBe("my report (final) v2.txt");
+        expect(readDinoHeader(encryptedPath).meta.name).toBe("my report (final) v2.txt");
 
         fs.unlinkSync(sourcePath);
         await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
@@ -538,12 +807,12 @@ describe("Crypto", () => {
 
     it("round-trips a filename with no extension", async () => {
         const sourcePath = path.join(tempDir, "README");
-        const encryptedPath = path.join(tempDir, "README.ctx");
+        const encryptedPath = path.join(tempDir, "README.dino");
         fs.writeFileSync(sourcePath, "extensionless payload");
 
         await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
 
-        expect(readCtx1Header(encryptedPath).meta.name).toBe("README");
+        expect(readDinoHeader(encryptedPath).meta.name).toBe("README");
 
         fs.unlinkSync(sourcePath);
         await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
@@ -553,15 +822,15 @@ describe("Crypto", () => {
 
     it("does not overwrite an existing file when encrypting", async () => {
         const sourcePath = path.join(tempDir, "sample.txt");
-        const takenPath = path.join(tempDir, "sample.ctx");
+        const takenPath = path.join(tempDir, "sample.dino");
         fs.writeFileSync(sourcePath, "fresh secret");
         fs.writeFileSync(takenPath, "pre-existing");
 
         await new Crypto("correct horse").encrypt(new FileManager(sourcePath), { value: 0 }, {});
 
         expect(fs.readFileSync(takenPath, "utf-8")).toBe("pre-existing");
-        const deflected = readCtx1Header(path.join(tempDir, "sample (1).ctx"));
-        expect(deflected.magic).toBe("CTX1");
+        const deflected = readDinoHeader(path.join(tempDir, "sample (1).dino"));
+        expect(deflected.magic).toBe("DINO");
         expect(deflected.meta.name).toBe("sample.txt");
     });
 
@@ -569,12 +838,12 @@ describe("Crypto", () => {
         const dirPath = path.join(tempDir, "folder");
         fs.mkdirSync(dirPath);
         fs.writeFileSync(path.join(dirPath, "a.txt"), "alpha");
-        fs.writeFileSync(`${dirPath}.ctx`, "pre-existing");
+        fs.writeFileSync(`${dirPath}.dino`, "pre-existing");
 
         await new Crypto("correct horse").encrypt(new FileManager(dirPath), { value: 0 }, {});
 
-        expect(fs.readFileSync(`${dirPath}.ctx`, "utf-8")).toBe("pre-existing");
-        expect(readCtx1Header(path.join(tempDir, "folder (1).ctx")).meta.name).toBe("folder.tar");
+        expect(fs.readFileSync(`${dirPath}.dino`, "utf-8")).toBe("pre-existing");
+        expect(readDinoHeader(path.join(tempDir, "folder (1).dino")).meta.name).toBe("folder.tar");
     });
 
     it("does not overwrite an existing file when decrypting", async () => {
@@ -733,7 +1002,7 @@ describe("Crypto", () => {
         // streams (and unrelated tests) untouched.
         const realCreateWriteStream = fs.createWriteStream.bind(fs);
         jest.spyOn(fs, "createWriteStream").mockImplementation((target, options) => {
-            if (!String(target).includes(".cryptox-part-")) return realCreateWriteStream(target, options);
+            if (!String(target).includes(".lockasaur-part-")) return realCreateWriteStream(target, options);
             return new Writable({
                 write(chunk, encoding, callback) {
                     callback(new Error("disk full"));
@@ -773,13 +1042,13 @@ describe("Crypto", () => {
         expect(leftoverTempNames(tempDir)).toEqual([]);
     });
 
-    it("creates the final .ctx only after encryption completes and reports 100% only then", async () => {
+    it("creates the final .dino only after encryption completes and reports 100% only then", async () => {
         const sourcePath = path.join(tempDir, "sample.bin");
-        const encryptedPath = path.join(tempDir, "sample.ctx");
+        const encryptedPath = path.join(tempDir, "sample.dino");
         fs.writeFileSync(sourcePath, crypto.randomBytes(1024 * 1024));
 
         // Streaming progress must stay below 100% while the output is still
-        // the hidden staged file; 100% may only be reported once the .ctx is
+        // the hidden staged file; 100% may only be reported once the .dino is
         // visible at its final path, after a "Saving file..." status.
         const observed = [];
         const statuses = [];
@@ -843,7 +1112,7 @@ describe("Crypto", () => {
     describe("cancellation", () => {
         it("stops encryption mid-stream and removes the partial output", async () => {
             const sourcePath = path.join(tempDir, "sample.bin");
-            const encryptedPath = path.join(tempDir, "sample.ctx");
+            const encryptedPath = path.join(tempDir, "sample.dino");
             fs.writeFileSync(sourcePath, crypto.randomBytes(4 * 1024 * 1024));
 
             const cryptoOp = new Crypto("correct horse");
@@ -875,8 +1144,8 @@ describe("Crypto", () => {
 
         it("aborts an encryption cancelled before it starts", async () => {
             const sourcePath = path.join(tempDir, "sample.txt");
-            const encryptedPath = path.join(tempDir, "sample.ctx");
-            fs.writeFileSync(sourcePath, "hello cryptox");
+            const encryptedPath = path.join(tempDir, "sample.dino");
+            fs.writeFileSync(sourcePath, "hello lockasaur");
 
             // Proxy for a cancel arriving during an uninterruptible step (the
             // synchronous KDF): the next checkpoint must abort the operation.
@@ -905,8 +1174,8 @@ describe("Crypto", () => {
 
         it("is idempotent and a no-op after the operation completed", async () => {
             const sourcePath = path.join(tempDir, "sample.txt");
-            const encryptedPath = path.join(tempDir, "sample.ctx");
-            fs.writeFileSync(sourcePath, "hello cryptox");
+            const encryptedPath = path.join(tempDir, "sample.dino");
+            fs.writeFileSync(sourcePath, "hello lockasaur");
 
             const cryptoOp = new Crypto("correct horse");
             await cryptoOp.encrypt(new FileManager(sourcePath), { value: 0 }, {});
@@ -921,7 +1190,7 @@ describe("Crypto", () => {
 
             fs.unlinkSync(sourcePath);
             await new Crypto("correct horse").decrypt(new FileManager(encryptedPath), { value: 0 });
-            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("hello cryptox");
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe("hello lockasaur");
         });
 
         it("releases the operation temp directory when a directory encrypt is cancelled", async () => {
@@ -935,7 +1204,7 @@ describe("Crypto", () => {
             });
 
             await expect(operation).rejects.toThrow(CancelledError);
-            expect(fs.existsSync(path.join(tempDir, "folder.ctx"))).toBe(false);
+            expect(fs.existsSync(path.join(tempDir, "folder.dino"))).toBe(false);
             expect(acquiredDirs).toHaveLength(1);
             expect(fs.existsSync(acquiredDirs[0])).toBe(false);
         });

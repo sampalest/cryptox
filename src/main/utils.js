@@ -81,7 +81,7 @@ export default class Utils {
     static unzipDirectory(input, output) {
         const outputRoot = Path.resolve(output);
         // Same parent as the output so the final move never crosses filesystems.
-        const tempRoot = fs.mkdtempSync(Path.join(Path.dirname(outputRoot), ".cryptox-extract-"));
+        const tempRoot = fs.mkdtempSync(Path.join(Path.dirname(outputRoot), ".lockasaur-extract-"));
 
         return new Promise((resolve, reject) => {
             const readStream = fs.createReadStream(input);

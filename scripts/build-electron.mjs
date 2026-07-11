@@ -1,3 +1,8 @@
+// Bundles the Electron main process (src/main/index.js -> dist-electron/background.cjs)
+// and preload (src/preload/index.js -> dist-electron/preload.cjs) as two separate Vite
+// library builds. Everything in package.json dependencies plus Node builtins and
+// electron stays external, so runtime deps must live in dependencies. Invoked by
+// "npm run build:electron" and imported by electron-dev.mjs.
 import { builtinModules } from "node:module";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -11,7 +16,8 @@ const external = [
     "electron",
     ...builtinModules,
     ...builtinModules.map(moduleName => `node:${moduleName}`),
-    ...Object.keys(packageJson.dependencies || {})
+    // Regex so subpath imports ("electron-log/main") stay external too.
+    ...Object.keys(packageJson.dependencies || {}).map(name => new RegExp(`^${name}(/|$)`))
 ];
 
 async function buildElectronEntry({ entry, fileName, emptyOutDir }) {
@@ -19,6 +25,10 @@ async function buildElectronEntry({ entry, fileName, emptyOutDir }) {
         configFile: false,
         root: rootDir,
         mode: process.env.NODE_ENV === "development" ? "development" : "production",
+        // public/ belongs to the renderer build (Vite copies it into dist/);
+        // without this the lib builds would copy it into dist-electron/ too,
+        // duplicating every public asset inside the packaged asar.
+        publicDir: false,
         build: {
             outDir: path.resolve(rootDir, "dist-electron"),
             emptyOutDir,

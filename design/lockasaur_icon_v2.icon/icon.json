@@ -1,0 +1,56 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "display-p3:0.00000,0.78619,1.00000,1.00000",
+      "display-p3:0.00000,0.41414,0.85021,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.7
+      }
+    }
+  },
+  "groups" : [
+    {
+      "blur-material" : null,
+      "hidden" : false,
+      "layers" : [
+        {
+          "blend-mode" : "plus-darker",
+          "fill" : "automatic",
+          "glass" : false,
+          "image-name" : "dino-vector.svg",
+          "name" : "dino-vector",
+          "opacity" : 1,
+          "position" : {
+            "scale" : 0.48,
+            "translation-in-points" : [
+              -49.093096371207366,
+              221.2482968455006
+            ]
+          }
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 1
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}

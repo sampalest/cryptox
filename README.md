@@ -1,28 +1,27 @@
 <br>
 <div align="center">
-<img src="screenshots/logo.png" width="400"/>
+<img src="screenshots/logo.svg" width="800"/>
 <p><> with ❤️ by Sam</p>
 </div>
 <hr>
 
-## Version 1.1.0-beta
-
 ## Description
-* Simple app to encrypt files and folders with a password
-* Runs on macOS, Windows, and Linux
+* Lockasaur: simple app to encrypt files and folders with a password (encryption with bite)
+* Encrypted files use the `.dino` extension; files from older releases (`.ctx`) still decrypt
+* Runs on macOS, Windows, and Linux (x64 and arm64)
 
 ## Install
-- Download latest release from https://github.com/sampalest/cryptox/releases
+- Download the latest release from https://github.com/sampalest/cryptox/releases
 
 Beta builds are not code signed:
 
 - **Windows**: SmartScreen shows "Windows protected your PC" on first launch. Click "More info", then "Run anyway". This is the expected prompt for unsigned apps, not a malware detection.
 - **macOS**: the app is not notarized; if Gatekeeper blocks it, right click the app and choose Open.
-- **Linux (Ubuntu)**: prefer the `.deb` package (`sudo apt install ./Cryptox-<version>-<arch>.deb`); it installs the AppArmor profile Ubuntu 24.04 needs and a working Chromium sandbox. The `.AppImage` runs without installation (it needs `fusermount3`, part of a default Ubuntu install); on Ubuntu 24.04+, where AppArmor restricts unprivileged user namespaces, its first run offers a one-time, password-authorized install of an equivalent AppArmor profile so the app can start sandboxed (decline it and the app exits with manual instructions; it never runs unsandboxed). Make sure the downloaded file's arch matches your machine (`x64` vs `arm64`, check with `uname -m`: `x86_64` vs `aarch64`).
+- **Linux (Ubuntu)**: install the `.deb` package (`sudo apt install ./Lockasaur-<arch>.deb`); it installs the AppArmor profile Ubuntu 24.04 needs and a working Chromium sandbox. Make sure the downloaded file's arch matches your machine (`x64` vs `arm64`, check with `uname -m`: `x86_64` vs `aarch64`).
 
 ## Development
 
-Cryptox uses npm with a committed `package-lock.json`. Use Node.js 24 LTS for local development:
+Lockasaur uses npm with a committed `package-lock.json`. Use Node.js 24 LTS for local development:
 
 ```bash
 nvm use
@@ -48,7 +47,7 @@ npm run test:large
 
 `test:e2e` runs a real Electron smoke test for startup, renderer load, and preload bridge availability.
 
-`test:large` generates a 1 GB file and a 1 GB folder and verifies the UI progress/status contract against real output visibility, printing timing metrics. Override the payload size with `CRYPTOX_LARGE_SIZE_MB` (e.g. `CRYPTOX_LARGE_SIZE_MB=128 npm run test:large`). The "Large payload tests" GitHub Actions workflow runs this suite on Linux, macOS and Windows via manual dispatch.
+`test:large` generates a 1 GB file and a 1 GB folder and verifies the UI progress/status contract against real output visibility, printing timing metrics. Override the payload size with `LOCKASAUR_LARGE_SIZE_MB` (e.g. `LOCKASAUR_LARGE_SIZE_MB=128 npm run test:large`). The "Large payload tests" GitHub Actions workflow runs this suite on Linux, macOS and Windows via manual dispatch.
 
 ### Build and packaging
 
@@ -58,13 +57,17 @@ npm run build:electron
 npm run electron:build
 ```
 
-The renderer is built with Vite into `dist/`. Electron main and preload bundles are built into `dist-electron/` before local app startup or packaging. `npm run electron:build` packages the host operating system into `dist_electron/`: macOS `dmg` and `zip`, Windows `nsis` installer and portable `exe`, or Linux `AppImage` and `deb`. Release builds cover both x64 and arm64 for each platform (built on native-architecture CI runners, except macOS x64, which is cross-compiled on the arm64 runner). Artifacts ship unsigned for the beta (see the Install section for the resulting OS prompts); macOS notarization is skipped unless the required environment is configured.
+The renderer is built with Vite into `dist/`. Electron main and preload bundles are built into `dist-electron/` before local app startup or packaging. `npm run electron:build` packages the host operating system into `dist_electron/`: a macOS `dmg`, a Windows `nsis` installer `exe`, or a Linux `deb`, each named `Lockasaur-<arch>.<ext>`. Release builds cover both x64 and arm64 for each platform (built on native-architecture CI runners, except macOS x64, which is cross-compiled on the arm64 runner). Artifacts ship unsigned for the beta (see the Install section for the resulting OS prompts); macOS notarization is skipped unless the required environment is configured.
 
 See [CHANGELOG.md](CHANGELOG.md) for release history and upgrade notes.
 
+## Contributing
+
+Before opening an issue or pull request, read the [contribution guide](docs/CONTRIBUTING.md). It explains the development workflow, review requirements, and maintainer decision policy.
+
 ## Use this app
-Just drag file or folder you want to encrypt, set a password and that's it. Easy!
-Support all files.
+Just drag the file or folder you want to encrypt, set a password and that's it. Easy!
+All file types are supported.
 
 <div align="center">
 <img src="screenshots/encrypt.gif" width="600"/>
@@ -76,14 +79,12 @@ Support all files.
 - Vue.js (Pinia, Vue Router)
 - libsodium (Argon2id, AES-256-GCM)
 - tar-fs
-- Materialize
-- Animate.css
 - Node libs
 
 ## Author
-Samuel P.E.
+Sampalest
 
 ## License
-**Cryptox** is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+**Lockasaur** is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
 
 It is free for personal and noncommercial use: you can use it, modify it, share it, and contribute. Commercial use by companies is not permitted. See the full terms in the [LICENSE](LICENSE) file or at [polyformproject.org](https://polyformproject.org/licenses/noncommercial/1.0.0/).

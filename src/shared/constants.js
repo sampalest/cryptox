@@ -1,9 +1,14 @@
-// Extension
-const POINT_EXT = ".ctx";
-const EXT =  "ctx";
+// Extension: Lockasaur writes .dino; .ctx stays readable and
+// deletable as the extension of pre-rebrand releases. Format detection is magic-byte
+// based, so the extension only drives routing, validation and output naming.
+const POINT_EXT = ".dino";
+const EXT = "dino";
+const LEGACY_POINT_EXT = ".ctx";
+const ENCRYPTED_POINT_EXTS = Object.freeze([POINT_EXT, LEGACY_POINT_EXT]);
 
 // Interim file format written by the 0.3.x alphas (read-only support: decrypt
-// still understands it, but new files use the CTX1 format, see src/main/format.js).
+// still understands it, but new files use the DINO format, see src/main/format.js;
+// CTX1 files from pre-DINO builds stay decryptable too).
 // Raw legacy files have no magic at all (they begin with a raw 16-byte IV).
 const CTX_MAGIC = "CTXBOX";
 const CTX_FORMAT_VERSION = 1;
@@ -14,19 +19,59 @@ const CRYPTO_ERROR_CODES = Object.freeze({
     INVALID_PAYLOAD: "INVALID_PAYLOAD",
     FILE_NOT_FOUND: "FILE_NOT_FOUND",
     INVALID_FILE_TYPE: "INVALID_FILE_TYPE",
-    OPERATION_FAILED: "OPERATION_FAILED"
+    OPERATION_FAILED: "OPERATION_FAILED",
+    WRONG_PASSWORD: "WRONG_PASSWORD",
+    FILE_ERASED: "FILE_ERASED",
+    FILE_EXPIRED: "FILE_EXPIRED",
+    TIME_UNAVAILABLE: "TIME_UNAVAILABLE"
 });
+
+// Erase-after-failed-attempts policy. The IPC payload only accepts the exact
+// values the UI offers; the DINO format parser stays lenient within MIN..MAX
+// so future builds can offer other counts without a format change.
+const ERASE_ATTEMPT_OPTIONS = Object.freeze([3, 5, 10]);
+const ERASE_MAX_ATTEMPTS_MIN = 1;
+const ERASE_MAX_ATTEMPTS_MAX = 10;
+const ERASE_MAX_ATTEMPTS_DEFAULT = 5;
+
+// Expiration policy. `expires.at` is a UTC epoch-milliseconds instant stored in
+// the authenticated DINO header; the ceiling is 9999-12-31T23:59:59.999Z so a
+// crafted header cannot smuggle absurd values into date formatting.
+const EXPIRES_AT_MAX = 253402300799999;
+
+// Trusted time. The decrypt payload may name a time source; "nts" speaks
+// RFC 8915 Network Time Security, defaulting to Cloudflare's public server.
+const TIME_SOURCE_KINDS = Object.freeze(["system", "nts"]);
+const NTS_DEFAULT_HOST = "time.cloudflare.com";
+const NTS_DEFAULT_PORT = 4460;
 
 // Key derivation. Argon2id ops/mem limits are resolved at runtime from libsodium's
 // MODERATE presets (see crypto.js) and stored per-file in the header, so these are
 // only documented defaults. AES-256 needs a 32-byte key.
 const KEY_LEN = 32;
 
+// Transparent gutter (px) reserved around #app on frameless platforms
+// (win32/linux) so the CSS window shadow can paint without being clipped
+// at the window bounds. Mirrored in sass/components/master.scss
+// (#app.platform-frameless); keep the two values in sync.
+const FRAMELESS_GUTTER = 32;
+
 export default {
     EXT: EXT,
     POINT_EXT: POINT_EXT,
+    LEGACY_POINT_EXT: LEGACY_POINT_EXT,
+    ENCRYPTED_POINT_EXTS: ENCRYPTED_POINT_EXTS,
     CTX_MAGIC: CTX_MAGIC,
     CTX_FORMAT_VERSION: CTX_FORMAT_VERSION,
     CRYPTO_ERROR_CODES: CRYPTO_ERROR_CODES,
-    KEY_LEN: KEY_LEN
+    ERASE_ATTEMPT_OPTIONS: ERASE_ATTEMPT_OPTIONS,
+    ERASE_MAX_ATTEMPTS_MIN: ERASE_MAX_ATTEMPTS_MIN,
+    ERASE_MAX_ATTEMPTS_MAX: ERASE_MAX_ATTEMPTS_MAX,
+    ERASE_MAX_ATTEMPTS_DEFAULT: ERASE_MAX_ATTEMPTS_DEFAULT,
+    EXPIRES_AT_MAX: EXPIRES_AT_MAX,
+    TIME_SOURCE_KINDS: TIME_SOURCE_KINDS,
+    NTS_DEFAULT_HOST: NTS_DEFAULT_HOST,
+    NTS_DEFAULT_PORT: NTS_DEFAULT_PORT,
+    KEY_LEN: KEY_LEN,
+    FRAMELESS_GUTTER: FRAMELESS_GUTTER
 };

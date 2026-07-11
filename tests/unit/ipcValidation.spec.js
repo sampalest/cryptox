@@ -5,9 +5,16 @@ import {
     assertDecryptSource,
     assertEncryptSource,
     isTrustedSender,
+    normalizeAppIconId,
     normalizeCryptoPayload,
+    normalizeDeleteMode,
+    normalizeOpenDialogKind,
+    normalizeWindowSizeId,
+    validateDeletePath,
+    validateEncryptedDeletePath,
     validateExternalUrl,
-    validateOperationId
+    validateOperationId,
+    validateOriginalDeletePath
 } from "@main/ipcValidation.js";
 
 async function expectCode(promise, code) {
@@ -32,7 +39,130 @@ describe("IPC validation", () => {
         })).toEqual({
             filePath: "/tmp/example.txt",
             password: "correct horse",
+            operationId: "operation-1",
+            erasePolicy: null,
+            expiration: null,
+            timeSource: null
+        });
+    });
+
+    describe("erase policy payload", () => {
+        const basePayload = overrides => Object.assign({
+            file: { path: "/tmp/example.txt" },
+            password: "correct horse",
             operationId: "operation-1"
+        }, overrides);
+
+        it("accepts the offered attempt counts and keeps only maxAttempts", () => {
+            for (const maxAttempts of [3, 5, 10]) {
+                expect(normalizeCryptoPayload(basePayload({
+                    erasePolicy: { maxAttempts, extra: "dropped" }
+                })).erasePolicy).toEqual({ maxAttempts });
+            }
+        });
+
+        it("normalizes an absent policy to null", () => {
+            expect(normalizeCryptoPayload(basePayload({})).erasePolicy).toBeNull();
+            expect(normalizeCryptoPayload(basePayload({ erasePolicy: null })).erasePolicy).toBeNull();
+        });
+
+        it.each([
+            ["zero", { maxAttempts: 0 }],
+            ["outside the allowlist", { maxAttempts: 4 }],
+            ["above the format ceiling", { maxAttempts: 11 }],
+            ["non-integer", { maxAttempts: 2.5 }],
+            ["string", { maxAttempts: "5" }],
+            ["missing maxAttempts", {}],
+            ["array", [5]],
+            ["boolean", true],
+            ["number", 5]
+        ])("rejects an erase policy that is %s with INVALID_PAYLOAD", (label, erasePolicy) => {
+            expect(() => normalizeCryptoPayload(basePayload({ erasePolicy })))
+                .toThrow(expect.objectContaining({ code: "INVALID_PAYLOAD" }));
+        });
+    });
+
+    describe("expiration payload", () => {
+        const basePayload = overrides => Object.assign({
+            file: { path: "/tmp/example.txt" },
+            password: "correct horse",
+            operationId: "operation-1"
+        }, overrides);
+
+        it("accepts a future instant and keeps only at", () => {
+            const at = Date.now() + 60000;
+            expect(normalizeCryptoPayload(basePayload({
+                expiration: { at, extra: "dropped" }
+            })).expiration).toEqual({ at });
+        });
+
+        it("normalizes an absent expiration to null", () => {
+            expect(normalizeCryptoPayload(basePayload({})).expiration).toBeNull();
+            expect(normalizeCryptoPayload(basePayload({ expiration: null })).expiration).toBeNull();
+        });
+
+        it.each([
+            ["in the past", { at: 1000 }],
+            ["the current instant", { at: 0 }],
+            ["negative", { at: -1 }],
+            ["a float", { at: Date.now() + 60000.5 }],
+            ["a numeric string", { at: String(Date.now() + 60000) }],
+            ["above the format ceiling", { at: 253402300800000 }],
+            ["missing at", {}],
+            ["an array", [123]],
+            ["a bare number", 123]
+        ])("rejects an expiration that is %s with INVALID_PAYLOAD", (label, expiration) => {
+            expect(() => normalizeCryptoPayload(basePayload({ expiration })))
+                .toThrow(expect.objectContaining({ code: "INVALID_PAYLOAD" }));
+        });
+    });
+
+    describe("time source payload", () => {
+        const basePayload = overrides => Object.assign({
+            file: { path: "/tmp/example.txt" },
+            password: "correct horse",
+            operationId: "operation-1"
+        }, overrides);
+
+        it("normalizes an absent time source to null (handler applies the default)", () => {
+            expect(normalizeCryptoPayload(basePayload({})).timeSource).toBeNull();
+            expect(normalizeCryptoPayload(basePayload({ timeSource: null })).timeSource).toBeNull();
+        });
+
+        it("keeps only kind for the system clock", () => {
+            expect(normalizeCryptoPayload(basePayload({
+                timeSource: { kind: "system", host: "dropped.example", failClosed: true }
+            })).timeSource).toEqual({ kind: "system" });
+        });
+
+        it("fills NTS defaults and coerces failClosed strictly", () => {
+            expect(normalizeCryptoPayload(basePayload({
+                timeSource: { kind: "nts" }
+            })).timeSource).toEqual({ kind: "nts", host: "time.cloudflare.com", port: 4460, failClosed: false });
+            expect(normalizeCryptoPayload(basePayload({
+                timeSource: { kind: "nts", host: "nts.example.com", port: 123, failClosed: "yes" }
+            })).timeSource).toEqual({ kind: "nts", host: "nts.example.com", port: 123, failClosed: false });
+            expect(normalizeCryptoPayload(basePayload({
+                timeSource: { kind: "nts", failClosed: true }
+            })).timeSource.failClosed).toBe(true);
+        });
+
+        it.each([
+            ["an unknown kind", { kind: "carrier-pigeon" }],
+            ["a missing kind", {}],
+            ["an array", ["nts"]],
+            ["a bare string", "nts"],
+            ["a host with a scheme", { kind: "nts", host: "https://example.com" }],
+            ["a host with a path", { kind: "nts", host: "example.com/time" }],
+            ["a host with spaces", { kind: "nts", host: "exa mple.com" }],
+            ["an overlong host", { kind: "nts", host: `${"a".repeat(254)}.com` }],
+            ["an empty host", { kind: "nts", host: "" }],
+            ["a port of 0", { kind: "nts", port: 0 }],
+            ["a port above 65535", { kind: "nts", port: 65536 }],
+            ["a string port", { kind: "nts", port: "4460" }]
+        ])("rejects a time source with %s with INVALID_PAYLOAD", (label, timeSource) => {
+            expect(() => normalizeCryptoPayload(basePayload({ timeSource })))
+                .toThrow(expect.objectContaining({ code: "INVALID_PAYLOAD" }));
         });
     });
 
@@ -49,6 +179,71 @@ describe("IPC validation", () => {
             password: "correct horse",
             operationId: ""
         })).toThrow("operation id");
+    });
+
+    describe("normalizeOpenDialogKind", () => {
+        it("accepts the allowlisted kinds and defaults undefined to files", () => {
+            expect(normalizeOpenDialogKind("files")).toBe("files");
+            expect(normalizeOpenDialogKind("folder")).toBe("folder");
+            expect(normalizeOpenDialogKind(undefined)).toBe("files");
+        });
+
+        it("returns null for anything outside the allowlist", () => {
+            const cases = ["Files", "folders", "openDirectory", "", 42, null, {}, []];
+            for (const value of cases) {
+                expect(normalizeOpenDialogKind(value)).toBeNull();
+            }
+        });
+    });
+
+    describe("normalizeAppIconId", () => {
+        it("accepts the allowlisted icon ids", () => {
+            for (const id of ["default", "dark", "clear-light", "clear-dark", "tinted-light", "tinted-dark", "locked"]) {
+                expect(normalizeAppIconId(id)).toBe(id);
+            }
+        });
+
+        it("returns null for anything outside the allowlist", () => {
+            // Ids are resolved to bundled file names, so path fragments must
+            // never survive normalization.
+            const cases = ["Default", "dark.png", "../dark", "appicons/dark", "", 42, null, undefined, {}, []];
+            for (const value of cases) {
+                expect(normalizeAppIconId(value)).toBeNull();
+            }
+        });
+    });
+
+    describe("normalizeWindowSizeId", () => {
+        it("accepts the allowlisted size ids", () => {
+            for (const id of ["default", "l", "xl"]) {
+                expect(normalizeWindowSizeId(id)).toBe(id);
+            }
+        });
+
+        it("returns null for anything outside the allowlist", () => {
+            // Ids resolve to main-process presets, so raw dimensions or any
+            // other renderer-supplied value must never survive normalization.
+            const cases = ["Default", "L", "XL", "800x600", "xxl", "", 700, null, undefined, {}, []];
+            for (const value of cases) {
+                expect(normalizeWindowSizeId(value)).toBeNull();
+            }
+        });
+    });
+
+    describe("normalizeDeleteMode", () => {
+        it("accepts the allowlisted delete modes", () => {
+            for (const mode of ["trash", "permanent", "ask"]) {
+                expect(normalizeDeleteMode(mode)).toBe(mode);
+            }
+        });
+
+        it("returns null for anything outside the allowlist", () => {
+            // An unexpected mode must answer inertly, never with a deletion.
+            const cases = ["Trash", "TRASH", "delete", "", 42, null, undefined, {}, []];
+            for (const value of cases) {
+                expect(normalizeDeleteMode(value)).toBeNull();
+            }
+        });
     });
 
     describe("validateOperationId", () => {
@@ -103,7 +298,7 @@ describe("IPC validation", () => {
         let tempDir;
 
         beforeEach(() => {
-            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cryptox-ipc-"));
+            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "lockasaur-ipc-"));
         });
 
         afterEach(() => {
@@ -125,31 +320,37 @@ describe("IPC validation", () => {
             await expect(assertEncryptSource(dirPath)).resolves.toBeUndefined();
         });
 
-        it("rejects already encrypted .ctx inputs for encryption", async () => {
+        it("rejects already encrypted .dino and legacy .ctx inputs for encryption", async () => {
+            const dinoFile = path.join(tempDir, "secret.dino");
+            fs.writeFileSync(dinoFile, "ciphertext");
             const ctxFile = path.join(tempDir, "secret.ctx");
             fs.writeFileSync(ctxFile, "ciphertext");
-            const ctxDir = path.join(tempDir, "archive.ctx");
-            fs.mkdirSync(ctxDir);
+            const dinoDir = path.join(tempDir, "archive.dino");
+            fs.mkdirSync(dinoDir);
+            await expectCode(assertEncryptSource(dinoFile), "INVALID_FILE_TYPE");
             await expectCode(assertEncryptSource(ctxFile), "INVALID_FILE_TYPE");
-            await expectCode(assertEncryptSource(ctxDir), "INVALID_FILE_TYPE");
+            await expectCode(assertEncryptSource(dinoDir), "INVALID_FILE_TYPE");
         });
 
-        it("accepts only regular .ctx files for decryption", async () => {
+        it("accepts only regular .dino and legacy .ctx files for decryption", async () => {
+            const dinoFile = path.join(tempDir, "secret.dino");
+            fs.writeFileSync(dinoFile, "ciphertext");
             const ctxFile = path.join(tempDir, "secret.ctx");
             fs.writeFileSync(ctxFile, "ciphertext");
+            await expect(assertDecryptSource(dinoFile)).resolves.toBeUndefined();
             await expect(assertDecryptSource(ctxFile)).resolves.toBeUndefined();
         });
 
         it("rejects wrong file types for decryption with INVALID_FILE_TYPE", async () => {
             const plainFile = path.join(tempDir, "plain.txt");
             fs.writeFileSync(plainFile, "hello");
-            const ctxDir = path.join(tempDir, "folder.ctx");
-            fs.mkdirSync(ctxDir);
+            const dinoDir = path.join(tempDir, "folder.dino");
+            fs.mkdirSync(dinoDir);
             await expectCode(assertDecryptSource(plainFile), "INVALID_FILE_TYPE");
-            await expectCode(assertDecryptSource(ctxDir), "INVALID_FILE_TYPE");
+            await expectCode(assertDecryptSource(dinoDir), "INVALID_FILE_TYPE");
         });
 
-        it("rejects symlinked sources so a link target is never silently processed (CODE-03)", async () => {
+        it("rejects symlinked sources so a link target is never silently processed", async () => {
             const realFile = path.join(tempDir, "real.txt");
             fs.writeFileSync(realFile, "hello");
             const realDir = path.join(tempDir, "realdir");
@@ -173,6 +374,119 @@ describe("IPC validation", () => {
             const error = await assertEncryptSource(missing).then(() => null, e => e);
             expect(error).not.toBeNull();
             expect(error.message).not.toContain(tempDir);
+        });
+    });
+
+    describe("validateDeletePath", () => {
+        it("accepts .dino and legacy .ctx paths", () => {
+            expect(validateDeletePath("/tmp/secret.dino")).toBe("/tmp/secret.dino");
+            expect(validateDeletePath("/tmp/secret.ctx")).toBe("/tmp/secret.ctx");
+        });
+
+        it("rejects paths with any other extension", () => {
+            expect(() => validateDeletePath("/tmp/plain.txt")).toThrow("encrypted");
+            expect(() => validateDeletePath("/tmp/nodots")).toThrow("encrypted");
+            // The extension must terminate the path, not merely appear in it.
+            expect(() => validateDeletePath("/tmp/secret.dino.txt")).toThrow("encrypted");
+        });
+
+        it("rejects non-string and empty paths", () => {
+            for (const value of ["", "   ", 42, null, undefined, {}]) {
+                expect(() => validateDeletePath(value)).toThrow();
+            }
+        });
+
+        it("keeps the user-supplied path out of the error message", () => {
+            const error = (() => {
+                try {
+                    validateDeletePath("/tmp/some-user-path.txt");
+                    return null;
+                } catch (e) {
+                    return e;
+                }
+            })();
+            expect(error).not.toBeNull();
+            expect(error.message).not.toContain("some-user-path");
+        });
+    });
+
+    describe("validateOriginalDeletePath", () => {
+        it("accepts only paths recorded in the allowed set", () => {
+            const allowed = new Set(["/tmp/original.txt"]);
+            expect(validateOriginalDeletePath("/tmp/original.txt", allowed)).toBe("/tmp/original.txt");
+        });
+
+        it("rejects paths outside the allowed set, regardless of extension", () => {
+            const allowed = new Set(["/tmp/original.txt"]);
+            expect(() => validateOriginalDeletePath("/tmp/other.txt", allowed)).toThrow("just-encrypted");
+            expect(() => validateOriginalDeletePath("/tmp/original.txt/../original.txt", allowed)).toThrow("just-encrypted");
+        });
+
+        it("rejects everything when the allowed set is empty or missing", () => {
+            expect(() => validateOriginalDeletePath("/tmp/original.txt", new Set())).toThrow("just-encrypted");
+            expect(() => validateOriginalDeletePath("/tmp/original.txt", undefined)).toThrow("just-encrypted");
+        });
+
+        it("rejects non-string and empty paths", () => {
+            const allowed = new Set([""]);
+            for (const value of ["", "   ", 42, null, undefined, {}]) {
+                expect(() => validateOriginalDeletePath(value, allowed)).toThrow();
+            }
+        });
+
+        it("keeps the user-supplied path out of the error message", () => {
+            const error = (() => {
+                try {
+                    validateOriginalDeletePath("/tmp/some-user-path.txt", new Set());
+                    return null;
+                } catch (e) {
+                    return e;
+                }
+            })();
+            expect(error).not.toBeNull();
+            expect(error.message).not.toContain("some-user-path");
+        });
+    });
+
+    describe("validateEncryptedDeletePath", () => {
+        it("accepts an allowlisted .dino or legacy .ctx path", () => {
+            const allowed = new Set(["/tmp/secret.dino", "/tmp/old.ctx"]);
+            expect(validateEncryptedDeletePath("/tmp/secret.dino", allowed)).toBe("/tmp/secret.dino");
+            expect(validateEncryptedDeletePath("/tmp/old.ctx", allowed)).toBe("/tmp/old.ctx");
+        });
+
+        it("rejects a path with the right extension but outside the allowed set", () => {
+            // The extension alone is not authorization: trash/permanent modes
+            // delete without a confirm dialog, so membership must gate it.
+            const allowed = new Set(["/tmp/secret.dino"]);
+            expect(() => validateEncryptedDeletePath("/tmp/other.dino", allowed)).toThrow("just-decrypted");
+            expect(() => validateEncryptedDeletePath("/tmp/secret.dino", new Set())).toThrow("just-decrypted");
+            expect(() => validateEncryptedDeletePath("/tmp/secret.dino", undefined)).toThrow("just-decrypted");
+        });
+
+        it("rejects a set member whose extension is not encrypted", () => {
+            const allowed = new Set(["/tmp/plain.txt"]);
+            expect(() => validateEncryptedDeletePath("/tmp/plain.txt", allowed)).toThrow("encrypted");
+        });
+
+        it("rejects non-string and empty paths", () => {
+            const allowed = new Set([""]);
+            for (const value of ["", "   ", 42, null, undefined, {}]) {
+                expect(() => validateEncryptedDeletePath(value, allowed)).toThrow();
+            }
+        });
+
+        it("keeps the user-supplied path out of the error message", () => {
+            const error = (() => {
+                try {
+                    validateEncryptedDeletePath("/tmp/some-user-path.dino", new Set());
+                    return null;
+                } catch (e) {
+                    return e;
+                }
+            })();
+            expect(error).not.toBeNull();
+            expect(error.message).not.toContain("some-user-path");
         });
     });
 });

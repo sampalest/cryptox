@@ -1,6 +1,6 @@
 "use strict";
 
-import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, screen, shell } from "electron";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath, pathToFileURL } from "url";
@@ -13,17 +13,86 @@ import {
     assertDecryptSource,
     assertEncryptSource,
     isTrustedSender,
+    normalizeAppIconId,
     normalizeCryptoPayload,
-    validateDeletePath,
+    normalizeDeleteMode,
+    normalizeOpenDialogKind,
+    normalizeWindowSizeId,
+    validateEncryptedDeletePath,
     validateExternalUrl,
-    validateOperationId
+    validateOperationId,
+    validateOriginalDeletePath
 } from "./ipcValidation.js";
+import { removeEncrypted, removeOriginal } from "./deletion.js";
+import { handleFailedAttempt, resetCounter } from "./erasePolicy.js";
+import TimeProvider from "./time/timeProvider.js";
 const isDevelopment = process.env.NODE_ENV !== "production";
-import logger from "electron-log";
+import logger from "electron-log/main";
 
 const runtimeDir = typeof __dirname === "string"
     ? __dirname
     : path.dirname(fileURLToPath(import.meta.url));
+
+// The fixed window presets the renderer may pick from by allowlisted id
+// (window:set-size). Dimensions never cross the IPC boundary: each preset is
+// only a zoom factor over the 700x660 design (618px content + 42px titlebar),
+// so every size is the same layout scaled proportionally and the CSS viewport
+// stays at the design size. L (756x713 visible) still fits a 1366x768 work
+// area with a taskbar; XL (875x825) targets larger displays and is refused
+// where it cannot fit.
+const WINDOW_DESIGN_SIZE = { width: 700, height: 660 };
+const WINDOW_SIZE_PRESETS = {
+    "default": { zoom: 1 },
+    "l": { zoom: 1.08 },
+    "xl": { zoom: 1.25 }
+};
+
+// The last preset the main process accepted; a recreated window (macOS dock
+// activate) comes back at the same size without waiting for the renderer.
+let appliedWindowSize = "default";
+
+// OS window bounds for a preset: the visible design plus, on Win/Linux, the
+// FRAMELESS_GUTTER on every side (room for the CSS shadow, see createWindow).
+// The gutter scales with the zoom like everything else in the CSS viewport.
+function windowBoundsForPreset(preset) {
+    const gutter = (process.platform === "win32" || process.platform === "linux")
+        ? Constants.FRAMELESS_GUTTER : 0;
+    return {
+        width: Math.round((WINDOW_DESIGN_SIZE.width + gutter * 2) * preset.zoom),
+        height: Math.round((WINDOW_DESIGN_SIZE.height + gutter * 2) * preset.zoom)
+    };
+}
+
+function applyWindowSize(id) {
+    if (!win || win.isDestroyed()) return false;
+    const preset = WINDOW_SIZE_PRESETS[id];
+    const target = windowBoundsForPreset(preset);
+    const bounds = win.getBounds();
+    const area = screen.getDisplayMatching(bounds).workArea;
+    // Refuse presets the current display cannot hold: the renderer store rolls
+    // the choice back, so an oversized preset is unavailable rather than broken.
+    if (target.width > area.width || target.height > area.height) return false;
+    // Keep the window's center where it is, clamped into the work area.
+    const x = Math.round(Math.max(area.x, Math.min(bounds.x + (bounds.width - target.width) / 2, area.x + area.width - target.width)));
+    const y = Math.round(Math.max(area.y, Math.min(bounds.y + (bounds.height - target.height) / 2, area.y + area.height - target.height)));
+    // Zoom first, resize second: Chromium can take a beat to propagate a zoom
+    // change, and an unscaled layout inside the already-resized window reads
+    // as broken, while the reverse transient hides inside the resize itself.
+    win.webContents.setZoomFactor(preset.zoom);
+    // min == max pins the size (see createWindow), so the limits must widen
+    // before the resize and re-lock after it, with the window kept
+    // non-resizable throughout.
+    win.setMinimumSize(1, 1);
+    win.setMaximumSize(0, 0);
+    win.setBounds({ x, y, width: target.width, height: target.height });
+    win.setMinimumSize(target.width, target.height);
+    win.setMaximumSize(target.width, target.height);
+    win.setResizable(false);
+    win.setMaximizable(false);
+    win.setFullScreenable(false);
+    appliedWindowSize = id;
+    return true;
+}
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
@@ -53,25 +122,28 @@ function openFile(file) {
 }
 
 function buildApplicationMenu() {
+    if (process.platform !== "darwin") {
+        Menu.setApplicationMenu(null);
+        return;
+    }
+
     const template = [];
 
-    if (process.platform === "darwin") {
-        template.push({
-            label: app.name,
-            submenu: [
-                {
-                    label: "About Cryptox",
-                    click: () => sendToRenderer("menu:about")
-                },
-                { type: "separator" },
-                { role: "hide" },
-                { role: "hideothers" },
-                { role: "unhide" },
-                { type: "separator" },
-                { role: "quit" }
-            ]
-        });
-    }
+    template.push({
+        label: app.name,
+        submenu: [
+            {
+                label: "About Lockasaur",
+                click: () => sendToRenderer("menu:about")
+            },
+            { type: "separator" },
+            { role: "hide" },
+            { role: "hideothers" },
+            { role: "unhide" },
+            { type: "separator" },
+            { role: "quit" }
+        ]
+    });
 
     template.push({
         label: "File",
@@ -101,23 +173,58 @@ function buildApplicationMenu() {
     }
 }
 
+// The window is created hidden and shown on the first of three
+// signals, so launch never flashes an empty transparent frame: ready-to-show
+// (normal path), files:renderer-ready (fallback: ready-to-show has a history
+// of firing late for transparent frameless windows on Win/Linux), or a safety
+// timer (a broken renderer must never leave an invisible app).
+function showWindowWhenReady() {
+    if (win && !win.isDestroyed() && !win.isVisible()) {
+        win.show();
+    }
+}
+
 function createWindow () {
     rendererReady = false;
+    const useCustomFrame = process.platform === "win32" || process.platform === "linux";
+    // Every platform runs a transparent window whose visible frame is
+    // the CSS-rounded #app. macOS keeps its native traffic lights ("hidden"
+    // titlebar style, repositioned into the 42px chrome bar); Win/Linux are
+    // fully frameless with custom controls in the renderer titlebar. On the
+    // frameless platforms the window is FRAMELESS_GUTTER larger than #app on
+    // every side so the CSS window shadow can paint without being clipped at
+    // the window bounds; the visible app stays at the preset's design size
+    // (windowBoundsForPreset adds the gutter).
+    const initialPreset = WINDOW_SIZE_PRESETS[appliedWindowSize];
+    const initial = windowBoundsForPreset(initialPreset);
     win = new BrowserWindow({
-        width: 700,
-        height: 600,
-        title: "Cryptox",
-        // "hiddenInset" is a macOS-only style paired with the custom navbar; on
-        // Windows/Linux the native title bar is used (the option is ignored there
-        // anyway, this is just explicit).
-        titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+        width: initial.width,
+        height: initial.height,
+        minWidth: initial.width,
+        maxWidth: initial.width,
+        minHeight: initial.height,
+        maxHeight: initial.height,
+        title: "Lockasaur",
+        show: false,
+        frame: !useCustomFrame,
+        transparent: true,
+        backgroundColor: "#00000000",
+        // The shadow on Win/Linux is drawn by the renderer (see master.scss);
+        // the OS must not add a rectangular one tracing the transparent bounds.
+        hasShadow: !useCustomFrame,
+        titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
+        trafficLightPosition: { x: 14, y: 14 },
         resizable: false,
         maximizable: false,
+        fullscreenable: false,
         webPreferences: {
             contextIsolation: true,
             nodeIntegration: false,
             sandbox: true,
             webSecurity: true,
+            // A recreated window (macOS dock activate) keeps the applied
+            // preset's zoom without waiting for the renderer to reapply it.
+            zoomFactor: initialPreset.zoom,
             preload: path.join(runtimeDir, "preload.cjs")
         }
     });
@@ -146,6 +253,18 @@ function createWindow () {
         }
     });
 
+    win.once("ready-to-show", showWindowWhenReady);
+    const showFallbackTimer = setTimeout(showWindowWhenReady, 2000);
+
+    // Chromium persists per-origin zoom in the profile, which can disagree
+    // with the applied preset (e.g. a saved larger preset that no longer fits
+    // the display leaves the window at default bounds while the persisted
+    // zoom restores the larger factor). The applied preset owns the zoom, so
+    // re-assert it on every load.
+    win.webContents.on("did-finish-load", () => {
+        win.webContents.setZoomFactor(WINDOW_SIZE_PRESETS[appliedWindowSize].zoom);
+    });
+
     if (process.env.VITE_DEV_SERVER_URL) {
         win.loadURL(process.env.VITE_DEV_SERVER_URL);
         if (!process.env.IS_TEST) win.webContents.openDevTools();
@@ -154,11 +273,12 @@ function createWindow () {
     }
 
     win.on("closed", () => {
+        clearTimeout(showFallbackTimer);
         win = null;
         rendererReady = false;
     });
 }
-app.name = "Cryptox";
+app.name = "Lockasaur";
 app.on("open-file", (event, file) => {
     logger.info("Opening file from macOS file association");
     openFile(file);
@@ -199,8 +319,9 @@ app.on("ready", async () => {
 ipcMain.handle("files:renderer-ready", event => {
     if (!isTrustedSender(event, win)) return;
     rendererReady = true;
+    showWindowWhenReady();
     flushPendingOpenFiles();
-    if (process.env.CRYPTOX_SMOKE_TEST) {
+    if (process.env.LOCKASAUR_SMOKE_TEST) {
         runSmokeTest();
     }
 });
@@ -214,16 +335,129 @@ ipcMain.handle("app:info", event => {
     };
 });
 
-ipcMain.handle("dialog:open-files", async event => {
+// The Settings icon picker (macOS Dock icon only). The renderer sends
+// an allowlisted id, never a path; it resolves against the PNGs bundled under
+// dist/appicons (public/appicons in dev, mirroring how index.html is located).
+const appIconsDir = process.env.VITE_DEV_SERVER_URL
+    ? path.join(runtimeDir, "..", "public", "appicons")
+    : path.join(runtimeDir, "..", "dist", "appicons");
+
+ipcMain.handle("app:set-icon", (event, iconId) => {
+    if (!isTrustedSender(event, win)) return false;
+    const id = normalizeAppIconId(iconId);
+    if (!id || process.platform !== "darwin" || !app.dock) return false;
+    try {
+        if (id === "default") {
+            // Reset to the bundle icon: a static image would freeze one
+            // appearance, while the bundle's Assets.car keeps the Dock icon
+            // following the system light/dark appearance on macOS 26+.
+            app.dock.setIcon(null);
+            return true;
+        }
+        // Electron cannot decode .icns (createFromPath returns an empty
+        // image), so the icns equivalent is built by hand: one NativeImage
+        // carrying the 512 px file as the 1x representation and the 1024 px
+        // @2x file as the retina one, letting macOS pick the right scale
+        // instead of upscaling a single bitmap.
+        const image = nativeImage.createEmpty();
+        for (const [scaleFactor, file] of [[1, `${id}.png`], [2, `${id}@2x.png`]]) {
+            const variantPath = path.join(appIconsDir, file);
+            if (fs.existsSync(variantPath)) {
+                image.addRepresentation({ scaleFactor, buffer: fs.readFileSync(variantPath) });
+            }
+        }
+        if (image.isEmpty()) return false;
+        app.dock.setIcon(image);
+        return true;
+    } catch {
+        // Fixed string: the renderer-supplied value stays out of the log.
+        logger.error("app:set-icon failed");
+        return false;
+    }
+});
+
+ipcMain.handle("window:minimize", event => {
+    if (!isTrustedSender(event, win)) return;
+    win.minimize();
+});
+
+ipcMain.handle("window:close", event => {
+    if (!isTrustedSender(event, win)) return;
+    win.close();
+});
+
+ipcMain.handle("window:set-size", (event, sizeId) => {
+    if (!isTrustedSender(event, win)) return false;
+    const id = normalizeWindowSizeId(sizeId);
+    if (!id) return false;
+    try {
+        return applyWindowSize(id);
+    } catch {
+        // Fixed string: the renderer-supplied value stays out of the log.
+        logger.error("window:set-size failed");
+        return false;
+    }
+});
+
+ipcMain.handle("dialog:open-files", async (event, kind) => {
     if (!isTrustedSender(event, win)) return [];
+    const dialogKind = normalizeOpenDialogKind(kind);
+    if (!dialogKind) return [];
+
+    // One dialog can select both files and folders only on macOS; Windows and
+    // Linux degrade ["openFile", "openDirectory"] to a folder-only picker, so
+    // there "files" stays file-only and folders come in via the "folder" kind
+    // (the Select Folder button).
+    const properties = dialogKind === "folder"
+        ? ["openDirectory", "multiSelections"]
+        : process.platform === "darwin"
+            ? ["openFile", "openDirectory", "multiSelections"]
+            : ["openFile", "multiSelections"];
+
     const files = await dialog.showOpenDialog(win, {
-        properties: ["openFile", "openDirectory"],
+        properties,
         filters: [{
             name: "All Files", extensions: ["*"]
         }]
     });
 
-    return files.filePaths;
+    return files.filePaths.map(filePath => ({ path: filePath, isDirectory: lstatIsDirectory(filePath) }));
+});
+
+// lstat so a symlink never reports as a directory; the crypto source
+// validation rejects symlinks anyway, this only drives the chip icon.
+function lstatIsDirectory(target) {
+    try {
+        return fs.lstatSync(target).isDirectory();
+    } catch {
+        return false;
+    }
+}
+
+// Directory flag for paths that reach the renderer as bare strings (drag and
+// drop, macOS open-file events). Inert false on anything unexpected; the
+// renderer-supplied path never goes into logs or dialogs.
+ipcMain.handle("files:is-directory", (event, filePath) => {
+    if (!isTrustedSender(event, win)) return false;
+    if (typeof filePath !== "string" || filePath.trim() === "") return false;
+    return lstatIsDirectory(filePath);
+});
+
+// Native confirmation shown before the Settings toggle enables the erase
+// policy. Payload-free and fixed strings only: the dialog is UX, the actual
+// policy bounds are enforced by normalizeCryptoPayload on every encrypt.
+ipcMain.handle("dialog:confirm-erase-policy", async event => {
+    if (!isTrustedSender(event, win)) return false;
+    const { response } = await dialog.showMessageBox(win, {
+        type: "warning",
+        buttons: ["Enable", "Cancel"],
+        defaultId: 1,
+        cancelId: 1,
+        title: "Erase after failed attempts",
+        message: "This can permanently destroy your data.",
+        detail: "Files encrypted while this is enabled are permanently removed from the filesystem after too many wrong password attempts. There is no Trash, no undo and no recovery. Anyone who mistypes the password too often destroys the file."
+    });
+    return response === 0;
 });
 
 ipcMain.handle("shell:open-external", (event, url) => {
@@ -253,12 +487,21 @@ function toCryptoFailure(error, fallbackMessage) {
     return failure(Codes.OPERATION_FAILED, fallbackMessage);
 }
 
-async function runRegisteredOperation(operationId, run, fallbackMessage) {
+// `run` may resolve extra fields to merge into the success result (e.g. the
+// decrypt handler's policyError). `mapError` runs inside the catch, before the
+// finally releases the path lock, so erase-policy counter writes can never
+// race a second operation on the same file; returning a falsy value falls
+// through to the generic failure.
+async function runRegisteredOperation(operationId, run, fallbackMessage, mapError) {
     try {
-        await run();
-        return { ok: true, cancelled: false };
+        const extras = await run();
+        return { ok: true, cancelled: false, ...(extras || {}) };
     } catch (error) {
         if (error && error.name === "CancelledError") return { ok: true, cancelled: true };
+        if (mapError) {
+            const mapped = await mapError(error);
+            if (mapped) return mapped;
+        }
         logger.error(`crypto operation failed: ${error && error.name}`);
         return failure(Codes.OPERATION_FAILED, fallbackMessage);
     } finally {
@@ -266,17 +509,29 @@ async function runRegisteredOperation(operationId, run, fallbackMessage) {
     }
 }
 
+// Sources of successfully completed encrypt operations, eligible for the
+// post-encrypt delete prompt. Recorded only by the main process and consumed
+// one prompt per entry, so the renderer can never request deletion of a path
+// it did not just encrypt.
+const deletableOriginals = new Set();
+
+// Encrypted sources of successfully completed decrypt operations, eligible for
+// the post-decrypt delete. Same one-shot contract as deletableOriginals: the
+// renderer can never steer deletion toward a .dino/.ctx path it did not just
+// decrypt, which matters now that trash/permanent modes skip the confirm dialog.
+const deletableEncrypted = new Set();
+
 ipcMain.handle("crypto:encrypt", async (event, payload) => {
     if (!isTrustedSender(event, win)) return failure(Codes.SENDER_REJECTED, "Request was rejected.");
     const fallbackMessage = "Encryption failed.";
-    let filePath, password, operationId;
+    let filePath, password, operationId, erasePolicy, expiration;
     try {
-        ({ filePath, password, operationId } = normalizeCryptoPayload(payload));
+        ({ filePath, password, operationId, erasePolicy, expiration } = normalizeCryptoPayload(payload));
         await assertEncryptSource(filePath);
     } catch (error) {
         return toCryptoFailure(error, fallbackMessage);
     }
-    const crypto = new Crypto(password, operationId);
+    const crypto = new Crypto(password, operationId, { erasePolicy, expiration });
     const normalizedFile = new FileManager(filePath);
     // Lock the source and the predicted primary output. uniquePath/"wx" already
     // make output collisions non-destructive; the lock keeps a second operation
@@ -290,25 +545,31 @@ ipcMain.handle("crypto:encrypt", async (event, payload) => {
     } catch (error) {
         return toCryptoFailure(error, fallbackMessage);
     }
-    return runRegisteredOperation(operationId, () =>
+    const result = await runRegisteredOperation(operationId, () =>
         crypto.encrypt(normalizedFile, { value: 0 }, {}, {
             onProgress: value => event.sender.send("crypto:progress", { operationId, value }),
             onStatus: status => event.sender.send("crypto:status", { operationId, status })
         }), fallbackMessage
     );
+    // Only a fully completed encrypt makes its source deletable; a cancelled
+    // or failed operation must leave the original untouchable.
+    if (result.ok && !result.cancelled) deletableOriginals.add(filePath);
+    return result;
 });
 
 ipcMain.handle("crypto:decrypt", async (event, payload) => {
     if (!isTrustedSender(event, win)) return failure(Codes.SENDER_REJECTED, "Request was rejected.");
     const fallbackMessage = "Incorrect password or the file is corrupted.";
-    let filePath, password, operationId;
+    let filePath, password, operationId, timeSource;
     try {
-        ({ filePath, password, operationId } = normalizeCryptoPayload(payload));
+        ({ filePath, password, operationId, timeSource } = normalizeCryptoPayload(payload));
         await assertDecryptSource(filePath);
     } catch (error) {
         return toCryptoFailure(error, fallbackMessage);
     }
-    const crypto = new Crypto(password, operationId);
+    // The provider is only consulted when the parsed header carries an
+    // expiration, so non-expiring files never trigger a network lookup.
+    const crypto = new Crypto(password, operationId, { timeProvider: TimeProvider.createTimeProvider(timeSource) });
     const normalizedFile = new FileManager(filePath);
     // The output name is only known after the header parse, and the plaintext
     // is staged then moved atomically, so locking the input is enough.
@@ -317,12 +578,62 @@ ipcMain.handle("crypto:decrypt", async (event, payload) => {
     } catch (error) {
         return toCryptoFailure(error, fallbackMessage);
     }
-    return runRegisteredOperation(operationId, () =>
-        crypto.decrypt(normalizedFile, { value: 0 }, {
+    const result = await runRegisteredOperation(operationId, async () => {
+        await crypto.decrypt(normalizedFile, { value: 0 }, {
             onProgress: value => event.sender.send("crypto:progress", { operationId, value }),
             onStatus: status => event.sender.send("crypto:status", { operationId, status })
-        }), fallbackMessage
-    );
+        });
+        const extras = crypto.trustedTimeUnavailable ? { trustedTimeUnavailable: true } : {};
+        // Successful decrypt: clear the failed-attempt counter while the path
+        // lock is still held. A failed reset is surfaced (policyError), or the
+        // next typo could erase a file the user believed was reset.
+        if (crypto.eraseInfo && crypto.eraseInfo.attempts > 0) {
+            const reset = await resetCounter(filePath, crypto.eraseInfo);
+            if (reset.error) {
+                logger.error("crypto:decrypt could not reset the failed-attempt counter");
+                return { ...extras, policyError: true };
+            }
+        }
+        return extras;
+    }, fallbackMessage, async error => {
+        // An authentic expired header is a deliberate refusal, never a wrong
+        // password: it must not reach the erase-policy accounting below.
+        if (error && error.name === "ExpiredError") {
+            return {
+                ...failure(Codes.FILE_EXPIRED, "This file has expired and can no longer be decrypted."),
+                ...(Number.isSafeInteger(crypto.expiresAt) ? { expiresAt: crypto.expiresAt } : {}),
+                ...(crypto.trustedTimeUnavailable ? { trustedTimeUnavailable: true } : {})
+            };
+        }
+        if (error && error.name === "TimeUnavailableError") {
+            return failure(Codes.TIME_UNAVAILABLE, "The trusted time source could not be reached.");
+        }
+        // Only GCM authentication failures reach this branch; I/O errors,
+        // cancels and pre-flight failures keep their existing handling and
+        // never count against the erase policy.
+        if (!error || error.name !== "WrongPasswordError") return null;
+        if (!crypto.eraseInfo) return failure(Codes.WRONG_PASSWORD, fallbackMessage);
+        const attempt = await handleFailedAttempt(filePath, crypto.eraseInfo);
+        if (!attempt.counted) {
+            logger.error("crypto:decrypt could not update the failed-attempt counter");
+            return { ...failure(Codes.WRONG_PASSWORD, fallbackMessage), policyError: true };
+        }
+        if (attempt.erased) {
+            logger.error("crypto:decrypt erased the file after reaching the failed-attempt limit");
+            return failure(Codes.FILE_ERASED, "This file was erased because the failed-attempt limit was reached.");
+        }
+        if (attempt.attemptsRemaining === 0) {
+            // Limit reached but the erase failed: report the wrong password
+            // and the policy failure, never a successful erase.
+            logger.error("crypto:decrypt secure erase failed");
+            return { ...failure(Codes.WRONG_PASSWORD, fallbackMessage), attemptsRemaining: 0, policyError: true };
+        }
+        return { ...failure(Codes.WRONG_PASSWORD, fallbackMessage), attemptsRemaining: attempt.attemptsRemaining };
+    });
+    // Only a fully completed decrypt makes its encrypted source deletable; a
+    // cancelled or failed operation must leave the ciphertext untouchable.
+    if (result.ok && !result.cancelled) deletableEncrypted.add(filePath);
+    return result;
 });
 
 ipcMain.handle("crypto:cancel", (event, payload) => {
@@ -334,23 +645,58 @@ ipcMain.handle("crypto:cancel", (event, payload) => {
     }
 });
 
-ipcMain.handle("files:confirm-delete-encrypted", async (event, filePath) => {
-    if (!isTrustedSender(event, win)) return false;
-    const target = validateDeletePath(filePath);
-    const { response } = await dialog.showMessageBox(win, {
-        type: "question",
-        buttons: ["Delete", "Keep"],
-        defaultId: 1,
-        cancelId: 1,
-        title: "Delete encrypted file",
-        message: "Decryption successful.",
-        detail: "Do you want to delete the encrypted .ctx file?"
-    });
+ipcMain.handle("files:confirm-delete-encrypted", async (event, filePath, mode, requested) => {
+    if (!isTrustedSender(event, win)) return { deleted: false };
+    const deleteMode = normalizeDeleteMode(mode);
+    if (deleteMode === null) return { deleted: false };
+    const target = validateEncryptedDeletePath(filePath, deletableEncrypted);
+    // Single-use: whatever the mode or answer, the same path cannot be
+    // offered again without another completed decrypt.
+    deletableEncrypted.delete(target);
+    if (deleteMode === "ask") {
+        const { response } = await dialog.showMessageBox(win, {
+            type: "question",
+            buttons: ["Delete", "Keep"],
+            defaultId: 1,
+            cancelId: 1,
+            title: "Delete encrypted file",
+            message: "Decryption successful.",
+            detail: "Do you want to delete the encrypted file?"
+        });
+        if (response !== 0) return { deleted: false };
+    } else if (requested !== true) {
+        return { deleted: false };
+    }
+    const result = await removeEncrypted(target, deleteMode === "ask" ? "trash" : deleteMode);
+    if (result.error) logger.error("files:confirm-delete-encrypted could not remove the file");
+    return result;
+});
 
-    if (response !== 0) return false;
-
-    await fs.promises.unlink(target);
-    return true;
+ipcMain.handle("files:confirm-delete-original", async (event, filePath, mode, requested) => {
+    if (!isTrustedSender(event, win)) return { deleted: false };
+    const deleteMode = normalizeDeleteMode(mode);
+    if (deleteMode === null) return { deleted: false };
+    const target = validateOriginalDeletePath(filePath, deletableOriginals);
+    // Single-use: whatever the mode or answer, the same path cannot be
+    // offered again without another completed encrypt.
+    deletableOriginals.delete(target);
+    if (deleteMode === "ask") {
+        const { response } = await dialog.showMessageBox(win, {
+            type: "question",
+            buttons: ["Delete", "Keep"],
+            defaultId: 1,
+            cancelId: 1,
+            title: "Delete original",
+            message: "Encryption successful.",
+            detail: "Do you want to permanently delete the original? The encrypted file will be kept."
+        });
+        if (response !== 0) return { deleted: false };
+    } else if (requested !== true) {
+        return { deleted: false };
+    }
+    const result = await removeOriginal(target, deleteMode === "ask" ? "permanent" : deleteMode);
+    if (result.error) logger.error("files:confirm-delete-original could not remove the original");
+    return result;
 });
 
 ipcMain.handle("log:error", (event, error) => {
@@ -361,17 +707,164 @@ ipcMain.handle("log:error", (event, error) => {
 async function runSmokeTest() {
     try {
         const hasBridge = await win.webContents.executeJavaScript(
-            "Boolean(window.cryptox && window.cryptox.app && window.cryptox.crypto && window.cryptox.files)"
+            "Boolean(window.lockasaur && window.lockasaur.app && window.lockasaur.crypto && window.lockasaur.files)"
         );
         if (!hasBridge) {
             throw new Error("Preload bridge is unavailable.");
         }
+        // Exercise the real async Settings overlay in the packaged renderer:
+        // its sticky bars, ARIA tab contract, keyboard navigation and
+        // titlebar toggle all need the preload-backed app.
+        await win.webContents.executeJavaScript(`
+            (async () => {
+                const waitFor = async predicate => {
+                    for (let attempt = 0; attempt < 80; attempt += 1) {
+                        const result = predicate();
+                        if (result) return result;
+                        await new Promise(resolve => setTimeout(resolve, 25));
+                    }
+                    throw new Error("Timed out waiting for Settings UI state.");
+                };
+                const gear = document.querySelector('button[aria-controls="settings-overlay"]');
+
+                if (!gear || gear.getAttribute("aria-expanded") !== "false") {
+                    throw new Error("Settings toggle is unavailable or starts expanded.");
+                }
+
+                gear.click();
+                const overlay = await waitFor(() => document.querySelector("#settings-overlay"));
+                if (gear.getAttribute("aria-expanded") !== "true" || gear.getAttribute("aria-label") !== "Close Settings") {
+                    throw new Error("Settings toggle did not expose its open state.");
+                }
+
+                const header = overlay.querySelector(".lk-settings-header");
+                const content = overlay.querySelector(".lk-settings-content");
+                const footer = overlay.querySelector(".lk-settings-footer");
+                const tablist = overlay.querySelector('[role="tablist"]');
+                const tabs = Array.from(tablist?.querySelectorAll('[role="tab"]') || []);
+                if (!header || !content || !footer || tabs.length !== 3) {
+                    throw new Error("Settings layout or category tabs are incomplete.");
+                }
+                if (getComputedStyle(overlay).overflowY !== "auto"
+                    || getComputedStyle(header).position !== "sticky"
+                    || getComputedStyle(footer).position !== "sticky") {
+                    throw new Error("Settings overlay does not scroll under sticky bars.");
+                }
+                const headerBounds = header.getBoundingClientRect();
+                const contentBounds = content.getBoundingClientRect();
+                const footerBounds = footer.getBoundingClientRect();
+                if (headerBounds.bottom > contentBounds.top + 1 || contentBounds.bottom < footerBounds.top - 1) {
+                    throw new Error("Settings bars do not enclose the content region.");
+                }
+                if (tablist.classList.contains("lk-settings-seg") || tabs.some(tab => tab.classList.contains("lk-settings-seg-btn"))) {
+                    throw new Error("Category tabs still reuse segmented-choice styling.");
+                }
+                tabs.forEach(tab => {
+                    const panel = document.getElementById(tab.getAttribute("aria-controls"));
+                    if (!panel || panel.getAttribute("aria-labelledby") !== tab.id) {
+                        throw new Error("Settings tab and panel ARIA relationships are incomplete.");
+                    }
+                });
+
+                const behaviorTab = document.querySelector("#settings-tab-behavior");
+                behaviorTab.click();
+                await waitFor(() => behaviorTab.getAttribute("aria-selected") === "true");
+                if (getComputedStyle(document.querySelector("#settings-panel-appearance")).display !== "none") {
+                    throw new Error("Settings tab click did not switch panels.");
+                }
+                behaviorTab.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+                await new Promise(resolve => setTimeout(resolve, 0));
+                const securityTab = document.querySelector("#settings-tab-security");
+                if (securityTab.getAttribute("aria-selected") !== "true" || document.activeElement !== securityTab) {
+                    throw new Error("Settings arrow-key navigation did not activate and focus the next tab.");
+                }
+                securityTab.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+                await new Promise(resolve => setTimeout(resolve, 0));
+                const appearanceTab = document.querySelector("#settings-tab-appearance");
+                if (appearanceTab.getAttribute("aria-selected") !== "true" || document.activeElement !== appearanceTab) {
+                    throw new Error("Settings Home-key navigation did not activate the first tab.");
+                }
+
+                gear.click();
+                await waitFor(() => !document.querySelector("#settings-overlay"));
+                if (gear.getAttribute("aria-expanded") !== "false" || gear.getAttribute("aria-label") !== "Settings") {
+                    throw new Error("Second Settings toggle did not return to the main view.");
+                }
+            })()
+        `);
         // setWindowOpenHandler must deny renderer-initiated windows.
         await win.webContents.executeJavaScript("window.open(\"https://example.com\"); 0");
         if (BrowserWindow.getAllWindows().length !== 1) {
             throw new Error("Renderer was able to open a new window.");
         }
-        logger.info("Cryptox smoke test passed.");
+        // app:set-icon applies an allowlisted id on macOS (an inert false
+        // elsewhere) and rejects anything outside the allowlist.
+        const [validIcon, invalidIcon] = await win.webContents.executeJavaScript(
+            "Promise.all([window.lockasaur.app.setIcon(\"dark\"), window.lockasaur.app.setIcon(\"../evil\")])"
+        );
+        if (validIcon !== (process.platform === "darwin") || invalidIcon !== false) {
+            throw new Error("app:set-icon did not behave as expected.");
+        }
+        // Window bounds must include the frameless shadow gutter on Win/Linux
+        // and stay at the bare design size on macOS.
+        const gutter = (process.platform === "win32" || process.platform === "linux")
+            ? Constants.FRAMELESS_GUTTER : 0;
+        const [contentWidth, contentHeight] = win.getContentSize();
+        if (contentWidth !== 700 + gutter * 2 || contentHeight !== 660 + gutter * 2) {
+            throw new Error("Window content size does not match the expected design size.");
+        }
+        // L and XL are the same 700x660 logical canvas at larger zoom factors.
+        // Where the current display can accommodate a preset, verify its exact
+        // bounds and confirm the Settings sticky bars still enclose the
+        // content on that logical canvas without clipping.
+        for (const sizeId of ["l", "xl"]) {
+            const accepted = await win.webContents.executeJavaScript(`window.lockasaur.window.setSize("${sizeId}")`);
+            if (!accepted) continue;
+            const expectedBounds = windowBoundsForPreset(WINDOW_SIZE_PRESETS[sizeId]);
+            const actualBounds = win.getBounds();
+            if (actualBounds.width !== expectedBounds.width || actualBounds.height !== expectedBounds.height) {
+                throw new Error(`Window preset ${sizeId} did not apply its expected bounds.`);
+            }
+            const settingsBounds = await win.webContents.executeJavaScript(`
+                (async () => {
+                    const gear = document.querySelector('button[aria-controls="settings-overlay"]');
+                    gear.click();
+                    let overlay;
+                    for (let attempt = 0; attempt < 80; attempt += 1) {
+                        overlay = document.querySelector("#settings-overlay");
+                        if (overlay) break;
+                        await new Promise(resolve => setTimeout(resolve, 25));
+                    }
+                    if (!overlay) throw new Error("Settings did not open after resizing.");
+                    const appBounds = document.querySelector("#app").getBoundingClientRect();
+                    const headerBounds = overlay.querySelector(".lk-settings-header").getBoundingClientRect();
+                    const contentBounds = overlay.querySelector(".lk-settings-content").getBoundingClientRect();
+                    const footerBounds = overlay.querySelector(".lk-settings-footer").getBoundingClientRect();
+                    gear.click();
+                    return {
+                        appWidth: appBounds.width,
+                        appHeight: appBounds.height,
+                        headerBeforeContent: headerBounds.bottom <= contentBounds.top + 1,
+                        contentReachesFooter: contentBounds.bottom >= footerBounds.top - 1,
+                        contentHasHeight: contentBounds.height > 0
+                    };
+                })()
+            `);
+            if (Math.abs(settingsBounds.appWidth - 700) > 1 || Math.abs(settingsBounds.appHeight - 660) > 1 ||
+                !settingsBounds.headerBeforeContent || !settingsBounds.contentReachesFooter || !settingsBounds.contentHasHeight) {
+                throw new Error(`Settings layout is clipped or overlapping at the ${sizeId} preset.`);
+            }
+        }
+        // window:set-size applies only allowlisted preset ids; the default
+        // preset is a size-preserving reapply, so the bounds check above
+        // still holds afterwards.
+        const [validSize, invalidSize] = await win.webContents.executeJavaScript(
+            "Promise.all([window.lockasaur.window.setSize(\"default\"), window.lockasaur.window.setSize(\"9999x9999\")])"
+        );
+        if (validSize !== true || invalidSize !== false) {
+            throw new Error("window:set-size did not behave as expected.");
+        }
+        logger.info("Lockasaur smoke test passed.");
         app.exit(0);
     } catch (error) {
         logger.error(error);

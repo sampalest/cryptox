@@ -1,54 +1,84 @@
 <template>
-    <div>
-		<encrypt-loader v-if="loader" :files="files" :password="password" :is-decrypt="encrypted" @finish="finishOperation" @cancel="finishOperation"></encrypt-loader>
-        <password-screen v-else-if="showPassword" :is-decrypt="encrypted" @password="setPassword" @cancel="cancelPassword" @setDecrypt="setDecrypt"></password-screen>
-        <transition-group v-else id="animation-transition" appear @before-enter="beforeEnter" @enter="enter($event, 'fadeInUp')" tag="div">
-            <div class="title-block" :key="0" :data-index="0">
-                <div class="app-title">Cryptox</div>
-                <div class="app-subtitle">Secure Everything</div>
+    <div class="home-screen">
+        <encrypt-loader v-if="loader" :files="files" :password="password" :expiration="expiration" :is-decrypt="encrypted" @finish="operationFinished" @cancel="finishOperation" @retry="retryPassword"></encrypt-loader>
+        <success-screen v-else-if="success" :files="files" :is-decrypt="encrypted" @done="finishOperation"></success-screen>
+        <password-screen v-else-if="showPassword" :is-decrypt="encrypted" :files="files" @password="setPassword" @expiration="expiration = $event" @cancel="cancelPassword" @setDecrypt="setDecrypt"></password-screen>
+        <div v-else class="lk-home">
+            <div class="lk-home-head">
+                <word-mark :size="46" animate />
+                <div class="lk-home-tagline">Encryption with <span class="lk-home-bite">bite.</span></div>
             </div>
-            <div class="logo-block" :key="3" :data-index="3" role="button" tabindex="0" aria-label="Cryptox logo" @click="animateLogo" @keydown.enter.prevent="animateLogo" @keydown.space.prevent="animateLogo">
-                <img ref="logo" class="cryptox-logo" src="@/assets/cryptox_app.svg" alt="Cryptox icon">
+            <div class="lk-home-logo">
+                <dino-logo :size="280"
+                    @hold-start="ui.startBinaryRain()"
+                    @hold-cancel="ui.stopBinaryRain()"
+                    @hold-complete="enterRawr" />
                 <fileloader @imageFile="selectFile"></fileloader>
             </div>
-            <div class="description-page row" :key="2" :data-index="2">
-                <div class="col s12">Please, drag your files here or click in the button.</div>
+            <div class="lk-home-hint">Drop your files here, or let the dino fetch them.</div>
+            <div class="lk-home-actions">
+                <glass-button ref="select" variant="primary" :title="isMac ? 'Select files or folders' : null" @click="onOpen()">
+                    <lk-icon v-if="isMac" name="wand" :size="16" />
+                    <lk-icon v-else name="files" :size="16" />
+                    {{ isMac ? "Feed the Dino" : "Select Files" }}
+                </glass-button>
+                <glass-button v-if="!isMac" variant="glass" @click="onOpen('folder')">
+                    <lk-icon name="folder-open" :size="16" />
+                    Select Folder
+                </glass-button>
             </div>
-            <div class="button-block" :key="1" :data-index="1">
-                <a ref="select" role="button" tabindex="0" @click="$refs.fileInput.click()" @keydown.enter.prevent="$refs.fileInput.click()" @keydown.space.prevent="$refs.fileInput.click()" class="file-button">Select Files</a>
-            </div>
-        </transition-group>
-        <input ref="fileInput" type="file" class="hide" @change="inputFile" multiple>
+        </div>
     </div>
 </template>
 <script>
 import Constants from "@shared/constants.js";
-import animation from "@/components/mixins/animation.js";
 import sysevents from "@/components/mixins/sysevents.js";
 import FileLoader from "@/components/FileLoader.vue";
 import FileManager from "@shared/filemanager.js";
 import PasswordScreen from "@/components/PasswordScreen.vue";
 import EncryptLoader from "@/components/EncryptLoader.vue";
+import SuccessScreen from "@/components/SuccessScreen.vue";
+import GlassButton from "@/components/ui/GlassButton.vue";
+import WordMark from "@/components/ui/Wordmark.vue";
+import DinoLogo from "@/components/ui/DinoLogo.vue";
+import LkIcon from "@/components/ui/LkIcon.vue";
+import { useAppStore } from "@/store/app";
 import { useFilesStore } from "@/store/files.js";
+import { useToastStore } from "@/store/toasts";
+import { useUiStore } from "@/store/ui";
 
 export default {
     name: "home-view",
+    setup() {
+        return { appStore: useAppStore(), ui: useUiStore() };
+    },
     data: () => {
         return {
             showPassword: false,
             encrypted: true,
             password: "",
+            expiration: null,
             files: null,
             loader: false,
-            error: false,
-            animationSTO: null
+            success: false,
+            error: false
         };
     },
-    mixins: [animation, sysevents],
+    computed: {
+        isMac() {
+            return this.appStore.isMac;
+        }
+    },
+    mixins: [sysevents],
     components: {
         "fileloader": FileLoader,
         "password-screen": PasswordScreen,
-        "encrypt-loader": EncryptLoader
+        "encrypt-loader": EncryptLoader,
+        "success-screen": SuccessScreen,
+        "glass-button": GlassButton,
+        "word-mark": WordMark,
+        "dino-logo": DinoLogo,
+        "lk-icon": LkIcon
     },
     watch: {
         password() {
@@ -67,18 +97,18 @@ export default {
             this.password = password;
             this.showPassword = false;
         },
-        inputFile(e) {
-            this.selectFile(e.target.files);
-        },
-        selectFile(files) {
+        async selectFile(files) {
             let ctx = 0;
-            this.files = Array.from(files).map(file => {
+            this.files = await Promise.all(Array.from(files).map(async file => {
                 if (file.path) return file;
-                const filePath = window.cryptox.files.getPathForFile(file);
-                return new FileManager(filePath);
-            });
+                // Dropped DOM File objects only yield a path; the directory
+                // flag (chip icon) comes from the bridge.
+                const filePath = window.lockasaur.files.getPathForFile(file);
+                const isDirectory = await window.lockasaur.files.isDirectory(filePath);
+                return new FileManager(filePath, isDirectory);
+            }));
             this.files.forEach(file => {
-                if (file.name.endsWith(Constants.POINT_EXT)) {
+                if (Constants.ENCRYPTED_POINT_EXTS.some(ext => file.name.endsWith(ext))) {
                     this.encrypted = true;
                     ctx++;
                 } else {
@@ -88,44 +118,58 @@ export default {
 
             if (ctx > 0 && ctx != this.files.length) {
                 this.files = null;
-                alert("Cannot mix encrypted and unencrypted files.");
+                useToastStore().warning("Cannot mix encrypted and unencrypted files.");
                 return;
             }
 
             this.showPassword = true;
         },
+        // A finished operation shows the success screen (files kept for the
+        // output chip); cancel and Done reset straight to the home screen.
+        operationFinished() {
+            this.loader = false;
+            this.password = "";
+            this.expiration = null;
+            this.success = true;
+        },
         finishOperation() {
             this.loader = false;
+            this.success = false;
             this.cancelPassword();
+        },
+        // Wrong password with attempts left: back to the password screen with
+        // the same files. Clearing password first keeps the watcher armed even
+        // if the user retypes the same wrong password.
+        retryPassword() {
+            this.loader = false;
+            this.password = "";
+            this.showPassword = true;
         },
         cancelPassword() {
             this.showPassword = false;
             this.password = "";
+            this.expiration = null;
             this.files = null;
         },
         setDecrypt(bool) {
             this.encrypted = bool;
         },
-        animateLogo() {
-            const ANIMATION_SECONDS = 2300;
-            this.$refs.logo.classList.add("bounce-in-fwd");
-            if (this.animationSTO != null) {
-                clearTimeout(this.animationSTO);
-            }
-
-            this.animationSTO = setTimeout(() => {
-                this.$refs.logo.classList.remove("bounce-in-fwd");
-            }, ANIMATION_SECONDS);
+        enterRawr() {
+            this.ui.stopBinaryRain();
+            this.$router.push({ name: "rawr" });
         }
     },
-    beforeMount() {
+    async beforeMount() {
         const filesStore = useFilesStore();
         const path = filesStore.files;
-        if (path) this.selectFile([new FileManager(path)]);
+        if (path) this.selectFile([new FileManager(path, await window.lockasaur.files.isDirectory(path))]);
         filesStore.clearFiles();
-    },
-    beforeUnmount() {
-        clearTimeout(this.animationSTO);
+
+        // macOS is the only platform whose native dialog picks files and
+        // folders at once, so it gets one merged button; Windows and Linux
+        // keep the separate Select Folder button. The app store's isMac stays
+        // false while app info is in flight, so both buttons keep working.
+        await this.appStore.load();
     }
 };
 </script>

@@ -15,7 +15,7 @@ describe("TempManager", () => {
         expect(first).not.toBe(second);
         for (const dir of [first, second]) {
             expect(path.dirname(dir)).toBe(os.tmpdir());
-            expect(path.basename(dir)).toMatch(/^cryptox-/);
+            expect(path.basename(dir)).toMatch(/^lockasaur-/);
             expect(fs.statSync(dir).isDirectory()).toBe(true);
         }
     });

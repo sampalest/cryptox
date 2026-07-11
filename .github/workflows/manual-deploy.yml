@@ -23,7 +23,7 @@ on:
 jobs:
   # Matrix rows must be data, not expressions, so a tiny job maps the selected
   # platform to its two (runner, arch) legs. Keep the rows in sync with the
-  # package matrix in ci.yml (mac x64 cross-compiles on macos-15, APP-11).
+  # package matrix in ci.yml (mac x64 cross-compiles on macos-15).
   select:
     name: 🎛️ Select platform
     runs-on: ubuntu-latest
@@ -66,14 +66,10 @@ jobs:
         uses: ./.github/actions/setup-electron
         with:
           extra-arch: ${{ matrix.arch }}
-      - name: 🧰 Install squashfs-tools
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y squashfs-tools
       - name: 🏗️ Build & package app
         run: npm run electron:build -- --${{ matrix.arch }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-          CRYPTOX_REQUIRE_APPIMAGE_HARDEN: ${{ runner.os == 'Linux' && '1' || '' }}
       - name: ⬆️ Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -81,9 +77,7 @@ jobs:
           if-no-files-found: ignore
           path: |
             dist_electron/*.dmg
-            dist_electron/*.zip
             dist_electron/*.exe
-            dist_electron/*.AppImage
             dist_electron/*.deb
 
   deploy:
@@ -104,11 +98,11 @@ jobs:
           path: dist_electron
           pattern: dist-*
           merge-multiple: true
-      # CRYPTOX_MANUAL_RELEASE makes publish-release.mjs upsert the prerelease
+      # LOCKASAUR_MANUAL_RELEASE makes publish-release.mjs upsert the prerelease
       # "v<version>.<shortsha>" for this commit without touching any other
       # release (see scripts/publish-release.mjs).
       - name: 🚀 Publish prerelease
         env:
           GH_TOKEN: ${{ github.token }}
-          CRYPTOX_MANUAL_RELEASE: "true"
+          LOCKASAUR_MANUAL_RELEASE: "true"
         run: node scripts/publish-release.mjs

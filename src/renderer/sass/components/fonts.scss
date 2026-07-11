@@ -1,0 +1,58 @@
+/* Lockasaur type stack. All fonts are bundled (CSP: font-src 'self'). */
+
+@font-face {
+    font-family: "Poppins";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("../../assets/fonts/Poppins-Regular.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "Poppins";
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url("../../assets/fonts/Poppins-Medium.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "Poppins";
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url("../../assets/fonts/Poppins-SemiBold.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "DynaPuff";
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url("../../assets/fonts/DynaPuff.woff2") format("woff2");
+}
+
+// Montserrat is only ever used at weights 500/600/700; no 400 face is bundled.
+@font-face {
+    font-family: "Montserrat";
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url("../../assets/fonts/Montserrat-Medium.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "Montserrat";
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url("../../assets/fonts/Montserrat-SemiBold.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "Montserrat";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("../../assets/fonts/Montserrat-Bold.woff2") format("woff2");
+}

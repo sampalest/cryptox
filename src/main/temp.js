@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 /**
- * Per-operation temporary directory lifecycle (CTX-7). Each crypto operation
+ * Per-operation temporary directory lifecycle. Each crypto operation
  * owns one unpredictable mkdtemp directory under the OS temp location, keyed
  * by its operationId, so concurrent operations can never share temp paths and
  * cleanup only ever touches the operation-owned directory.
@@ -22,7 +22,7 @@ export default class TempManager {
     static async acquire(operationId, baseDir = os.tmpdir()) {
         const existing = this._dirs.get(operationId);
         if (existing) return existing;
-        const dir = await fs.promises.mkdtemp(path.join(baseDir, "cryptox-"));
+        const dir = await fs.promises.mkdtemp(path.join(baseDir, "lockasaur-"));
         this._dirs.set(operationId, dir);
         return dir;
     }
@@ -39,7 +39,7 @@ export default class TempManager {
         this._dirs.delete(operationId);
         try {
             fs.rmSync(dir, { recursive: true, force: true });
-        } catch (error) {
+        } catch {
             // Best-effort: a leftover directory must never mask the
             // operation's own result.
         }

@@ -1,13 +1,25 @@
-/* Library */
-@import "materialize/materialize.scss";
+// Lockasaur design system. @use (not @import) per Dart Sass 3.0; each module is
+// loaded once and its CSS is emitted in this order. Base layers first, then one
+// partial per component.
+@use "components/fonts";
+@use "components/tokens";
+@use "components/animations";
+@use "components/chrome";
+@use "components/master";
 
-/* Vars */
-@import "components/color.scss";
-@import "components/variables.scss";
-
-/* Core */
-@import "components/fx.scss";
-@import "components/master.scss";
-@import "components/home.scss";
-@import "components/about.scss";
-@import "components/file.scss";
+@use "components/about-overlay";
+@use "components/background-blobs";
+@use "components/binary-rain";
+@use "components/dino-logo";
+@use "components/encrypt-loader";
+@use "components/expiry-picker";
+@use "components/file-loader";
+@use "components/glass-button";
+@use "components/home";
+@use "components/lockasaur-lock";
+@use "components/password-screen";
+@use "components/rawr";
+@use "components/settings-overlay";
+@use "components/success-screen";
+@use "components/toasts";
+@use "components/wordmark";

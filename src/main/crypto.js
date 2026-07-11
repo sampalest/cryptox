@@ -1,5 +1,5 @@
 import Constants from "../shared/constants.js";
-import { CancelledError } from "../shared/exceptions.js";
+import { CancelledError, ExpiredError, WrongPasswordError } from "../shared/exceptions.js";
 import Format from "./format.js";
 import TempManager from "./temp.js";
 import Utils from "./utils.js";
@@ -11,9 +11,28 @@ import IVector from "./vector.js";
 const AES256 = "aes-256-gcm";
 
 export default class Crypto {
-    constructor(password, operationId = crypto.randomUUID()) {
+    constructor(password, operationId = crypto.randomUUID(), options = {}) {
         this.password = password;
         this.operationId = operationId;
+        // Encrypt-time erase policy ({ maxAttempts } or null): baked into the
+        // authenticated DINO header so it travels with the file.
+        this.erasePolicy = options.erasePolicy || null;
+        // Populated by a DINO decrypt whose header carries an erase policy:
+        // { maxAttempts, attempts, counterOffset, dev, ino }. The IPC handler
+        // uses it to count failed attempts and to reset the counter on success.
+        this.eraseInfo = null;
+        // Encrypt-time expiration ({ at: epoch ms } or null): baked into the
+        // authenticated DINO header so it travels with the file.
+        this.expiration = options.expiration || null;
+        // Time source for decrypt-time expiration checks; without one the
+        // system clock is used. Injected by the IPC handler (or tests).
+        this.timeProvider = options.timeProvider || null;
+        // Populated by a DINO decrypt whose header carries an expiration.
+        this.expiresAt = null;
+        // True when a trusted source was configured but unreachable and the
+        // check fell back to the system clock; surfaced in the IPC result.
+        this.trustedTimeUnavailable = false;
+        this._timeCheck = null;
         this._cancelled = false;
         this._destroyables = new Set();
     }
@@ -41,6 +60,34 @@ export default class Crypto {
      */
     _checkCancelled() {
         if (this._cancelled) throw new CancelledError();
+    }
+
+    /**
+     * Fetch the operation's time verdict once (network at most once per
+     * operation; never during finalize). Only called when the parsed header
+     * carries an expiration, so non-expiring files never touch the network.
+     * @function _fetchTrustedTime
+     * @return {Promise<Number>} The verdict in epoch ms.
+     * @throws {TimeUnavailableError} From a fail-closed provider.
+     */
+    async _fetchTrustedTime() {
+        const verdict = this.timeProvider
+            ? await this.timeProvider.now()
+            : { nowMs: Date.now(), source: "system", trusted: false };
+        this.trustedTimeUnavailable = verdict.fallback === true;
+        this._timeCheck = { nowMs: verdict.nowMs, atHrtime: process.hrtime.bigint() };
+        return verdict.nowMs;
+    }
+
+    /**
+     * The fetched verdict advanced by the monotonic clock, so the finalize
+     * re-check stays boundary-correct on long decrypts without network I/O.
+     * @function _effectiveNowMs
+     * @return {Number} Epoch ms.
+     */
+    _effectiveNowMs() {
+        if (!this._timeCheck) return Date.now();
+        return this._timeCheck.nowMs + Number((process.hrtime.bigint() - this._timeCheck.atHrtime) / 1000000n);
     }
 
     /**
@@ -198,10 +245,12 @@ export default class Crypto {
         if (onStatus) onStatus({ loader: false });
         this._checkCancelled();
 
-        // CTX1 header: the original name travels in the (authenticated) header
+        // DINO header: the original name travels in the (authenticated) header
         // instead of a trailing padded-extension field, and a flag bit marks
-        // directory payloads instead of the old magic "tar" extension.
-        const header = Format.buildHeaderV1({
+        // directory payloads instead of the old magic "tar" extension. The
+        // erase policy, when enabled, is authenticated too; only the mutable
+        // counter block (zeroed here) stays outside the AAD.
+        const meta = {
             alg: Format.ALG_AES_256_GCM,
             kdf: Format.KDF_ARGON2ID,
             salt: salt.toString("base64"),
@@ -209,7 +258,10 @@ export default class Crypto {
             memlimit: memlimit,
             keyLen: Constants.KEY_LEN,
             name: isDirectory ? `${file.name}.tar` : file.name
-        }, isDirectory ? Format.FLAG_DIRECTORY : 0);
+        };
+        if (this.erasePolicy) meta.erase = { maxAttempts: this.erasePolicy.maxAttempts };
+        if (this.expiration) meta.expires = { at: this.expiration.at };
+        const header = Format.buildHeaderDino(meta, isDirectory ? Format.FLAG_DIRECTORY : 0);
 
         // The ciphertext is staged in a hidden, randomly named temp file next
         // to the destination (mirroring _streamDecrypt) and only moved into
@@ -222,13 +274,15 @@ export default class Crypto {
             const readStream = fs.createReadStream(filepath);
             const cipher = crypto.createCipheriv(AES256, CIPHER_KEY, initVect);
             // The header is associated data: the GCM tag authenticates it, so
-            // any tampering with the stored metadata fails decryption.
-            cipher.setAAD(header);
+            // any tampering with the stored metadata fails decryption. The
+            // on-disk bytes additionally carry the mutable counter block,
+            // which the AAD deliberately skips.
+            cipher.setAAD(header.aad);
             const appendInitVect = new IVector(initVect);
             const writeStream = fs.createWriteStream(writePath, { flags: "wx" });
             this._track(readStream, cipher, writeStream);
             // Header is written first so the file is [header][IV][ciphertext][authTag].
-            writeStream.write(header);
+            writeStream.write(header.disk);
 
             // Destroying one stream of the pipeline makes the others error
             // too, so teardown must be idempotent and remove the staged
@@ -239,7 +293,7 @@ export default class Crypto {
                     // The staged output has a random operation-owned name,
                     // so it is always ours to remove.
                     if (fs.existsSync(writePath)) fs.unlinkSync(writePath);
-                } catch (cleanupError) {
+                } catch {
                     // Best-effort cleanup; surface the original error.
                 }
             };
@@ -309,9 +363,9 @@ export default class Crypto {
     }
 
     /**
-     * Decrypt File. Dispatches on the on-disk format: CTX1 (authenticated
-     * header), interim CTXBOX (0.3.x alphas, read-only) or raw legacy
-     * (IV-first, SHA-256 key).
+     * Decrypt File. Dispatches on the on-disk format: DINO (current), CTX1
+     * (pre-rebrand, read-only), interim CTXBOX (0.3.x alphas, read-only) or
+     * raw legacy (IV-first, SHA-256 key).
      * @async
      * @function decrypt
      * @param {String} file File path
@@ -320,11 +374,13 @@ export default class Crypto {
      */
     async decrypt(file, completeFile, events = {}) {
         try {
-            // All three paths resolve only after extraction completed, so a
+            // All paths resolve only after extraction completed, so a
             // single release here covers success and failure for each format.
             const size = fs.statSync(file.path).size;
             const head = await this._readBytes(file.path, 0, Math.min(size, 9));
             switch (Format.detectFormat(head)) {
+            case "dino":
+                return await this._decryptDino(file, size, completeFile, events);
             case "ctx1":
                 return await this._decryptV1(file, size, completeFile, events);
             case "ctxbox":
@@ -338,9 +394,49 @@ export default class Crypto {
     }
 
     /**
-     * Decrypt a CTX1 file: bounded header parse, Argon2id key from the stored
-     * params, header bytes verified as GCM associated data, output name taken
-     * from the (authenticated) header.
+     * Decrypt a DINO file: bounded header parse (mutable counter block
+     * excluded from the AAD), erase policy surfaced via `eraseInfo` for the
+     * IPC handler, shared headered tail for KDF and streaming.
+     * @function _decryptDino
+     */
+    async _decryptDino(file, size, completeFile, events = {}) {
+        this._checkCancelled();
+        const prefix = await this._readBytes(file.path, 0, Format.PREFIX_LEN_DINO);
+        const { headerLen } = Format.parsePrefixDino(prefix);
+        if (size < Format.PREFIX_LEN_DINO + headerLen + Format.IV_LEN + Format.TAG_LEN) {
+            throw new Format.FormatError("file too short for DINO payload");
+        }
+        const headerBuf = await this._readBytes(file.path, 0, Format.PREFIX_LEN_DINO + headerLen);
+        const { flags, meta, aadBytes, counter, payloadStart } = Format.parseHeaderDino(headerBuf, size);
+        if (meta.expires) {
+            // Pre-flight expiration deny on the parsed (not yet verified)
+            // header: an already-expired file never reaches the KDF and never
+            // stages a single plaintext byte. Tampering the field pre-auth can
+            // only self-DoS; hiding it fails GCM auth at stream end, where the
+            // finalize re-check is the authoritative gate.
+            this.expiresAt = meta.expires.at;
+            const nowMs = await this._fetchTrustedTime();
+            this._checkCancelled();
+            if (nowMs >= this.expiresAt) throw new ExpiredError();
+        }
+        if (meta.erase) {
+            // dev/ino pin the identity of the file whose header was parsed, so
+            // the counter/erase writer can refuse a path swapped underneath it.
+            const stats = await fs.promises.lstat(file.path);
+            this.eraseInfo = {
+                maxAttempts: meta.erase.maxAttempts,
+                attempts: counter,
+                counterOffset: Format.COUNTER_OFFSET,
+                dev: stats.dev,
+                ino: stats.ino
+            };
+        }
+        return this._decryptHeadered(file, size, completeFile, events, { flags, meta, aad: aadBytes, payloadStart });
+    }
+
+    /**
+     * Decrypt a CTX1 file (pre-rebrand, read-only): bounded header parse, the
+     * whole header is the AAD, no mutable block.
      * @function _decryptV1
      */
     async _decryptV1(file, size, completeFile, events = {}) {
@@ -352,7 +448,17 @@ export default class Crypto {
         }
         const headerBuf = await this._readBytes(file.path, 0, Format.PREFIX_LEN_V1 + headerLen);
         const { flags, meta, headerBytes } = Format.parseHeaderV1(headerBuf, size);
+        return this._decryptHeadered(file, size, completeFile, events, { flags, meta, aad: headerBytes, payloadStart: headerBytes.length });
+    }
 
+    /**
+     * Shared tail of the DINO/CTX1 paths: Argon2id key from the stored params,
+     * header bytes verified as GCM associated data, output name taken from
+     * the (authenticated) header.
+     * @function _decryptHeadered
+     * @param {Object} parsed { flags, meta, aad, payloadStart } from the format parser.
+     */
+    async _decryptHeadered(file, size, completeFile, events, { flags, meta, aad, payloadStart }) {
         await this._ready();
         // Argon2id is synchronous and CPU/memory heavy; show the indeterminate bar while it runs.
         if (events.onStatus) events.onStatus({ loader: true, msg: "Preparing secure key..." });
@@ -360,8 +466,7 @@ export default class Crypto {
         if (events.onStatus) events.onStatus({ loader: false });
         this._checkCancelled();
 
-        const headerEnd = headerBytes.length;
-        const iv = await this._readBytes(file.path, headerEnd, Format.IV_LEN);
+        const iv = await this._readBytes(file.path, payloadStart, Format.IV_LEN);
         const authTag = await this._readBytes(file.path, size - Format.TAG_LEN, Format.TAG_LEN);
 
         const targetDir = path.dirname(file.path);
@@ -369,8 +474,8 @@ export default class Crypto {
         let outPath, extractTo;
         if (isDirectory) {
             // Payload is a tar'd directory: write the archive to this
-            // operation's temp directory, then extract next to the .ctx file
-            // under the original directory name.
+            // operation's temp directory, then extract next to the encrypted
+            // file under the original directory name.
             const dirName = path.parse(meta.name).name;
             if (!dirName) throw new Format.FormatError("header name has no directory stem");
             const tempDir = await TempManager.acquire(this.operationId);
@@ -388,8 +493,8 @@ export default class Crypto {
             cipherKey: cipherKey,
             iv: iv,
             authTag: authTag,
-            aad: headerBytes,
-            ctStart: headerEnd + Format.IV_LEN,
+            aad: aad,
+            ctStart: payloadStart + Format.IV_LEN,
             ctEnd: size - Format.TAG_LEN - 1,
             outPath: outPath,
             extractTo: extractTo,
@@ -424,7 +529,7 @@ export default class Crypto {
         let meta;
         try {
             meta = JSON.parse(jsonBuf.toString("utf-8"));
-        } catch (error) {
+        } catch {
             throw new Format.FormatError("header is not valid JSON");
         }
         Format.validateKdfParams(meta);
@@ -524,7 +629,7 @@ export default class Crypto {
      * @return {String}
      */
     _tempOutputPath(finalPath) {
-        return path.join(path.dirname(finalPath), `.cryptox-part-${crypto.randomBytes(8).toString("hex")}`);
+        return path.join(path.dirname(finalPath), `.lockasaur-part-${crypto.randomBytes(8).toString("hex")}`);
     }
 
     /**
@@ -589,6 +694,14 @@ export default class Crypto {
                     // A cancel can race stream completion: never move a
                     // cancelled output into place, even fully authenticated.
                     if (this._cancelled) return cleanupAndReject(new CancelledError());
+                    // Authoritative expiration gate: GCM has authenticated the
+                    // header by now, and the staged plaintext is not yet
+                    // visible. Raised outside the decipher-error path, so it
+                    // is never classified as a wrong password and never burns
+                    // erase-policy attempts.
+                    if (this.expiresAt !== null && this._effectiveNowMs() >= this.expiresAt) {
+                        return cleanupAndReject(new ExpiredError());
+                    }
                     // The plaintext is authenticated but still staged/hidden:
                     // tell the UI finalization is running and reserve 100% for
                     // "visible at the final path".
@@ -617,7 +730,7 @@ export default class Crypto {
                     if (onStatus) onStatus({ loader: false });
                     try {
                         if (fs.existsSync(writePath)) fs.unlinkSync(writePath);
-                    } catch (cleanupError) {
+                    } catch {
                         // Best-effort cleanup; surface the original decrypt error.
                     }
                     reject(error);
@@ -629,6 +742,11 @@ export default class Crypto {
                     // range (start > end is rejected by fs).
                     try {
                         decipher.final();
+                    } catch (error) {
+                        // final() throwing here is by definition an auth failure.
+                        return cleanupAndReject(new WrongPasswordError(error));
+                    }
+                    try {
                         fs.writeFileSync(writePath, Buffer.alloc(0), { flag: "wx" });
                     } catch (error) {
                         return cleanupAndReject(error);
@@ -650,9 +768,25 @@ export default class Crypto {
                     writeStream.destroy();
                     cleanupAndReject(error);
                 };
-                readStream.on("error", handleError);
-                decipher.on("error", handleError);
-                writeStream.on("error", handleError);
+                // Only a decipher error emitted after the ciphertext fully
+                // streamed, with no prior I/O error and no cancel, is a GCM
+                // authentication failure. I/O, staging and cancellation errors
+                // must never be classified as a wrong password (they would
+                // otherwise burn erase-policy attempts).
+                let readEnded = false;
+                let sawIoError = false;
+                readStream.on("end", () => { readEnded = true; });
+                const handleIoError = error => {
+                    sawIoError = true;
+                    handleError(error);
+                };
+                const handleDecipherError = error => {
+                    const isAuthFailure = readEnded && !sawIoError && !this._cancelled && !(error instanceof CancelledError);
+                    handleError(isAuthFailure ? new WrongPasswordError(error) : error);
+                };
+                readStream.on("error", handleIoError);
+                decipher.on("error", handleDecipherError);
+                writeStream.on("error", handleIoError);
 
                 // Streaming runs 0->99%; 100% is reserved for the moment the
                 // output is visible at its final path (moved or extracted).

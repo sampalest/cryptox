@@ -42,7 +42,7 @@ execFileSync("ditto", ["-x", "-k", zip, distDir], { cwd: rootDir, stdio: "inheri
 writeFileSync(path.join(electronDir, "path.txt"), "Electron.app/Contents/MacOS/Electron");
 execFileSync("test", ["-x", executable]);
 
-// APP-11: the mac x64 leg cross-compiles on the arm64 runner, and app-builder's
+// The mac x64 leg cross-compiles on the arm64 runner, and app-builder's
 // own download of the target-arch Electron dist has no retry loop (it EOFs
 // intermittently just like install.js above). Prefetch that zip ourselves,
 // checksum-verified against SHASUMS256.txt, into the flat cache path

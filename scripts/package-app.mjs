@@ -1,4 +1,4 @@
-// APP-11: packaging entry point. Runs electron-builder with this script's CLI
+// Packaging entry point. Runs electron-builder with this script's CLI
 // arguments (so "npm run electron:build -- --x64" still reaches
 // electron-builder; npm appends extra args to the end of the script line,
 // which is this script), then hardens any built AppImages (see

@@ -63,7 +63,7 @@ describe("Utils", () => {
         let tempDir;
 
         beforeEach(() => {
-            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cryptox-unique-"));
+            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "lockasaur-unique-"));
         });
 
         afterEach(() => {
@@ -109,7 +109,7 @@ describe("Utils", () => {
         let outputDir;
 
         beforeEach(() => {
-            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cryptox-tar-"));
+            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "lockasaur-tar-"));
             tarPath = path.join(tempDir, "archive.tar");
             outputDir = path.join(tempDir, "output");
         });
@@ -119,7 +119,7 @@ describe("Utils", () => {
         });
 
         const leftoverTempDirs = () =>
-            fs.readdirSync(tempDir).filter(name => name.startsWith(".cryptox-extract-"));
+            fs.readdirSync(tempDir).filter(name => name.startsWith(".lockasaur-extract-"));
 
         it("extracts files and directories and resolves when done", async () => {
             await writeTar(tarPath, [
