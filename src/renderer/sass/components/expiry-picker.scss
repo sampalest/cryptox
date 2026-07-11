@@ -15,7 +15,6 @@
         linear-gradient(135deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.02) 58%),
         var(--surface);
     backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
     border: 1px solid var(--bd);
     box-shadow: inset 0 1px 0 var(--glass-edge), var(--dialog-shadow);
     user-select: none;

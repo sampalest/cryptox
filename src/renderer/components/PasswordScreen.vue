@@ -1,6 +1,6 @@
 <template>
-    <!-- novalidate: every validation surfaces through the fixed-height
-         .lk-pass-error-slot, never the browser's native bubble. -->
+    <!-- novalidate: every validation surfaces as a toast, never the
+         browser's native bubble. -->
     <form class="lk-pass" novalidate @submit.prevent="submitStep">
         <transition :name="stepTransition" mode="out-in">
             <div v-if="step === 1" key="credentials" class="lk-pass-step">
@@ -19,8 +19,7 @@
                         <input :type="showPassword ? 'text' : 'password'" name="password" id="password" v-model="password"
                             placeholder="Password"
                             :autocomplete="isDecrypt ? 'current-password' : 'new-password'"
-                            autocapitalize="off" autocorrect="off" spellcheck="false"
-                            @input="error = ''">
+                            autocapitalize="off" autocorrect="off" spellcheck="false">
                         <button type="button" class="lk-eye" :aria-label="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword">
                             <lk-icon v-if="showPassword" name="eye-off" :size="16" />
                             <lk-icon v-else name="eye" :size="16" />
@@ -30,28 +29,24 @@
                         <lk-icon name="lock" :width="15" :height="16" />
                         <input :type="showNewPassword ? 'text' : 'password'" name="newpassword" id="newpassword" v-model="newPassword"
                             placeholder="Retype password"
-                            autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"
-                            @input="error = ''">
+                            autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
                         <button type="button" class="lk-eye" :aria-label="showNewPassword ? 'Hide password' : 'Show password'" @click="showNewPassword = !showNewPassword">
                             <lk-icon v-if="showNewPassword" name="eye-off" :size="16" />
                             <lk-icon v-else name="eye" :size="16" />
                         </button>
                     </div>
                 </div>
-                <div v-if="deleteBehavior.usesCheckbox || !isDecrypt" class="lk-pass-options">
-                    <label v-if="deleteBehavior.usesCheckbox" class="lk-pass-delete" :title="deleteTitle">
-                        <input class="lk-pass-delete-input" type="checkbox" :checked="deleteChecked" @change="toggleDelete($event.target.checked)">
-                        <span class="lk-pass-delete-box" aria-hidden="true">
-                            <lk-icon name="check-bold" :size="11" />
+                <div v-if="optionRows.length" class="lk-pass-rows">
+                    <label v-for="row in optionRows" :key="row.key" class="lk-pass-row">
+                        <input class="lk-pass-row-input" type="checkbox" :checked="row.checked" @change="row.change($event)">
+                        <span class="lk-pass-row-icon" aria-hidden="true">
+                            <lk-icon :name="row.icon" :size="17" />
                         </span>
-                        <span class="lk-pass-delete-text">{{ deleteLabel }}</span>
-                    </label>
-                    <label v-if="!isDecrypt" class="lk-pass-delete" title="The file refuses to decrypt after this date">
-                        <input class="lk-pass-delete-input" type="checkbox" :checked="expireEnabled" @change="toggleExpire($event.target.checked)">
-                        <span class="lk-pass-delete-box" aria-hidden="true">
-                            <lk-icon name="check-bold" :size="11" />
+                        <span class="lk-pass-row-text">
+                            <span class="lk-pass-row-label">{{ row.label }}</span>
+                            <span class="lk-pass-row-hint">{{ row.hint }}</span>
                         </span>
-                        <span class="lk-pass-delete-text">Set an expiration date</span>
+                        <span class="lk-pass-row-switch" aria-hidden="true"></span>
                     </label>
                 </div>
             </div>
@@ -67,9 +62,6 @@
                 </div>
             </div>
         </transition>
-        <div class="lk-pass-error-slot" aria-live="polite">
-            <div v-if="error" class="lk-error">{{ error }}</div>
-        </div>
         <div class="lk-pass-actions">
             <glass-button variant="glass" @click="secondaryAction">
                 <lk-icon v-if="step === 2" name="chevron-left" :size="15" />
@@ -91,11 +83,13 @@ import ExpiryPicker from "@/components/ui/ExpiryPicker.vue";
 import GlassButton from "@/components/ui/GlassButton.vue";
 import LkIcon from "@/components/ui/LkIcon.vue";
 import { useDeleteBehaviorStore } from "@/store/deleteBehavior";
+import { useErasePolicyStore } from "@/store/erasePolicy";
+import { useToastStore } from "@/store/toasts";
 
 export default {
     name: "password-screen",
     setup() {
-        return { deleteBehavior: useDeleteBehaviorStore() };
+        return { deleteBehavior: useDeleteBehaviorStore(), erasePolicy: useErasePolicyStore(), toasts: useToastStore() };
     },
     data: () => {
         return {
@@ -107,8 +101,7 @@ export default {
             showNewPassword: false,
             expireEnabled: false,
             expireAt: null,
-            minMs: 0,
-            error: ""
+            minMs: 0
         };
     },
     components: {
@@ -147,6 +140,38 @@ export default {
         deleteTitle() {
             return this.deleteBehavior.mode === "permanent" ? "Deleted permanently" : "Moved to the Trash";
         },
+        optionRows() {
+            const rows = [];
+            if (this.deleteBehavior.usesCheckbox) {
+                rows.push({
+                    key: "delete",
+                    icon: "trash",
+                    label: this.deleteLabel,
+                    hint: this.deleteTitle,
+                    checked: this.deleteChecked,
+                    change: event => this.toggleDelete(event.target.checked)
+                });
+            }
+            if (!this.isDecrypt) {
+                rows.push({
+                    key: "expire",
+                    icon: "clock",
+                    label: "Set an expiration date",
+                    hint: "Configured on the next screen",
+                    checked: this.expireEnabled,
+                    change: event => this.toggleExpire(event.target.checked)
+                });
+                rows.push({
+                    key: "erase",
+                    icon: "shield-alert",
+                    label: "Erase after failed attempts",
+                    hint: `Self-destructs after ${this.erasePolicy.maxAttempts} wrong passwords`,
+                    checked: this.erasePolicy.enabled,
+                    change: event => this.toggleErase(event)
+                });
+            }
+            return rows;
+        },
         goesToExpiry() {
             return !this.isDecrypt && this.expireEnabled && this.step === 1;
         },
@@ -162,11 +187,6 @@ export default {
             return new Date(this.expireAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
         }
     },
-    watch: {
-        expireAt() {
-            this.error = "";
-        }
-    },
     methods: {
         toggleDelete(checked) {
             if (this.isDecrypt) this.deleteBehavior.setDeleteEncrypted(checked);
@@ -174,13 +194,17 @@ export default {
         },
         toggleExpire(checked) {
             this.expireEnabled = checked;
-            this.error = "";
+        },
+        // Enabling still runs the native irreversible-loss confirm (store side);
+        // declining leaves the store off, so snap the checkbox back to it.
+        async toggleErase(event) {
+            await this.erasePolicy.choose(event.target.checked ? this.erasePolicy.maxAttempts : "off");
+            event.target.checked = this.erasePolicy.enabled;
         },
         secondaryAction() {
             if (this.step === 2) {
                 this.stepBack = true;
                 this.step = 1;
-                this.error = "";
                 return;
             }
             this.$emit("cancel");
@@ -202,7 +226,7 @@ export default {
                 this.newPassword = "";
                 this.showPassword = false;
                 this.showNewPassword = false;
-                this.error = error.message;
+                this.toasts.error(error.message);
                 return false;
             }
         },
@@ -220,14 +244,13 @@ export default {
                     }
                     this.stepBack = false;
                     this.step = 2;
-                    this.error = "";
                     return;
                 }
                 this.emitObject();
                 return;
             }
             if (!this.expireAt || this.expireAt <= Date.now()) {
-                this.error = "The expiration date must be in the future.";
+                this.toasts.error("The expiration date must be in the future.");
                 return;
             }
             this.emitObject();

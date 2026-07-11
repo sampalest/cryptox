@@ -8,12 +8,14 @@
     <SettingsOverlay v-if="ui.settingsOpen" />
     <AboutOverlay v-if="ui.aboutOpen" />
     <BinaryRain v-if="ui.binaryRainActive" />
+    <ToastStack />
   </div>
 </template>
 <script>
 import { defineAsyncComponent } from "vue";
 import TitleBar from "@/components/TitleBar.vue";
 import BackgroundBlobs from "@/components/BackgroundBlobs.vue";
+import ToastStack from "@/components/ToastStack.vue";
 import { useAppIconStore } from "@/store/appIcon";
 import { useAppStore } from "@/store/app";
 import { useDeleteBehaviorStore } from "@/store/deleteBehavior";
@@ -27,6 +29,7 @@ export default {
     components: {
         TitleBar,
         BackgroundBlobs,
+        ToastStack,
         // The overlays are v-if gated and rarely open, so each is an async
         // chunk fetched on first open (disk-local, a few ms) instead of
         // weighing down the initial bundle. Entry animations still start at

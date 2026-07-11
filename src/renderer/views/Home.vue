@@ -44,6 +44,7 @@ import DinoLogo from "@/components/ui/DinoLogo.vue";
 import LkIcon from "@/components/ui/LkIcon.vue";
 import { useAppStore } from "@/store/app";
 import { useFilesStore } from "@/store/files.js";
+import { useToastStore } from "@/store/toasts";
 import { useUiStore } from "@/store/ui";
 
 export default {
@@ -117,7 +118,7 @@ export default {
 
             if (ctx > 0 && ctx != this.files.length) {
                 this.files = null;
-                alert("Cannot mix encrypted and unencrypted files.");
+                useToastStore().warning("Cannot mix encrypted and unencrypted files.");
                 return;
             }
 

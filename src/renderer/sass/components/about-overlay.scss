@@ -42,7 +42,6 @@
     margin-top: 6px;
     background: var(--surface);
     backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
     border: 1px solid var(--bd);
     border-radius: 999px;
     padding: 5px 14px;
@@ -79,7 +78,6 @@
     text-decoration: none;
     background: var(--surface);
     backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
     box-shadow: inset 0 1px 0 var(--glass-edge), 0 6px 18px rgba(20, 24, 32, 0.08);
     color: var(--text);
     border: 1.5px solid var(--bd);

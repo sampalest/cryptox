@@ -15,9 +15,11 @@
       <button
         class="lk-titlebar-btn lk-titlebar-btn-gear"
         type="button"
-        aria-label="Settings"
-        title="Settings"
-        @click="ui.openSettings()"
+        aria-controls="settings-overlay"
+        :aria-expanded="ui.settingsOpen"
+        :aria-label="ui.settingsOpen ? 'Close Settings' : 'Settings'"
+        :title="ui.settingsOpen ? 'Close Settings' : 'Settings'"
+        @click="ui.toggleSettings()"
       >
         <lk-icon name="settings" :size="16" aria-hidden="true" />
       </button>

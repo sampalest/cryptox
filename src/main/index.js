@@ -712,6 +712,86 @@ async function runSmokeTest() {
         if (!hasBridge) {
             throw new Error("Preload bridge is unavailable.");
         }
+        // Exercise the real async Settings overlay in the packaged renderer:
+        // its sticky bars, ARIA tab contract, keyboard navigation and
+        // titlebar toggle all need the preload-backed app.
+        await win.webContents.executeJavaScript(`
+            (async () => {
+                const waitFor = async predicate => {
+                    for (let attempt = 0; attempt < 80; attempt += 1) {
+                        const result = predicate();
+                        if (result) return result;
+                        await new Promise(resolve => setTimeout(resolve, 25));
+                    }
+                    throw new Error("Timed out waiting for Settings UI state.");
+                };
+                const gear = document.querySelector('button[aria-controls="settings-overlay"]');
+
+                if (!gear || gear.getAttribute("aria-expanded") !== "false") {
+                    throw new Error("Settings toggle is unavailable or starts expanded.");
+                }
+
+                gear.click();
+                const overlay = await waitFor(() => document.querySelector("#settings-overlay"));
+                if (gear.getAttribute("aria-expanded") !== "true" || gear.getAttribute("aria-label") !== "Close Settings") {
+                    throw new Error("Settings toggle did not expose its open state.");
+                }
+
+                const header = overlay.querySelector(".lk-settings-header");
+                const content = overlay.querySelector(".lk-settings-content");
+                const footer = overlay.querySelector(".lk-settings-footer");
+                const tablist = overlay.querySelector('[role="tablist"]');
+                const tabs = Array.from(tablist?.querySelectorAll('[role="tab"]') || []);
+                if (!header || !content || !footer || tabs.length !== 3) {
+                    throw new Error("Settings layout or category tabs are incomplete.");
+                }
+                if (getComputedStyle(overlay).overflowY !== "auto"
+                    || getComputedStyle(header).position !== "sticky"
+                    || getComputedStyle(footer).position !== "sticky") {
+                    throw new Error("Settings overlay does not scroll under sticky bars.");
+                }
+                const headerBounds = header.getBoundingClientRect();
+                const contentBounds = content.getBoundingClientRect();
+                const footerBounds = footer.getBoundingClientRect();
+                if (headerBounds.bottom > contentBounds.top + 1 || contentBounds.bottom < footerBounds.top - 1) {
+                    throw new Error("Settings bars do not enclose the content region.");
+                }
+                if (tablist.classList.contains("lk-settings-seg") || tabs.some(tab => tab.classList.contains("lk-settings-seg-btn"))) {
+                    throw new Error("Category tabs still reuse segmented-choice styling.");
+                }
+                tabs.forEach(tab => {
+                    const panel = document.getElementById(tab.getAttribute("aria-controls"));
+                    if (!panel || panel.getAttribute("aria-labelledby") !== tab.id) {
+                        throw new Error("Settings tab and panel ARIA relationships are incomplete.");
+                    }
+                });
+
+                const behaviorTab = document.querySelector("#settings-tab-behavior");
+                behaviorTab.click();
+                await waitFor(() => behaviorTab.getAttribute("aria-selected") === "true");
+                if (getComputedStyle(document.querySelector("#settings-panel-appearance")).display !== "none") {
+                    throw new Error("Settings tab click did not switch panels.");
+                }
+                behaviorTab.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+                await new Promise(resolve => setTimeout(resolve, 0));
+                const securityTab = document.querySelector("#settings-tab-security");
+                if (securityTab.getAttribute("aria-selected") !== "true" || document.activeElement !== securityTab) {
+                    throw new Error("Settings arrow-key navigation did not activate and focus the next tab.");
+                }
+                securityTab.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+                await new Promise(resolve => setTimeout(resolve, 0));
+                const appearanceTab = document.querySelector("#settings-tab-appearance");
+                if (appearanceTab.getAttribute("aria-selected") !== "true" || document.activeElement !== appearanceTab) {
+                    throw new Error("Settings Home-key navigation did not activate the first tab.");
+                }
+
+                gear.click();
+                await waitFor(() => !document.querySelector("#settings-overlay"));
+                if (gear.getAttribute("aria-expanded") !== "false" || gear.getAttribute("aria-label") !== "Settings") {
+                    throw new Error("Second Settings toggle did not return to the main view.");
+                }
+            })()
+        `);
         // setWindowOpenHandler must deny renderer-initiated windows.
         await win.webContents.executeJavaScript("window.open(\"https://example.com\"); 0");
         if (BrowserWindow.getAllWindows().length !== 1) {
@@ -732,6 +812,48 @@ async function runSmokeTest() {
         const [contentWidth, contentHeight] = win.getContentSize();
         if (contentWidth !== 700 + gutter * 2 || contentHeight !== 660 + gutter * 2) {
             throw new Error("Window content size does not match the expected design size.");
+        }
+        // L and XL are the same 700x660 logical canvas at larger zoom factors.
+        // Where the current display can accommodate a preset, verify its exact
+        // bounds and confirm the Settings sticky bars still enclose the
+        // content on that logical canvas without clipping.
+        for (const sizeId of ["l", "xl"]) {
+            const accepted = await win.webContents.executeJavaScript(`window.lockasaur.window.setSize("${sizeId}")`);
+            if (!accepted) continue;
+            const expectedBounds = windowBoundsForPreset(WINDOW_SIZE_PRESETS[sizeId]);
+            const actualBounds = win.getBounds();
+            if (actualBounds.width !== expectedBounds.width || actualBounds.height !== expectedBounds.height) {
+                throw new Error(`Window preset ${sizeId} did not apply its expected bounds.`);
+            }
+            const settingsBounds = await win.webContents.executeJavaScript(`
+                (async () => {
+                    const gear = document.querySelector('button[aria-controls="settings-overlay"]');
+                    gear.click();
+                    let overlay;
+                    for (let attempt = 0; attempt < 80; attempt += 1) {
+                        overlay = document.querySelector("#settings-overlay");
+                        if (overlay) break;
+                        await new Promise(resolve => setTimeout(resolve, 25));
+                    }
+                    if (!overlay) throw new Error("Settings did not open after resizing.");
+                    const appBounds = document.querySelector("#app").getBoundingClientRect();
+                    const headerBounds = overlay.querySelector(".lk-settings-header").getBoundingClientRect();
+                    const contentBounds = overlay.querySelector(".lk-settings-content").getBoundingClientRect();
+                    const footerBounds = overlay.querySelector(".lk-settings-footer").getBoundingClientRect();
+                    gear.click();
+                    return {
+                        appWidth: appBounds.width,
+                        appHeight: appBounds.height,
+                        headerBeforeContent: headerBounds.bottom <= contentBounds.top + 1,
+                        contentReachesFooter: contentBounds.bottom >= footerBounds.top - 1,
+                        contentHasHeight: contentBounds.height > 0
+                    };
+                })()
+            `);
+            if (Math.abs(settingsBounds.appWidth - 700) > 1 || Math.abs(settingsBounds.appHeight - 660) > 1 ||
+                !settingsBounds.headerBeforeContent || !settingsBounds.contentReachesFooter || !settingsBounds.contentHasHeight) {
+                throw new Error(`Settings layout is clipped or overlapping at the ${sizeId} preset.`);
+            }
         }
         // window:set-size applies only allowlisted preset ids; the default
         // preset is a size-preserving reapply, so the bounds check above

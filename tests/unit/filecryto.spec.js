@@ -3,6 +3,7 @@ import fileCrypto from "@/components/mixins/filecryto.js";
 import Constants from "@shared/constants.js";
 import { useDeleteBehaviorStore } from "@/store/deleteBehavior.js";
 import { useErasePolicyStore } from "@/store/erasePolicy.js";
+import { useToastStore } from "@/store/toasts.js";
 
 /**
  * The mixin is a plain object, so it is testable without mounting components:
@@ -20,6 +21,15 @@ function makeContext(files) {
         cancel: jest.fn()
     });
     return ctx;
+}
+
+function shownToasts() {
+    return useToastStore().toasts;
+}
+
+function lastToast() {
+    const toasts = shownToasts();
+    return toasts[toasts.length - 1];
 }
 
 function deferred() {
@@ -59,13 +69,11 @@ describe("filecryto mixin", () => {
             setItem: (key, value) => { storage[key] = value; }
         };
         stubLockasaur();
-        global.alert = jest.fn();
     });
 
     afterEach(() => {
         delete global.localStorage;
         delete global.window;
-        delete global.alert;
     });
 
     describe("failure messages", () => {
@@ -73,8 +81,9 @@ describe("filecryto mixin", () => {
             for (const code of Object.values(Constants.CRYPTO_ERROR_CODES)) {
                 const ctx = makeContext([]);
                 ctx.handleCryptoFailure(kind, { code: code, message: "RAW_FALLBACK" });
-                expect(global.alert).toHaveBeenCalled();
-                const shown = global.alert.mock.calls.pop()[0];
+                expect(lastToast()).toBeDefined();
+                expect(lastToast().kind).toBe("error");
+                const shown = lastToast().message;
                 expect(shown).not.toBe("RAW_FALLBACK");
                 expect(typeof shown).toBe("string");
                 expect(shown.length).toBeGreaterThan(0);
@@ -149,7 +158,8 @@ describe("filecryto mixin", () => {
             const ctx = makeContext(files);
             ctx.decryptFile(files[0]);
             await new Promise(res => setImmediate(res));
-            expect(global.alert).toHaveBeenCalledTimes(1);
+            expect(shownToasts()).toHaveLength(1);
+            expect(lastToast().kind).toBe("warning");
             // A refused deletion is a notice, not a decrypt error: no cancel, still finishes.
             expect(ctx.cancel).not.toHaveBeenCalled();
             expect(ctx.finish).toBe(true);
@@ -161,7 +171,7 @@ describe("filecryto mixin", () => {
             const ctx = makeContext(files);
             ctx.decryptFile(files[0]);
             await new Promise(res => setImmediate(res));
-            expect(global.alert).not.toHaveBeenCalled();
+            expect(shownToasts()).toHaveLength(0);
             expect(ctx.cancel).not.toHaveBeenCalled();
             expect(ctx.finish).toBe(true);
         });
@@ -194,7 +204,8 @@ describe("filecryto mixin", () => {
             const ctx = makeContext(files);
             ctx.encryptFile(files[0]);
             await new Promise(res => setImmediate(res));
-            expect(global.alert).toHaveBeenCalledTimes(1);
+            expect(shownToasts()).toHaveLength(1);
+            expect(lastToast().kind).toBe("warning");
             expect(ctx.cancel).not.toHaveBeenCalled();
             expect(ctx.finish).toBe(true);
         });
@@ -220,7 +231,7 @@ describe("filecryto mixin", () => {
             const ctx = makeContext(files);
             ctx.encryptFile(files[0]);
             await new Promise(res => setImmediate(res));
-            expect(global.alert).not.toHaveBeenCalled();
+            expect(shownToasts()).toHaveLength(0);
             expect(ctx.cancel).not.toHaveBeenCalled();
             expect(ctx.finish).toBe(true);
         });
@@ -230,25 +241,25 @@ describe("filecryto mixin", () => {
         it("shows the attempts-remaining warning for WRONG_PASSWORD with a policy", () => {
             const ctx = makeContext([]);
             ctx.handleCryptoFailure("decrypt", { code: "WRONG_PASSWORD", attemptsRemaining: 2 });
-            expect(global.alert).toHaveBeenCalledWith("Incorrect password. 2 attempts remaining before this file is permanently erased.");
+            expect(lastToast().message).toBe("Incorrect password. 2 attempts remaining before this file is permanently erased.");
         });
 
         it("uses the singular form for one remaining attempt", () => {
             const ctx = makeContext([]);
             ctx.handleCryptoFailure("decrypt", { code: "WRONG_PASSWORD", attemptsRemaining: 1 });
-            expect(global.alert).toHaveBeenCalledWith("Incorrect password. 1 attempt remaining before this file is permanently erased.");
+            expect(lastToast().message).toBe("Incorrect password. 1 attempt remaining before this file is permanently erased.");
         });
 
         it("shows the plain wrong-password message without a policy", () => {
             const ctx = makeContext([]);
             ctx.handleCryptoFailure("decrypt", { code: "WRONG_PASSWORD" });
-            expect(global.alert).toHaveBeenCalledWith("Incorrect password or the file is corrupted.");
+            expect(lastToast().message).toBe("Incorrect password or the file is corrupted.");
         });
 
         it("appends the policy note when the counter could not be updated", () => {
             const ctx = makeContext([]);
             ctx.handleCryptoFailure("decrypt", { code: "WRONG_PASSWORD", policyError: true });
-            const shown = global.alert.mock.calls.pop()[0];
+            const shown = lastToast().message;
             expect(shown).toContain("Incorrect password or the file is corrupted.");
             expect(shown).toContain("The failed-attempt protection could not update this file.");
         });
@@ -259,7 +270,8 @@ describe("filecryto mixin", () => {
             const ctx = makeContext(files);
             ctx.decryptFile(files[0]);
             await new Promise(res => setImmediate(res));
-            expect(global.alert).toHaveBeenCalledWith("This file was erased because the failed-attempt limit was reached.");
+            expect(lastToast().kind).toBe("error");
+            expect(lastToast().message).toBe("This file was erased because the failed-attempt limit was reached.");
             expect(global.window.lockasaur.files.confirmDeleteEncrypted).not.toHaveBeenCalled();
             expect(ctx.finish).toBe(false);
         });
@@ -270,7 +282,8 @@ describe("filecryto mixin", () => {
             const ctx = makeContext(files);
             ctx.decryptFile(files[0]);
             await new Promise(res => setImmediate(res));
-            expect(global.alert).toHaveBeenCalledWith("The failed-attempt protection could not update this file.");
+            expect(lastToast().kind).toBe("warning");
+            expect(lastToast().message).toBe("The failed-attempt protection could not update this file.");
             expect(ctx.cancel).not.toHaveBeenCalled();
             expect(ctx.finish).toBe(true);
         });
@@ -349,7 +362,7 @@ describe("filecryto mixin", () => {
             const ctx = makeContext(files);
             ctx.decryptFile(files[0]);
             await new Promise(res => setImmediate(res));
-            const shown = global.alert.mock.calls.pop()[0];
+            const shown = lastToast().message;
             expect(shown).toContain("expired on");
             expect(shown).toContain(new Date(1783600000000).toLocaleString());
             expect(global.window.lockasaur.files.confirmDeleteEncrypted).not.toHaveBeenCalled();
@@ -364,7 +377,7 @@ describe("filecryto mixin", () => {
             const ctx = makeContext(files);
             ctx.decryptFile(files[0]);
             await new Promise(res => setImmediate(res));
-            expect(global.alert.mock.calls.pop()[0]).toContain("system clock was used");
+            expect(lastToast().message).toContain("system clock was used");
         });
     });
 

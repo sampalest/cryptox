@@ -6,7 +6,6 @@
     flex-shrink: 0;
     background: var(--chrome);
     backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
     border-bottom: 1px solid transparent;
     display: grid;
     grid-template-columns: 80px 1fr 80px;

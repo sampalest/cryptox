@@ -16,6 +16,13 @@ export const useUiStore = defineStore("ui", {
             this.aboutOpen = false;
             this.settingsOpen = true;
         },
+        toggleSettings() {
+            if (this.settingsOpen) {
+                this.closeOverlays();
+                return;
+            }
+            this.openSettings();
+        },
         closeOverlays() {
             this.aboutOpen = false;
             this.settingsOpen = false;

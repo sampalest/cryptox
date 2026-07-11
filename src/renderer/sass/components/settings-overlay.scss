@@ -1,68 +1,282 @@
-// SettingsOverlay styles
-// The settings panel is taller than the About panel (and taller still on macOS
-// with the app-icon grid). Centering with justify-content clips the top once the
-// content overflows, so center via auto margins instead: the block stays centered
-// when it fits and scrolls from the top edge when it does not. Extra vertical
-// padding keeps top and bottom breathing room in both cases.
-.lk-overlay {
+// Settings scrolls as one region with sticky bars pinned over it, so content
+// passes beneath the header and footer and their backdrop blur is visible.
+// Keep every override behind the modifier so About and other overlays
+// continue to use the shared centered layout.
+.lk-settings-overlay {
+    align-items: stretch;
     justify-content: flex-start;
-    padding-top: 36px;
-    padding-bottom: 36px;
+    gap: 0;
+    padding: 0;
+    container: lk-settings-scroll / scroll-state;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: var(--bd) transparent;
 
-    & > :first-child {
-        margin-top: auto;
+    &::-webkit-scrollbar {
+        width: 8px;
     }
 
-    & > :last-child {
-        margin-bottom: auto;
+    &::-webkit-scrollbar-track {
+        background: transparent;
     }
+
+    &::-webkit-scrollbar-thumb {
+        border: 2px solid transparent;
+        border-radius: 999px;
+        background: var(--bd);
+        background-clip: padding-box;
+    }
+}
+
+// Each bar closes on an etched glass edge: the shared hairline with the
+// glass-edge highlight beside it, same pairing as .lk-glass.
+// The bars start transparent; each crystal layer lives on a ::before that
+// fades in only while the overlay can still scroll past it (scroll-state
+// queries), so the header glasses up once scrolled and the footer clears
+// at the bottom, and neither shows when a tab has nothing to scroll.
+.lk-settings-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 22px 40px 0;
+
+    &::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        border-bottom: 1px solid var(--bd);
+        background: var(--surface);
+        backdrop-filter: var(--glass-blur);
+        box-shadow: inset 0 -1px 0 var(--glass-edge);
+        opacity: 0;
+        transition: opacity 0.35s ease;
+    }
+
+    .lk-overlay-title {
+        width: min(100%, 520px);
+        margin: 0 auto 10px;
+        text-align: left;
+    }
+}
+
+@container lk-settings-scroll scroll-state(scrollable: top) {
+    .lk-settings-header::before {
+        opacity: 1;
+    }
+}
+
+// Category navigation is intentionally text-led rather than another segmented
+// choice control. The active indicator sits on the header's bottom hairline.
+.lk-settings-tabs {
+    display: flex;
+    align-items: flex-end;
+    gap: 24px;
+    width: min(100%, 520px);
+    margin: 0 auto;
+}
+
+.lk-settings-tab {
+    position: relative;
+    border: none;
+    border-radius: 6px 6px 0 0;
+    padding: 8px 4px 11px;
+    font-family: Poppins, sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.2;
+    cursor: pointer;
+    background: none;
+    color: var(--dim);
+    transition: color 0.2s ease;
+
+    &::after {
+        content: "";
+        position: absolute;
+        right: 0;
+        bottom: -1px;
+        left: 0;
+        height: 2px;
+        border-radius: 999px 999px 0 0;
+        background: linear-gradient(90deg, var(--accent2), var(--accent));
+        opacity: 0;
+        transform: scaleX(0.35);
+        transition: opacity 0.2s ease, transform 0.25s ease;
+    }
+
+    &:hover:not(.active) {
+        color: var(--text);
+    }
+
+    &:focus {
+        outline: none;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent2);
+        outline-offset: 2px;
+    }
+
+    &.active {
+        color: var(--text);
+        font-weight: 600;
+
+        &::after {
+            opacity: 1;
+            transform: scaleX(1);
+        }
+    }
+}
+
+.lk-settings-content {
+    flex: 1 1 auto;
+    box-sizing: border-box;
+    padding: 18px 40px 20px;
+}
+
+// The footer mirrors the header: frosted while content remains below,
+// clearing with the same fade once the user reaches the bottom.
+.lk-settings-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 20px 40px 24px;
+
+    &::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        border-top: 1px solid var(--bd);
+        background: var(--surface);
+        backdrop-filter: var(--glass-blur);
+        box-shadow: inset 0 1px 0 var(--glass-edge);
+        opacity: 0;
+        transition: opacity 0.35s ease;
+    }
+}
+
+@container lk-settings-scroll scroll-state(scrollable: bottom) {
+    .lk-settings-footer::before {
+        opacity: 1;
+    }
+}
+
+// Group wrapper (tab panel in tabs layout, titled block in list layout).
+.lk-settings-group {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    width: min(100%, 520px);
+    margin: 0 auto;
 }
 
 .lk-settings-section {
+    position: relative;
+    isolation: isolate;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 8px;
+    align-items: stretch;
+    gap: 10px;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 14px 16px;
+    overflow: hidden;
+    border: 1px solid var(--glass-edge);
+    border-radius: 14px;
+    background-color: var(--surface);
+    background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.44), rgba(255, 255, 255, 0.08) 48%, rgba(17, 208, 227, 0.07));
+    backdrop-filter: saturate(1.6) blur(30px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), inset 1px 0 0 rgba(255, 255, 255, 0.18), inset 0 -1px 0 rgba(7, 102, 229, 0.08), inset 0 0 36px rgba(255, 255, 255, 0.08), 0 12px 30px rgba(20, 24, 32, 0.09);
+
+    // A low-contrast diagonal refraction keeps the card crystalline without
+    // competing with the controls or hint text above it.
+    &::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background: linear-gradient(118deg, rgba(255, 255, 255, 0.24), transparent 34%, rgba(255, 255, 255, 0.08) 58%, transparent 76%);
+    }
+
+    > .lk-settings-seg,
+    > .lk-settings-host {
+        box-sizing: border-box;
+        width: 100%;
+    }
+
+    > .lk-settings-seg .lk-settings-seg-btn {
+        flex: 1 1 0;
+        justify-content: center;
+        min-width: 0;
+    }
 }
 
-// Category divider between groups of related sections.
-.lk-settings-group-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-top: 6px;
-    font-size: 11.5px;
-    font-weight: 700;
-    letter-spacing: 2.5px;
-    text-transform: uppercase;
-    color: var(--accent);
+#app.dark .lk-settings-section {
+    border-color: rgba(255, 255, 255, 0.14);
+    background-color: rgba(32, 38, 48, 0.58);
+    background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.025) 48%, rgba(14, 133, 227, 0.09));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 1px 0 0 rgba(255, 255, 255, 0.05), inset 0 -1px 0 rgba(14, 133, 227, 0.14), inset 0 0 36px rgba(255, 255, 255, 0.025), 0 12px 30px rgba(0, 0, 0, 0.26);
 
-    &::before,
-    &::after {
-        content: "";
-        width: 56px;
-        height: 1px;
-        background: var(--track);
+    &::before {
+        background: linear-gradient(118deg, rgba(255, 255, 255, 0.07), transparent 34%, rgba(47, 225, 229, 0.025) 60%, transparent 78%);
     }
 }
 
 .lk-settings-label {
-    font-size: 12.5px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--dim);
     letter-spacing: 0.5px;
+    text-align: left;
 }
 
+// iOS-style segmented control: one pill slides between options. The active
+// button carries the anchor name (scoped per control) and the track's
+// ::before glides to it by transitioning its anchored insets.
 .lk-settings-seg {
+    position: relative;
     display: flex;
     gap: 6px;
-    background: var(--track);
-    border-radius: 12px;
-    padding: 5px;
     width: fit-content;
+    padding: 5px;
+    border-radius: 12px;
+    background: var(--track);
+    anchor-scope: --lk-seg-active;
+
+    &::before {
+        content: "";
+        position: absolute;
+        pointer-events: none;
+        position-anchor: --lk-seg-active;
+        top: anchor(top);
+        right: anchor(right);
+        bottom: anchor(bottom);
+        left: anchor(left);
+        border-radius: 9px;
+        background: linear-gradient(135deg, var(--accent2), var(--accent));
+        box-shadow: 0 3px 12px rgba(17, 208, 227, 0.45);
+        transition: top 0.35s cubic-bezier(0.32, 0.72, 0, 1), right 0.35s cubic-bezier(0.32, 0.72, 0, 1), bottom 0.35s cubic-bezier(0.32, 0.72, 0, 1), left 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+    }
 }
 
 .lk-settings-seg-btn {
+    position: relative;
+    z-index: 1;
     display: flex;
     align-items: center;
     gap: 7px;
@@ -75,10 +289,15 @@
     cursor: pointer;
     background: none;
     color: var(--dim);
-    transition: background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: color 0.25s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 
     &:focus {
         outline: none;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent2);
+        outline-offset: 1px;
     }
 
     &:hover:not(.active) {
@@ -91,10 +310,9 @@
     }
 
     &.active {
-        background: var(--surface);
-        color: var(--text);
-        box-shadow: 0 2px 8px rgba(20, 24, 32, 0.14);
-        animation: lkSettingsPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        color: #fff;
+        font-weight: 600;
+        anchor-name: --lk-seg-active;
     }
 }
 
@@ -105,8 +323,10 @@
 }
 
 .lk-settings-hint {
-    font-size: 12px;
+    font-size: 11.5px;
+    line-height: 1.45;
     color: var(--faint);
+    text-align: left;
 }
 
 .lk-settings-host {
@@ -120,11 +340,13 @@
 
 .lk-settings-icons {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
-    background: var(--track);
-    border-radius: 14px;
+    box-sizing: border-box;
+    width: 100%;
     padding: 6px;
+    border-radius: 14px;
+    background: var(--track);
 }
 
 .lk-settings-icon-btn {
@@ -132,9 +354,10 @@
     flex-direction: column;
     align-items: center;
     gap: 4px;
+    min-width: 0;
     border: none;
     border-radius: 11px;
-    padding: 8px 14px 6px;
+    padding: 8px 8px 6px;
     font-family: Poppins, sans-serif;
     cursor: pointer;
     background: none;
@@ -143,6 +366,11 @@
 
     &:focus {
         outline: none;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent2);
+        outline-offset: 1px;
     }
 
     &:hover:not(.active) {
@@ -157,7 +385,7 @@
     &.active {
         background: var(--surface);
         color: var(--text);
-        box-shadow: 0 2px 8px rgba(20, 24, 32, 0.14), inset 0 0 0 1.5px var(--accent);
+        box-shadow: 0 2px 8px rgba(20, 24, 32, 0.14), inset 0 0 0 1.5px var(--accent2);
         animation: lkSettingsPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
 }
@@ -182,6 +410,10 @@
 }
 
 .lk-settings-icon-name {
+    overflow: hidden;
+    max-width: 100%;
     font-size: 11px;
     font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }

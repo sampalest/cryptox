@@ -18,12 +18,18 @@
     --inp-bd: #d6dae1;
     --accent: #0766e5;
     --accent2: #11d0e3;
+    --accent-soft: rgba(7, 102, 229, 0.12);
     --pill: rgba(255, 255, 255, 0.5);
     --pill-bd: #d3d8df;
     --track: rgba(202, 213, 227, 0.55);
     --shadow: 0 1px 2px rgba(20, 24, 32, 0.14), 0 28px 70px rgba(20, 24, 32, 0.26);
     --dialog-shadow: 0 18px 44px rgba(20, 24, 32, 0.12);
     --error: #e0443a;
+    --error-soft: rgba(224, 68, 58, 0.1);
+    --warning: #c07c08;
+    --warning-soft: rgba(192, 124, 8, 0.1);
+    --info: #0766e5;
+    --info-soft: rgba(7, 102, 229, 0.1);
 }
 
 #app.platform-frameless {
@@ -53,12 +59,18 @@
     --inp-bd: #373d48;
     --accent: #0e85e3;
     --accent2: #2fe1e5;
+    --accent-soft: rgba(14, 133, 227, 0.2);
     --pill: rgba(40, 46, 58, 0.5);
     --pill-bd: #2b313c;
     --track: rgba(60, 68, 82, 0.5);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 28px 70px rgba(0, 0, 0, 0.6);
     --dialog-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
     --error: #e0443a;
+    --error-soft: rgba(224, 68, 58, 0.16);
+    --warning: #e3ac3f;
+    --warning-soft: rgba(227, 172, 63, 0.14);
+    --info: #58a6f0;
+    --info-soft: rgba(88, 166, 240, 0.14);
 }
 
 /* Dark-mode counterpart of the frameless glass fallback above. */
@@ -73,7 +85,6 @@
 .lk-glass {
     background: var(--surface);
     backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
     box-shadow: inset 0 1px 0 var(--glass-edge);
     border: 1px solid var(--bd);
     transition: background-color 0.4s ease, border-color 0.4s ease;
@@ -104,7 +115,6 @@
     gap: 10px;
     background: var(--inp-bg);
     backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
     box-shadow: inset 0 1px 0 var(--glass-edge);
     border: 1.5px solid var(--inp-bd);
     border-radius: 12px;
@@ -154,7 +164,6 @@
     z-index: 5;
     background: var(--glass-strong);
     backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
     padding: 28px 40px;
     display: flex;
     flex-direction: column;
@@ -182,10 +191,4 @@
 .lk-sub {
     font-size: 13.5px;
     color: var(--dim);
-}
-
-.lk-error {
-    color: var(--error);
-    font-size: 12.5px;
-    animation: ccShake 0.4s ease;
 }

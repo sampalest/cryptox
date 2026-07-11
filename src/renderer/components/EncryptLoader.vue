@@ -28,6 +28,7 @@
 import fileCrypto from "@/components/mixins/filecryto.js";
 import GlassButton from "@/components/ui/GlassButton.vue";
 import LockasaurLock from "@/components/ui/LockasaurLock.vue";
+import { useToastStore } from "@/store/toasts";
 import LkIcon from "@/components/ui/LkIcon.vue";
 
 // Floating binary digits around the lock, from the design mock.
@@ -123,7 +124,7 @@ export default {
             deep: true,
             handler() {
                 if (this.fileEvent.error) {
-                    alert("Cannot decrypt file...");
+                    useToastStore().error("Cannot decrypt file...");
                     this.cancel();
                 }
             }

@@ -1,6 +1,7 @@
 import { useDeleteBehaviorStore } from "@/store/deleteBehavior";
 import { useErasePolicyStore } from "@/store/erasePolicy";
 import { useTimeSourceStore } from "@/store/timeSource";
+import { useToastStore } from "@/store/toasts";
 
 // Every CRYPTO_ERROR_CODES value maps to a deliberate string for both kinds, so
 // no code ever falls through to a generic message (SENDER_REJECTED and
@@ -111,7 +112,7 @@ export default {
             if (kind === "decrypt" && code === "WRONG_PASSWORD") message = wrongPasswordAlert(result);
             if (kind === "decrypt" && code === "FILE_EXPIRED") message = expiredAlert(result);
             if (result && result.policyError) message = `${message} ${POLICY_ERROR_NOTE}`;
-            alert(message);
+            useToastStore().error(message);
             this.cancel();
         },
         encryptFile(file) {
@@ -137,7 +138,7 @@ export default {
                 try {
                     const behavior = useDeleteBehaviorStore();
                     const res = await window.lockasaur.files.confirmDeleteOriginal(file.path, behavior.mode, behavior.deleteOriginal);
-                    if (res && res.error) alert("The original could not be deleted. You can remove it manually.");
+                    if (res && res.error) useToastStore().warning("The original could not be deleted. You can remove it manually.");
                 } catch (deleteErr) {
                     window.lockasaur.log.error(deleteErr);
                 }
@@ -147,7 +148,7 @@ export default {
             }).catch(() => {
                 // Transport-level safety net; structured failures resolve above.
                 window.lockasaur.log.error("crypto encrypt failed: IPC_TRANSPORT");
-                alert("Encryption failed.");
+                useToastStore().error("Encryption failed.");
                 this.cancel();
             }).finally(() => {
                 this.untrackOperation(operationId);
@@ -172,13 +173,13 @@ export default {
                     if (result.cancelled) return;
                     // Decrypt succeeded but the failed-attempt counter could not
                     // be reset: warn, or the next typo could erase the file.
-                    if (result.policyError) alert(POLICY_ERROR_NOTE);
+                    if (result.policyError) useToastStore().warning(POLICY_ERROR_NOTE);
                     // Decryption already succeeded; a failed delete must not be reported
                     // as a decrypt error, so keep it isolated from the catch below.
                     try {
                         const behavior = useDeleteBehaviorStore();
                         const res = await window.lockasaur.files.confirmDeleteEncrypted(file.path, behavior.mode, behavior.deleteEncrypted);
-                        if (res && res.error) alert("The encrypted file could not be deleted. You can remove it manually.");
+                        if (res && res.error) useToastStore().warning("The encrypted file could not be deleted. You can remove it manually.");
                     } catch (deleteErr) {
                         window.lockasaur.log.error(deleteErr);
                     }
@@ -191,7 +192,7 @@ export default {
                 .catch(() => {
                     // Transport-level safety net; structured failures resolve above.
                     window.lockasaur.log.error("crypto decrypt failed: IPC_TRANSPORT");
-                    alert("Incorrect password or the file is corrupted.");
+                    useToastStore().error("Incorrect password or the file is corrupted.");
                     this.cancel();
                 })
                 .finally(() => {
