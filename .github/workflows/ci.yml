@@ -152,7 +152,7 @@ jobs:
       # Each runner produces only its own arch's artifacts; upload them for the
       # release job to aggregate. Foreign globs match nothing (if-no-files-found).
       - name: ⬆️ Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.os }}-${{ matrix.arch }}
           if-no-files-found: ignore
@@ -177,7 +177,7 @@ jobs:
       # Aggregate every OS's artifacts into dist_electron so one release carries
       # dmg/exe/deb together.
       - name: ⬇️ Download packaged artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist_electron
           pattern: dist-*
