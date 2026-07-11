@@ -46,6 +46,12 @@
                             <span class="lk-pass-row-label">{{ row.label }}</span>
                             <span class="lk-pass-row-hint">{{ row.hint }}</span>
                         </span>
+                        <span v-if="row.options" class="lk-pass-row-seg" :class="{ off: !row.checked }" role="group" aria-label="Wrong passwords before erase">
+                            <button v-for="option in row.options" :key="option" type="button" class="lk-pass-row-seg-btn"
+                                :class="{ active: row.value === option }"
+                                :aria-pressed="row.value === option"
+                                @click.prevent="row.select(option)">{{ option }}</button>
+                        </span>
                         <span class="lk-pass-row-switch" aria-hidden="true"></span>
                     </label>
                 </div>
@@ -83,7 +89,7 @@ import ExpiryPicker from "@/components/ui/ExpiryPicker.vue";
 import GlassButton from "@/components/ui/GlassButton.vue";
 import LkIcon from "@/components/ui/LkIcon.vue";
 import { useDeleteBehaviorStore } from "@/store/deleteBehavior";
-import { useErasePolicyStore } from "@/store/erasePolicy";
+import { ERASE_ATTEMPT_OPTIONS, useErasePolicyStore } from "@/store/erasePolicy";
 import { useToastStore } from "@/store/toasts";
 
 export default {
@@ -167,7 +173,10 @@ export default {
                     label: "Erase after failed attempts",
                     hint: `Self-destructs after ${this.erasePolicy.maxAttempts} wrong passwords`,
                     checked: this.erasePolicy.enabled,
-                    change: event => this.toggleErase(event)
+                    change: event => this.toggleErase(event),
+                    options: ERASE_ATTEMPT_OPTIONS,
+                    value: this.erasePolicy.maxAttempts,
+                    select: option => this.selectEraseAttempts(option)
                 });
             }
             return rows;
@@ -200,6 +209,11 @@ export default {
         async toggleErase(event) {
             await this.erasePolicy.choose(event.target.checked ? this.erasePolicy.maxAttempts : "off");
             event.target.checked = this.erasePolicy.enabled;
+        },
+        // Picking a count while the policy is off enables it (store runs the
+        // same confirm as the toggle); declining leaves everything unchanged.
+        async selectEraseAttempts(option) {
+            await this.erasePolicy.choose(option);
         },
         secondaryAction() {
             if (this.step === 2) {

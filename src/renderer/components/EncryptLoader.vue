@@ -70,7 +70,7 @@ export default {
         "lockasaur-lock": LockasaurLock,
         "lk-icon": LkIcon
     },
-    emits: ["finish", "cancel"],
+    emits: ["finish", "cancel", "retry"],
     props: {
         files: {
             type: Array,
@@ -134,6 +134,12 @@ export default {
         cancel() {
             this.cancelOperations();
             this.$emit("cancel", true);
+        },
+        // Wrong password: stop any sibling operations, then let Home reopen
+        // the password screen with the selection still loaded.
+        retryPassword() {
+            this.cancelOperations();
+            this.$emit("retry");
         },
         destroy() {
             this.cancel();

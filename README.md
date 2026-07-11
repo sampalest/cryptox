@@ -61,6 +61,10 @@ The renderer is built with Vite into `dist/`. Electron main and preload bundles 
 
 See [CHANGELOG.md](CHANGELOG.md) for release history and upgrade notes.
 
+## Contributing
+
+Before opening an issue or pull request, read the [contribution guide](docs/CONTRIBUTING.md). It explains the development workflow, review requirements, and maintainer decision policy.
+
 ## Use this app
 Just drag the file or folder you want to encrypt, set a password and that's it. Easy!
 All file types are supported.

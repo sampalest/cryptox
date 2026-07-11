@@ -2,10 +2,6 @@
     <svg v-bind="rootAttrs" aria-hidden="true" v-html="inner"></svg>
 </template>
 <script>
-// Inline UI icons live as standalone files in assets/icons and are rendered
-// as a bare <svg> (?raw import + v-html for the inner markup), so existing CSS
-// selectors that target the icon svg keep matching. currentColor and the
-// viewBox let each call site drive color and size.
 const modules = import.meta.glob("../../assets/icons/*.svg", { query: "?raw", import: "default", eager: true });
 
 function parse(raw) {

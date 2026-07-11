@@ -18,7 +18,8 @@ function makeContext(files) {
         password: "secret",
         percent: { value: 0 },
         fileEvent: { counter: 0 },
-        cancel: jest.fn()
+        cancel: jest.fn(),
+        retryPassword: jest.fn()
     });
     return ctx;
 }
@@ -87,7 +88,14 @@ describe("filecryto mixin", () => {
                 expect(shown).not.toBe("RAW_FALLBACK");
                 expect(typeof shown).toBe("string");
                 expect(shown.length).toBeGreaterThan(0);
-                expect(ctx.cancel).toHaveBeenCalled();
+                // A decrypt wrong password retries on the password screen; every
+                // other failure still tears the operation down.
+                if (kind === "decrypt" && code === "WRONG_PASSWORD") {
+                    expect(ctx.retryPassword).toHaveBeenCalled();
+                    expect(ctx.cancel).not.toHaveBeenCalled();
+                } else {
+                    expect(ctx.cancel).toHaveBeenCalled();
+                }
             }
         });
 
@@ -234,6 +242,45 @@ describe("filecryto mixin", () => {
             expect(shownToasts()).toHaveLength(0);
             expect(ctx.cancel).not.toHaveBeenCalled();
             expect(ctx.finish).toBe(true);
+        });
+    });
+
+    describe("wrong-password retry routing", () => {
+        it("retries instead of cancelling when attempts remain", () => {
+            const ctx = makeContext([]);
+            ctx.handleCryptoFailure("decrypt", { code: "WRONG_PASSWORD", attemptsRemaining: 2 });
+            expect(ctx.retryPassword).toHaveBeenCalled();
+            expect(ctx.cancel).not.toHaveBeenCalled();
+        });
+
+        it("retries when no erase policy is armed (no attemptsRemaining field)", () => {
+            const ctx = makeContext([]);
+            ctx.handleCryptoFailure("decrypt", { code: "WRONG_PASSWORD" });
+            expect(ctx.retryPassword).toHaveBeenCalled();
+            expect(ctx.cancel).not.toHaveBeenCalled();
+        });
+
+        it("cancels when the failed-attempt limit was reached", () => {
+            const ctx = makeContext([]);
+            ctx.handleCryptoFailure("decrypt", { code: "WRONG_PASSWORD", attemptsRemaining: 0, policyError: true });
+            expect(ctx.cancel).toHaveBeenCalled();
+            expect(ctx.retryPassword).not.toHaveBeenCalled();
+        });
+
+        it("cancels on FILE_ERASED and FILE_EXPIRED", () => {
+            for (const code of ["FILE_ERASED", "FILE_EXPIRED"]) {
+                const ctx = makeContext([]);
+                ctx.handleCryptoFailure("decrypt", { code: code });
+                expect(ctx.cancel).toHaveBeenCalled();
+                expect(ctx.retryPassword).not.toHaveBeenCalled();
+            }
+        });
+
+        it("never retries an encrypt failure", () => {
+            const ctx = makeContext([]);
+            ctx.handleCryptoFailure("encrypt", { code: "WRONG_PASSWORD" });
+            expect(ctx.cancel).toHaveBeenCalled();
+            expect(ctx.retryPassword).not.toHaveBeenCalled();
         });
     });
 

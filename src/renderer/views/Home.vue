@@ -1,6 +1,6 @@
 <template>
     <div class="home-screen">
-        <encrypt-loader v-if="loader" :files="files" :password="password" :expiration="expiration" :is-decrypt="encrypted" @finish="operationFinished" @cancel="finishOperation"></encrypt-loader>
+        <encrypt-loader v-if="loader" :files="files" :password="password" :expiration="expiration" :is-decrypt="encrypted" @finish="operationFinished" @cancel="finishOperation" @retry="retryPassword"></encrypt-loader>
         <success-screen v-else-if="success" :files="files" :is-decrypt="encrypted" @done="finishOperation"></success-screen>
         <password-screen v-else-if="showPassword" :is-decrypt="encrypted" :files="files" @password="setPassword" @expiration="expiration = $event" @cancel="cancelPassword" @setDecrypt="setDecrypt"></password-screen>
         <div v-else class="lk-home">
@@ -136,6 +136,14 @@ export default {
             this.loader = false;
             this.success = false;
             this.cancelPassword();
+        },
+        // Wrong password with attempts left: back to the password screen with
+        // the same files. Clearing password first keeps the watcher armed even
+        // if the user retypes the same wrong password.
+        retryPassword() {
+            this.loader = false;
+            this.password = "";
+            this.showPassword = true;
         },
         cancelPassword() {
             this.showPassword = false;

@@ -113,6 +113,12 @@ export default {
             if (kind === "decrypt" && code === "FILE_EXPIRED") message = expiredAlert(result);
             if (result && result.policyError) message = `${message} ${POLICY_ERROR_NOTE}`;
             useToastStore().error(message);
+            // A wrong password with attempts left keeps the selection loaded and
+            // returns to the password screen; attemptsRemaining 0 means the
+            // failed-attempt limit was hit, which unloads like any other failure.
+            if (kind === "decrypt" && code === "WRONG_PASSWORD" && !(Number.isInteger(result.attemptsRemaining) && result.attemptsRemaining <= 0)) {
+                return this.retryPassword();
+            }
             this.cancel();
         },
         encryptFile(file) {
