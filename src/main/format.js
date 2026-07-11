@@ -245,7 +245,7 @@ function parseHeaderDino(headerBuf, fileSize) {
     let meta;
     try {
         meta = JSON.parse(json.toString("utf-8"));
-    } catch (error) {
+    } catch {
         throw new FormatError("header is not valid JSON");
     }
     _validateMeta(meta, true);
@@ -293,7 +293,7 @@ function parseHeaderV1(headerBuf, fileSize) {
     let meta;
     try {
         meta = JSON.parse(headerBytes.slice(PREFIX_LEN_V1).toString("utf-8"));
-    } catch (error) {
+    } catch {
         throw new FormatError("header is not valid JSON");
     }
     _validateMeta(meta, false);

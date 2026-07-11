@@ -10,14 +10,14 @@ export async function removeOriginal(target, mode) {
         try {
             await shell.trashItem(target);
             return { deleted: true };
-        } catch (trashError) {
+        } catch {
             return { deleted: false, error: true };
         }
     }
     try {
         await fs.promises.rm(target, { recursive: true });
         return { deleted: true };
-    } catch (rmError) {
+    } catch {
         return { deleted: false, error: true };
     }
 }
@@ -27,19 +27,19 @@ export async function removeEncrypted(target, mode) {
         try {
             await fs.promises.unlink(target);
             return { deleted: true };
-        } catch (unlinkError) {
+        } catch {
             return { deleted: false, error: true };
         }
     }
     try {
         await shell.trashItem(target);
         return { deleted: true };
-    } catch (trashError) {
+    } catch {
         // Ciphertext: permanent unlink fallback is safe.
         try {
             await fs.promises.unlink(target);
             return { deleted: true };
-        } catch (unlinkError) {
+        } catch {
             return { deleted: false, error: true };
         }
     }

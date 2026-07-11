@@ -293,7 +293,7 @@ export default class Crypto {
                     // The staged output has a random operation-owned name,
                     // so it is always ours to remove.
                     if (fs.existsSync(writePath)) fs.unlinkSync(writePath);
-                } catch (cleanupError) {
+                } catch {
                     // Best-effort cleanup; surface the original error.
                 }
             };
@@ -529,7 +529,7 @@ export default class Crypto {
         let meta;
         try {
             meta = JSON.parse(jsonBuf.toString("utf-8"));
-        } catch (error) {
+        } catch {
             throw new Format.FormatError("header is not valid JSON");
         }
         Format.validateKdfParams(meta);
@@ -730,7 +730,7 @@ export default class Crypto {
                     if (onStatus) onStatus({ loader: false });
                     try {
                         if (fs.existsSync(writePath)) fs.unlinkSync(writePath);
-                    } catch (cleanupError) {
+                    } catch {
                         // Best-effort cleanup; surface the original decrypt error.
                     }
                     reject(error);

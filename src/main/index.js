@@ -27,7 +27,7 @@ import { removeEncrypted, removeOriginal } from "./deletion.js";
 import { handleFailedAttempt, resetCounter } from "./erasePolicy.js";
 import TimeProvider from "./time/timeProvider.js";
 const isDevelopment = process.env.NODE_ENV !== "production";
-import logger from "electron-log";
+import logger from "electron-log/main";
 
 const runtimeDir = typeof __dirname === "string"
     ? __dirname

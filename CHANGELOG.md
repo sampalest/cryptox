@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Changes for each release are grouped by type (Added, Changed, Fixed, Security,
 Removed) in the tables below.
 
+## Unreleased
+
+| Type | Change | Ref |
+|---|---|---|
+| Security | Dependency refresh to the latest majors, chiefly Electron 40 to 43 (Electron 40 had left the supported window and no longer receives Chromium security patches). Also electron-log 4 to 5 (main process now imports `electron-log/main`; the log stays at the existing `main.log` location), vue-router 4 to 5 (no code changes), Babel 7 to 8 (Jest transform only), prettier 3.9, and the lint stack ESLint 8 to 10 with eslint-plugin-vue 10 and vue-eslint-parser 10. `npm audit` is clean before and after | - |
+| Changed | ESLint migrated from `.eslintrc.js` to flat config (`eslint.config.mjs`); same rules and parser chain. The stricter ESLint 9+ `no-unused-vars` default surfaced 15 unused catch bindings in best-effort cleanup paths, now written as optional catch bindings (`catch {`) | - |
+| Changed | `scripts/build-electron.mjs` externalizes dependencies by regex so subpath imports such as `electron-log/main` stay external in the packaged main bundle | - |
+
 ## 2.0.0
 
 Lockasaur 2.0: the redesign and rebrand (APP-12), bundled with the

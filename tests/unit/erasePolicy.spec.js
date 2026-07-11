@@ -116,8 +116,11 @@ describe("erasePolicy", () => {
         it("refuses a file swapped in since the decrypt (dev/ino mismatch)", async () => {
             writeDino(target, { counter: 0 });
             const info = infoFor(target, 3);
-            fs.unlinkSync(target);
-            writeDino(target, { counter: 0 });
+            // Swap via rename of a coexisting file: unlink + recreate can
+            // reuse the freed inode on ext4, silently defeating the test.
+            const swapped = path.join(tempDir, "swapped.dino");
+            writeDino(swapped, { counter: 0 });
+            fs.renameSync(swapped, target);
 
             const result = await handleFailedAttempt(target, info);
 
@@ -193,8 +196,9 @@ describe("erasePolicy", () => {
         it("refuses a swapped file identity", async () => {
             writeDino(target, { counter: 0 });
             const info = infoFor(target);
-            fs.unlinkSync(target);
-            writeDino(target, { counter: 0 });
+            const swapped = path.join(tempDir, "swapped.dino");
+            writeDino(swapped, { counter: 0 });
+            fs.renameSync(swapped, target);
             const before = fs.readFileSync(target);
 
             const result = await secureErase(target, info);

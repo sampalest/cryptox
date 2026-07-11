@@ -17,9 +17,10 @@ const OVERWRITE_CHUNK = 65536;
 
 /**
  * Open the target for writing and verify it is still the exact file whose
- * header the decrypt just parsed: O_NOFOLLOW (no-op where unsupported) plus
- * an fstat dev/ino comparison defeat a symlink or file swapped in after the
- * parse, the nlink check refuses hard-linked files (overwrite would destroy
+ * header the decrypt just parsed: an lstat symlink refusal plus O_NOFOLLOW
+ * (no-op where unsupported, hence the lstat) and an fstat dev/ino comparison
+ * defeat a symlink or file swapped in after the parse, the nlink check
+ * refuses hard-linked files (overwrite would destroy
  * every alias while unlinking only one name), and the magic/version re-read
  * refuses anything that is not a DINO container.
  * @function _openVerified
@@ -28,6 +29,8 @@ const OVERWRITE_CHUNK = 65536;
  * @return {Promise.<fs.FileHandle>} Open handle; the caller must close it.
  */
 async function _openVerified(target, eraseInfo) {
+    const linkStats = await fs.promises.lstat(target);
+    if (linkStats.isSymbolicLink()) throw new Error("symlink at target");
     const flags = fs.constants.O_RDWR | (fs.constants.O_NOFOLLOW || 0);
     const handle = await fs.promises.open(target, flags);
     try {
@@ -72,7 +75,7 @@ export async function handleFailedAttempt(target, eraseInfo) {
         handle = null;
         const remaining = eraseInfo.maxAttempts - next;
         if (remaining > 0) return { counted: true, attemptsRemaining: remaining };
-    } catch (error) {
+    } catch {
         if (handle) await handle.close().catch(() => {});
         return { counted: false, error: true };
     }
@@ -104,7 +107,7 @@ export async function secureErase(target, eraseInfo) {
         await handle.close();
         handle = null;
         await fs.promises.unlink(target);
-    } catch (error) {
+    } catch {
         if (handle) await handle.close().catch(() => {});
         return { erased: false, error: true };
     }
@@ -113,7 +116,7 @@ export async function secureErase(target, eraseInfo) {
         const dir = await fs.promises.open(path.dirname(target), "r");
         await dir.sync().catch(() => {});
         await dir.close();
-    } catch (dirError) {
+    } catch {
         // The unlink already succeeded; nothing to report.
     }
     return { erased: true };
@@ -143,7 +146,7 @@ export async function resetCounter(target, eraseInfo) {
         await handle.sync();
         await handle.close();
         return { reset: true };
-    } catch (error) {
+    } catch {
         if (handle) await handle.close().catch(() => {});
         return { reset: false, error: true };
     }

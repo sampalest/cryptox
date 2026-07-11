@@ -39,7 +39,7 @@ export default class TempManager {
         this._dirs.delete(operationId);
         try {
             fs.rmSync(dir, { recursive: true, force: true });
-        } catch (error) {
+        } catch {
             // Best-effort: a leftover directory must never mask the
             // operation's own result.
         }
