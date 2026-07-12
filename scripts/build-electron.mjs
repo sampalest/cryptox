@@ -16,8 +16,7 @@ const external = [
     "electron",
     ...builtinModules,
     ...builtinModules.map(moduleName => `node:${moduleName}`),
-    // Regex so subpath imports ("electron-log/main") stay external too.
-    ...Object.keys(packageJson.dependencies || {}).map(name => new RegExp(`^${name}(/|$)`))
+    ...Object.keys(packageJson.dependencies || {})
 ];
 
 async function buildElectronEntry({ entry, fileName, emptyOutDir }) {
