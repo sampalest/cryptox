@@ -17,21 +17,14 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      # Skip electron's binary download: this job doesn't run electron, and the
-      # download is flaky from CI runners (504s from GitHub) and would fail npm ci.
       - name: 📦 Install dependencies
         run: npm ci
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - name: 🧹 Lint
         run: npm run lint
 
   unit:
     name: 🧪 Unit tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # Run across OSes and both arches so the Windows filesystem exercises the tar
-    # reserved-name sanitizer and the crypto core (WASM libsodium) is confirmed on
-    # x64 and arm64.
     strategy:
       fail-fast: false
       matrix:
@@ -44,8 +37,6 @@ jobs:
           cache: npm
       - name: 📦 Install dependencies
         run: npm ci
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - name: 🧪 Run unit tests
         run: npm run test:unit
 
@@ -75,8 +66,6 @@ jobs:
           cache: npm
       - name: 📦 Install dependencies
         run: npm ci
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - name: 🛡️ Audit dependencies
         run: npm audit --omit=dev --audit-level=high
 
@@ -91,8 +80,6 @@ jobs:
           cache: npm
       - name: 📦 Install dependencies
         run: npm ci
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - name: ⚡ Set up Electron
         uses: ./.github/actions/setup-electron
       # test:e2e builds the app + electron bundle internally before running smoke.
@@ -103,13 +90,7 @@ jobs:
     name: 📦 Package (${{ matrix.os }} ${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     needs: [lint, unit, e2e]
-    # Only package on pushes to develop/master (set by the workflow triggers),
-    # never on pull requests.
     if: github.event_name == 'push'
-    # One runner per (OS, arch), with the target arch passed explicitly to
-    # electron-builder. Windows and Linux build on native-architecture runners;
-    # mac x64 is cross-compiled on macos-15 (arm64) because GitHub retired the
-    # macos-13 Intel runners (jobs targeting that label queue forever).
     strategy:
       fail-fast: false
       matrix:
@@ -126,33 +107,19 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      # macOS uses the setup-electron workaround (below), so it skips the flaky
-      # download during npm ci; Windows/Linux download the binary normally here.
       - name: 📦 Install dependencies
         run: npm ci
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: ${{ runner.os == 'macOS' && '1' || '' }}
-      # extra-arch prefetches the matrix arch's darwin zip when it differs from
-      # the runner arch (the cross-compiled mac x64 leg), so app-builder's
-      # retry-less download never runs.
       - name: ⚡ Set up Electron
         if: runner.os == 'macOS'
         uses: ./.github/actions/setup-electron
         with:
           extra-arch: ${{ matrix.arch }}
-      # electron:build builds the app + electron bundle internally, then packages
-      # the matrix arch (mac dmg, Windows nsis installer, Linux deb). The explicit
-      # --<arch> flag reaches electron-builder; it is a no-op on the native
-      # runners and makes the mac x64 leg cross-compile on macos-15
-      # (electron-builder downloads the darwin-x64 Electron dist itself).
       - name: 🏗️ Build & package app
         run: npm run electron:build -- --${{ matrix.arch }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      # Each runner produces only its own arch's artifacts; upload them for the
-      # release job to aggregate. Foreign globs match nothing (if-no-files-found).
       - name: ⬆️ Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.os }}-${{ matrix.arch }}
           if-no-files-found: ignore
@@ -174,18 +141,12 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      # Aggregate every OS's artifacts into dist_electron so one release carries
-      # dmg/exe/deb together.
       - name: ⬇️ Download packaged artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist_electron
           pattern: dist-*
           merge-multiple: true
-      # Release strategy per branch (see scripts/publish-release.mjs):
-      #   master  -> release "v<version>", updated in place if it already exists.
-      #   develop -> prerelease "v<version>.<shortsha>"; only this version's prior
-      #              prerelease is replaced; other versions' releases are untouched.
       - name: 🚀 Publish releases
         env:
           GH_TOKEN: ${{ github.token }}

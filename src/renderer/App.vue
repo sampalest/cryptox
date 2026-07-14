@@ -30,10 +30,6 @@ export default {
         TitleBar,
         BackgroundBlobs,
         ToastStack,
-        // The overlays are v-if gated and rarely open, so each is an async
-        // chunk fetched on first open (disk-local, a few ms) instead of
-        // weighing down the initial bundle. Entry animations still start at
-        // mount, so their timing is unchanged.
         SettingsOverlay: defineAsyncComponent(() => import("@/components/overlays/SettingsOverlay.vue")),
         AboutOverlay: defineAsyncComponent(() => import("@/components/overlays/AboutOverlay.vue")),
         BinaryRain: defineAsyncComponent(() => import("@/components/overlays/BinaryRain.vue"))
@@ -51,14 +47,9 @@ export default {
         useDeleteBehaviorStore().init();
         useErasePolicyStore().init();
         useTimeSourceStore().init();
-        // windowSize is initialized in main.js before mount; here it only
-        // drives the lk-zoom-* classes that keep the titlebar unscaled.
         return { theme, appIcon: useAppIconStore(), appStore: useAppStore(), ui: useUiStore(), windowSize: useWindowSizeStore() };
     },
     watch: {
-        // An "auto" icon selection resolves through the theme store, so a
-        // theme change (or an OS appearance change under "system") retargets
-        // the Dock icon live.
         "appIcon.resolvedIcon"() {
             this.appIcon.applyResolved();
         }

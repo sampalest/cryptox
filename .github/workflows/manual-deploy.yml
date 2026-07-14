@@ -59,8 +59,6 @@ jobs:
           cache: npm
       - name: 📦 Install dependencies
         run: npm ci
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: ${{ runner.os == 'macOS' && '1' || '' }}
       - name: ⚡ Set up Electron
         if: runner.os == 'macOS'
         uses: ./.github/actions/setup-electron
@@ -71,7 +69,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - name: ⬆️ Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.os }}-${{ matrix.arch }}
           if-no-files-found: ignore
@@ -93,7 +91,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - name: ⬇️ Download packaged artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist_electron
           pattern: dist-*

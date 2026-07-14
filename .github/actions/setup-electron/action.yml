@@ -18,15 +18,12 @@ runs:
       uses: actions/cache@v5
       with:
         path: ~/Library/Caches/electron
-        key: electron-${{ runner.os }}-${{ runner.arch }}-v40.10.2${{ inputs.extra-arch && format('-{0}', inputs.extra-arch) || '' }}
+        key: electron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}${{ inputs.extra-arch && format('-{0}', inputs.extra-arch) || '' }}
 
-    # The electron binary install is unreliable on this runner: downloads 504
-    # intermittently, and even when the (checksum-verified) zip downloads,
-    # electron's bundled extract-zip only partially unpacks it. The script
-    # downloads with retries, re-extracts the cached zip with ditto, writes
-    # path.txt, and verifies the executable exists. With ELECTRON_EXTRA_ARCH it
-    # also prefetches the cross-packaging arch's zip (checksum-verified) into
-    # the cache electron-builder consults. See scripts/setup-electron.mjs.
+    # Electron downloads are unreliable on this runner: requests intermittently
+    # return 504, and the normal extraction has produced partial dist folders.
+    # The script downloads exact, checksum-verified archives with retries,
+    # extracts the native one with ditto, and prefetches any cross-package arch.
     - name: ⚡ Ensure Electron binary is installed
       shell: bash
       env:

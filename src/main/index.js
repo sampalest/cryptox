@@ -27,7 +27,7 @@ import { removeEncrypted, removeOriginal } from "./deletion.js";
 import { handleFailedAttempt, resetCounter } from "./erasePolicy.js";
 import TimeProvider from "./time/timeProvider.js";
 const isDevelopment = process.env.NODE_ENV !== "production";
-import logger from "electron-log";
+import logger from "electron-log/main";
 
 const runtimeDir = typeof __dirname === "string"
     ? __dirname
@@ -207,6 +207,9 @@ function createWindow () {
         title: "Lockasaur",
         show: false,
         frame: !useCustomFrame,
+        // Electron 43 adds native Linux rounding. Keep the CSS-drawn frame and
+        // its transparent shadow gutter from being clipped by the native mask.
+        roundedCorners: process.platform !== "linux",
         transparent: true,
         backgroundColor: "#00000000",
         // The shadow on Win/Linux is drawn by the renderer (see master.scss);

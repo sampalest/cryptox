@@ -2,10 +2,12 @@
 // builds the electron bundles, then spawns Electron with VITE_DEV_SERVER_URL
 // pointing at the dev server. Forwards SIGINT/SIGTERM and closes Vite on exit.
 import { spawn } from "node:child_process";
-import electronPath from "electron";
 import { createServer } from "vite";
+import { ensureElectronForHost } from "./ensure-electron.mjs";
 
 process.env.NODE_ENV = "development";
+await ensureElectronForHost();
+const { default: electronPath } = await import("electron");
 
 const server = await createServer({
     configFile: "vite.config.js",

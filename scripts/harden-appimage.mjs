@@ -57,11 +57,6 @@ function hardenOne(artifact) {
         cpSync(wrapperPath, appRun);
         chmodSync(appRun, 0o755);
         chmodSync(appRunOrig, 0o755);
-
-        // Mirror the mksquashfs arguments electron-builder uses, then write
-        // the original runtime over the zero padding created by -offset. The
-        // output is staged next to the artifact so the final rename stays on
-        // one filesystem (rename across mounts fails with EXDEV).
         const output = `${artifact}.harden-part`;
         try {
             execFileSync("mksquashfs", [treeDir, output, "-offset", String(offset), "-all-root", "-noappend", "-no-progress", "-quiet", "-no-xattrs", "-no-fragments"], { stdio: ["ignore", "ignore", "inherit"] });

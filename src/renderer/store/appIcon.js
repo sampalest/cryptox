@@ -28,10 +28,7 @@ const ICON_OPTION_IDS = new Set(APP_ICONS.map(icon => icon.id));
 
 export const useAppIconStore = defineStore("appIcon", {
     state: () => ({
-        // The selected option (may be "auto"); persisted.
         icon: "default",
-        // The concrete icon last accepted by the main process, so repeated
-        // theme flips and re-selections skip redundant IPC.
         applied: "default",
         // Set from the platform in init(); everything no-ops off macOS.
         supported: false
@@ -48,8 +45,6 @@ export const useAppIconStore = defineStore("appIcon", {
             if (!this.supported) return;
             const saved = localStorage.getItem(STORAGE_KEY);
             if (ICON_OPTION_IDS.has(saved)) this.icon = saved;
-            // A failed apply (e.g. the choice predates an icon set change)
-            // leaves the app on the bundle icon.
             await this.applyResolved();
         },
         async setIcon(id) {
@@ -62,8 +57,6 @@ export const useAppIconStore = defineStore("appIcon", {
                 this.icon = previous;
             }
         },
-        // Pushes resolvedIcon to the main process. Only commits `applied`
-        // when the main process accepted the icon.
         async applyResolved() {
             if (!this.supported) return false;
             const target = this.resolvedIcon;

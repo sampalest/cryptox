@@ -24,8 +24,6 @@ export const useWindowSizeStore = defineStore("windowSize", {
         async init() {
             const saved = localStorage.getItem(STORAGE_KEY);
             if (SIZE_OPTION_IDS.has(saved)) this.size = saved;
-            // A failed apply (e.g. the saved preset no longer fits the
-            // current display) leaves the app at the default size.
             if (!(await this.apply()) && this.size !== "default") {
                 this.size = "default";
             }
@@ -40,8 +38,6 @@ export const useWindowSizeStore = defineStore("windowSize", {
                 this.size = previous;
             }
         },
-        // Pushes the selection to the main process. Only commits `applied`
-        // when the main process accepted the preset.
         async apply() {
             if (this.size === this.applied) return true;
             if (!(await window.lockasaur.window.setSize(this.size))) return false;

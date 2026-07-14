@@ -1,7 +1,5 @@
 import { defineStore } from "pinia";
 
-// Appearance setting. "system" follows the OS via prefers-color-scheme
-// (Electron keeps matchMedia in sync with nativeTheme), so no IPC is needed.
 const STORAGE_KEY = "lockasaur:theme";
 const MODES = ["light", "dark", "system"];
 

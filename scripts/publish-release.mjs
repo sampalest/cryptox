@@ -22,15 +22,10 @@ const { version } = require("../package.json");
 const gh = args => execFileSync("gh", args, { cwd: rootDir, encoding: "utf8", stdio: ["inherit", "pipe", "inherit"] });
 const sha = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: rootDir, encoding: "utf8" }).trim();
 const target = process.env.GITHUB_SHA;
-// Shippable artifacts across all platforms (mac dmg, Windows nsis installer exe,
-// Linux deb). Blockmaps, yml manifests and unpacked dirs are left out. In CI
-// these are aggregated from the per-OS package runners first.
 const SHIPPABLE_EXTENSIONS = [".dmg", ".exe", ".deb"];
 const assets = readdirSync(distDir)
     .filter(name => SHIPPABLE_EXTENSIONS.some(ext => name.endsWith(ext)))
     .map(name => path.join(distDir, name));
-// Static install notes: builds ship unsigned for the beta, so every release
-// body carries the signing warning alongside the build stamp.
 const notes = `Automated build of ${sha}
 
 **Install notes**

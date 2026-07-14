@@ -21,7 +21,7 @@
 // Maps and Reminders all sit at ~81% of the canvas with a ~9.4% transparent margin), so the Dock
 // icon matches the system. The icns/Assets.car keep the full-bleed art (macOS insets those itself).
 import { execFileSync } from "node:child_process";
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -55,30 +55,9 @@ const ICON_BODY_FRACTION = 0.815;
 const resize = (source, size, out) =>
     execFileSync("sips", ["-z", String(size), String(size), source, "--out", out], { stdio: "ignore" });
 
-// Draws the source scaled to ICON_BODY_FRACTION of a transparent square canvas,
-// centered, so a full-bleed export gains the standard macOS icon margin. sips
-// cannot pad with transparency, so this uses AppKit via JXA (selector names
-// follow the bridge convention: colons dropped, argument labels camel-cased).
-const insetScript = `
-ObjC.import("Cocoa");
-function run(argv) {
-    const inPath = argv[0], outPath = argv[1], size = parseInt(argv[2], 10), frac = parseFloat(argv[3]);
-    const data = $.NSData.dataWithContentsOfFile(inPath);
-    const srcRep = $.NSBitmapImageRep.imageRepWithData(data);
-    const srcW = srcRep.pixelsWide, srcH = srcRep.pixelsHigh;
-    const rep = $.NSBitmapImageRep.alloc.initWithBitmapDataPlanesPixelsWidePixelsHighBitsPerSampleSamplesPerPixelHasAlphaIsPlanarColorSpaceNameBytesPerRowBitsPerPixel(
-        null, size, size, 8, 4, true, false, $.NSCalibratedRGBColorSpace, 0, 0);
-    $.NSGraphicsContext.setCurrentContext($.NSGraphicsContext.graphicsContextWithBitmapImageRep(rep));
-    const body = Math.round(size * frac);
-    const scale = Math.min(body / srcW, body / srcH);
-    const w = Math.round(srcW * scale), h = Math.round(srcH * scale);
-    const x = Math.round((size - w) / 2), y = Math.round((size - h) / 2);
-    srcRep.drawInRectFromRectOperationFractionRespectFlippedHints(
-        $.NSMakeRect(x, y, w, h), $.NSZeroRect, 2, 1.0, false, $.NSDictionary.dictionary);
-    const png = rep.representationUsingTypeProperties(4, $.NSDictionary.dictionary);
-    png.writeToFileAtomically(outPath, true);
-}
-`;
+// Insets a full-bleed export to ICON_BODY_FRACTION of a transparent square
+// canvas via AppKit (sips cannot pad with transparency); see the file header.
+const insetJs = path.join(rootDir, "scripts", "jxa", "inset.js");
 
 // actool ships only with full Xcode. xcode-select may still point at the
 // CommandLineTools, so fall back to the default Xcode.app location before
@@ -142,8 +121,6 @@ try {
     // header note). The 512 px 1x file feeds the Settings picker and standard
     // displays; the 1024 px @2x file is the retina representation, matching
     // the largest rep an .icns would carry (512 pt @2x).
-    const insetJs = path.join(tempDir, "inset.js");
-    writeFileSync(insetJs, insetScript);
     const appIconsDir = path.join(rootDir, "public", "appicons");
     mkdirSync(appIconsDir, { recursive: true });
     for (const [variant, id] of variants) {

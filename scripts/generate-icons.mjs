@@ -92,82 +92,15 @@ function packIco(images, icoPath) {
     writeFileSync(icoPath, Buffer.concat([header, entries, ...images.map(image => image.data)]));
 }
 
-// Draws the source image centered, aspect-fit and never upscaled, on a
-// transparent square canvas. AppKit selector names follow the JXA bridge
-// convention (colons dropped, argument labels camel-cased into the name).
-const padScript = `
-ObjC.import("Cocoa");
-function run(argv) {
-    const inPath = argv[0], outPath = argv[1], size = parseInt(argv[2], 10);
-    const data = $.NSData.dataWithContentsOfFile(inPath);
-    const srcRep = $.NSBitmapImageRep.imageRepWithData(data);
-    const srcW = srcRep.pixelsWide, srcH = srcRep.pixelsHigh;
-    const rep = $.NSBitmapImageRep.alloc.initWithBitmapDataPlanesPixelsWidePixelsHighBitsPerSampleSamplesPerPixelHasAlphaIsPlanarColorSpaceNameBytesPerRowBitsPerPixel(
-        null, size, size, 8, 4, true, false, $.NSCalibratedRGBColorSpace, 0, 0);
-    $.NSGraphicsContext.setCurrentContext($.NSGraphicsContext.graphicsContextWithBitmapImageRep(rep));
-    const scale = Math.min(size / srcW, size / srcH, 1);
-    const w = Math.round(srcW * scale), h = Math.round(srcH * scale);
-    const x = Math.round((size - w) / 2), y = Math.round((size - h) / 2);
-    srcRep.drawInRectFromRectOperationFractionRespectFlippedHints(
-        $.NSMakeRect(x, y, w, h), $.NSZeroRect, 2, 1.0, false, $.NSDictionary.dictionary);
-    const png = rep.representationUsingTypeProperties(4, $.NSDictionary.dictionary);
-    png.writeToFileAtomically(outPath, true);
-}
-`;
-
-// Rasterizes the icon SVG onto a transparent square canvas of side `size`,
-// anchored on its "Fondo App" body rect: the body's larger dimension targets
-// `frac` of the canvas and the body sits as close to centered as possible.
-// Nothing is ever clipped: the head/spine overhang must stay visible, so the
-// scale shrinks below the target when the full composition would overflow
-// the canvas (frac 1 therefore yields the largest body the overhang allows,
-// ~86%), and the placement is clamped to keep the artwork on canvas rather
-// than cutting the fins off. The body rect is passed in
-// viewBox units (argv 4..8: bx by bw bh vbw), converted to NSImage points via
-// the reported image width. NSImage is the only AppKit path that decodes SVG,
-// so the source is loaded and drawn as a vector and stays crisp at any size;
-// padScript's NSBitmapImageRep.imageRepWithData cannot read SVG. Do not call
-// flushGraphics (undefined on the JXA proxy): drawing into the bitmap rep is
-// committed synchronously.
-const svgRasterScript = `
-ObjC.import("Cocoa");
-function run(argv) {
-    const inPath = argv[0], outPath = argv[1], size = parseInt(argv[2], 10), frac = parseFloat(argv[3]);
-    const bx = parseFloat(argv[4]), by = parseFloat(argv[5]), bw = parseFloat(argv[6]), bh = parseFloat(argv[7]);
-    const vbw = parseFloat(argv[8]);
-    const img = $.NSImage.alloc.initWithData($.NSData.dataWithContentsOfFile(inPath));
-    if (!img || img.isNil()) throw new Error("could not load SVG");
-    const srcW = img.size.width, srcH = img.size.height;
-    // viewBox units to NSImage points (uniform in x and y).
-    const upt = srcW / vbw;
-    // points to canvas pixels: the body's larger side targets frac of the
-    // canvas, shrunk if the whole composition would not fit at that scale.
-    const scale = Math.min((size * frac) / (Math.max(bw, bh) * upt), size / srcW, size / srcH);
-    const w = srcW * scale, h = srcH * scale;
-    // Body center on the canvas center, then clamp so the composition stays
-    // fully on canvas (the fins push the body slightly off-center instead of
-    // getting cut). The body rect is in top-left viewBox coords; AppKit's
-    // origin is bottom-left.
-    const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
-    const xTL = clamp(size / 2 - (bx + bw / 2) * upt * scale, 0, size - w);
-    const yTL = clamp(size / 2 - (by + bh / 2) * upt * scale, 0, size - h);
-    const x = xTL, y = size - (yTL + h);
-    const rep = $.NSBitmapImageRep.alloc.initWithBitmapDataPlanesPixelsWidePixelsHighBitsPerSampleSamplesPerPixelHasAlphaIsPlanarColorSpaceNameBytesPerRowBitsPerPixel(
-        null, size, size, 8, 4, true, false, $.NSCalibratedRGBColorSpace, 0, 0);
-    $.NSGraphicsContext.setCurrentContext($.NSGraphicsContext.graphicsContextWithBitmapImageRep(rep));
-    $.NSGraphicsContext.currentContext.imageInterpolation = 4;
-    img.drawInRectFromRectOperationFraction($.NSMakeRect(x, y, w, h), $.NSZeroRect, 2, 1.0);
-    const png = rep.representationUsingTypeProperties(4, $.NSDictionary.dictionary);
-    png.writeToFileAtomically(outPath, true);
-}
-`;
+// JXA helpers (see each file's header): pad.js centers an image aspect-fit on
+// a transparent square canvas; svg-raster.js rasterizes the icon SVG anchored
+// on its "Fondo App" body rect (frac 1 yields the largest body the fin and
+// head overhang allow, ~86%). pad.js cannot read SVG, hence the two scripts.
+const padJs = path.join(rootDir, "scripts", "jxa", "pad.js");
+const svgJs = path.join(rootDir, "scripts", "jxa", "svg-raster.js");
 
 const tempDir = mkdtempSync(path.join(os.tmpdir(), "lockasaur-icons-"));
 try {
-    const padJs = path.join(tempDir, "pad.js");
-    writeFileSync(padJs, padScript);
-    const svgJs = path.join(tempDir, "svg.js");
-    writeFileSync(svgJs, svgRasterScript);
     const rasterizeSvg = (outPath, size, frac) =>
         execFileSync("osascript", [
             "-l", "JavaScript", svgJs, svgSource, outPath, String(size), String(frac),
