@@ -8,7 +8,7 @@
 ## Description
 * Lockasaur: simple app to encrypt files and folders with a password (encryption with bite)
 * Encrypted files use the `.dino` extension; files from older releases (`.ctx`) still decrypt
-* Runs on macOS, Windows, and Linux (x64 and arm64)
+* Runs on macOS, Windows, and Linux (one universal macOS app; x64 and arm64 packages on Windows and Linux)
 
 ## Install
 - Download the latest release from https://github.com/sampalest/cryptox/releases
@@ -57,7 +57,7 @@ npm run build:electron
 npm run electron:build
 ```
 
-The renderer is built with Vite into `dist/`. Electron main and preload bundles are built into `dist-electron/` before local app startup or packaging. `npm run electron:build` packages the host operating system into `dist_electron/`: a macOS `dmg`, a Windows `nsis` installer `exe`, or a Linux `deb`, each named `Lockasaur-<arch>.<ext>`. Release builds cover both x64 and arm64 for each platform (built on native-architecture CI runners, except macOS x64, which is cross-compiled on the arm64 runner). Artifacts ship unsigned for the beta (see the Install section for the resulting OS prompts); macOS notarization is skipped unless the required environment is configured.
+The renderer is built with Vite into `dist/`. Electron main and preload bundles are built into `dist-electron/` before local app startup or packaging. `npm run electron:build` packages the host operating system into `dist_electron/`: macOS produces one `Lockasaur.dmg` containing native x64 and arm64 binaries, while Windows and Linux produce `Lockasaur-<arch>.exe` and `Lockasaur-<arch>.deb`. Release builds produce the universal macOS DMG on an arm64 runner and separate x64 and arm64 packages for Windows and Linux on native-architecture runners. Artifacts ship unsigned for the beta (see the Install section for the resulting OS prompts); macOS notarization is skipped unless the required environment is configured.
 
 See [CHANGELOG.md](CHANGELOG.md) for release history and upgrade notes.
 

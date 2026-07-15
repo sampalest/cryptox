@@ -2,8 +2,12 @@ const mac = {
     category: "public.app-category.utilities",
     darkModeSupport: false,
     type: "distribution",
+    artifactName: "${productName}.${ext}",
     target: [
-        "dmg"
+        {
+            target: "dmg",
+            arch: ["universal"]
+        }
     ],
     hardenedRuntime: true,
     entitlements: "build/entitlements.mac.plist",
@@ -144,6 +148,7 @@ module.exports = {
         }
     ],
     electronFuses: {
+        resetAdHocDarwinSignature: true,
         runAsNode: false,
         enableNodeOptionsEnvironmentVariable: false,
         enableNodeCliInspectArguments: false,

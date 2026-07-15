@@ -2,17 +2,17 @@ name: 🚀 Manual deploy
 
 # On-demand build and deploy of a single platform, picked from a dropdown when
 # dispatching the workflow (GitHub renders choice inputs as a selector under
-# the "Run workflow" button). Both arches of the selected platform are built
-# with the same steps as ci.yml's package job, then published as the
-# prerelease "v<version>.<shortsha>" for the built commit. Re-running for
-# another platform on the same commit adds its assets to the same release.
+# the "Run workflow" button). Linux and Windows build both arches; macOS builds
+# one universal DMG. The artifacts are published as the prerelease
+# "v<version>.<shortsha>" for the built commit. Re-running for another platform
+# on the same commit adds its assets to the same release.
 # GitHub only offers workflow_dispatch for workflows present on the default
 # branch, so this file must reach master before the button appears.
 on:
   workflow_dispatch:
     inputs:
       platform:
-        description: Platform to build and deploy (x64 and arm64)
+        description: Platform to build and deploy
         required: true
         type: choice
         options:
@@ -21,9 +21,6 @@ on:
           - macos
 
 jobs:
-  # Matrix rows must be data, not expressions, so a tiny job maps the selected
-  # platform to its two (runner, arch) legs. Keep the rows in sync with the
-  # package matrix in ci.yml (mac x64 cross-compiles on macos-15).
   select:
     name: 🎛️ Select platform
     runs-on: ubuntu-latest
@@ -36,13 +33,10 @@ jobs:
           case "${{ inputs.platform }}" in
             linux)   m='[{"runner": "ubuntu-latest", "os": "linux", "arch": "x64"}, {"runner": "ubuntu-24.04-arm", "os": "linux", "arch": "arm64"}]' ;;
             windows) m='[{"runner": "windows-latest", "os": "windows", "arch": "x64"}, {"runner": "windows-11-arm", "os": "windows", "arch": "arm64"}]' ;;
-            macos)   m='[{"runner": "macos-15", "os": "macos", "arch": "arm64"}, {"runner": "macos-15", "os": "macos", "arch": "x64"}]' ;;
+            macos)   m='[{"runner": "macos-15", "os": "macos", "arch": "universal"}]' ;;
           esac
           echo "matrix=$m" >> "$GITHUB_OUTPUT"
 
-  # Mirrors ci.yml's package job; see the comments there for the macOS
-  # setup-electron workaround, the extra-arch prefetch and the explicit
-  # --<arch> cross-compile flag.
   package:
     name: 📦 Package (${{ matrix.os }} ${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
@@ -63,7 +57,7 @@ jobs:
         if: runner.os == 'macOS'
         uses: ./.github/actions/setup-electron
         with:
-          extra-arch: ${{ matrix.arch }}
+          extra-arch: x64
       - name: 🏗️ Build & package app
         run: npm run electron:build -- --${{ matrix.arch }}
         env:
@@ -96,9 +90,6 @@ jobs:
           path: dist_electron
           pattern: dist-*
           merge-multiple: true
-      # LOCKASAUR_MANUAL_RELEASE makes publish-release.mjs upsert the prerelease
-      # "v<version>.<shortsha>" for this commit without touching any other
-      # release (see scripts/publish-release.mjs).
       - name: 🚀 Publish prerelease
         env:
           GH_TOKEN: ${{ github.token }}
