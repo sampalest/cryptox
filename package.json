@@ -52,7 +52,7 @@
     "electron": "^40.10.2",
     "electron-builder": "^26.8.1",
     "eslint": "^8.57.1",
-    "eslint-plugin-vue": "^9.33.0",
+    "eslint-plugin-vue": "^10.11.1",
     "jest": "^30.0.0",
     "jest-environment-node": "^30.0.0",
     "prettier": "3.8.3",
